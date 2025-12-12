@@ -27,24 +27,18 @@ prompt 自动优化（规范开发）/
 └── README.md               # 项目说明
 ```
 
-## 🎯 核心功能
+## 🎯 Git 追踪配置
 
-### 智能体团队
-- **PM**：产品管理
-- **Analyst**：业务分析
-- **Architect**：系统架构
-- **DEV**：开发实现
-- **TEA**：测试与质量保证
-- **UX Designer**：用户体验设计
-- **Technical Writer**：技术文档
-- **SM**：Scrum 管理
+本项目配置了 Git 版本控制，追踪以下重要目录：
+- `.bmad/` - BMAD 框架配置和工作流
+- `.claude/` - Claude AI 配置
+- `.windsurf/workflows/bmad/` - Windsurf 工作流配置
+- `docs/` - 项目文档（除了 sprint-artifacts）
 
-### 工作流阶段
-1. **分析阶段**（可选）：市场调研、竞争分析、技术趋势
-2. **规划阶段**（必需）：PRD、UX 设计、架构决策
-3. **解决方案阶段**（Level 3-4）：史诗和用户故事创建
-4. **实施阶段**（迭代）：代码开发、评审、部署
-5. **测试阶段**（并行）：自动化测试、性能测试
+忽略的文件：
+- `.bmad-user-memory/` - 个人用户记忆
+- `docs/sprint-artifacts/` - 临时 sprint 产物
+- 各种临时文件和缓存
 
 ## 🛠️ 快速开始
 
@@ -57,61 +51,6 @@ prompt 自动优化（规范开发）/
 2. 确保 BMAD 框架已安装（版本 6.0.0-alpha.16）
 3. 在 IDE 中加载 Analyst 智能体
 4. 运行 `*workflow-init` 初始化项目
-
-### 开发流程
-```bash
-# 新项目
-*workflow-init
-
-# 现有项目（棕地）
-*document-project
-*workflow-init
-```
-
-## 📚 文档资源
-
-- [BMAD 完整文档](./.bmad/bmm/docs/README.md)
-- [快速开始指南](./.bmad/bmm/docs/quick-start.md)
-- [智能体指南](./.bmad/bmm/docs/agents-guide.md)
-- [自适应系统](./.bmad/bmm/docs/scale-adaptive-system.md)
-- [常见问题](./.bmad/bmm/docs/faq.md)
-
-## 🎮 特殊功能
-
-### Party Mode
-启用多智能体协作模式，用于：
-- 战略决策
-- 创意头脑风暴
-- 复杂问题解决
-
-### Scale-Adaptive System
-- **Level 0-1**：快速规范流程（错误修复、小功能）
-- **Level 2**：PRD + 可选架构
-- **Level 3-4**：完整 PRD + 综合架构
-
-## 🔧 配置说明
-
-### BMAD 配置
-- 版本：6.0.0-alpha.16
-- 语言：中文
-- 输出目录：`./docs`
-- 用户记忆：`./.bmad-user-memory`
-
-### IDE 集成
-- Windsurf：完全支持
-- Claude Code：通过 MCP 服务器支持
-- 其他 IDE：通过标准工具集成
-
-## 🤝 贡献指南
-
-1. 使用 BMAD 标准工作流
-2. 遵循既定的智能体协作模式
-3. 在 docs/sprint-artifacts/ 中记录 sprint 产物
-4. 保持配置文件同步
-
-## 📄 许可证
-
-本项目遵循 BMAD 框架的许可证条款。
 
 ---
 

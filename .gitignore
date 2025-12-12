@@ -1,5 +1,7 @@
-# BMAD generated files and user memory
+# BMAD user memory (personal, should not be shared)
 .bmad-user-memory/
+
+# Only ignore sprint artifacts, keep other docs
 docs/sprint-artifacts/
 
 # IDE and editor files
@@ -83,16 +85,16 @@ jspm_packages/
 tmp/
 temp/
 
-# BMAD specific
+# BMAD specific - only ignore temporary files, keep workflows and configs
 .bmad/tmp/
 .bmad/logs/
 .bmad/cache/
 
-# Claude specific
+# Claude specific - ignore session files but keep config
 .claude/session*
 .claude/tmp/
 
-# Windsurf specific
+# Windsurf specific - only ignore temp/cache, keep workflows
 .windsurf/tmp/
 .windsurf/cache/
 
