@@ -1,0 +1,19 @@
+generated: "2025-12-12T03:04:00.000Z"
+project: "prompt 自动优化（规范开发）"
+project_level: 2
+project_type: "Medium Project"
+selected_track: "method"
+field_type: "greenfield"
+workflow_path: ".bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
+workflow_status:
+  brainstorm-project: docs/analysis/brainstorming-session-2025-12-12.md
+  research: optional
+  product-brief: optional
+  prd: required
+  create-ux-design: conditional
+  create-architecture: required
+  create-epics-and-stories: required
+  test-design: recommended
+  validate-architecture: optional
+  implementation-readiness: required
+  sprint-planning: required
