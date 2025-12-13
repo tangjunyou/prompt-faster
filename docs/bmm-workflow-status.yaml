@@ -9,7 +9,7 @@ workflow_status:
   brainstorm-project: docs/analysis/brainstorming-session-2025-12-12.md
   research: optional
   product-brief: optional
-  prd: required
+  prd: docs/prd.md
   create-ux-design: conditional
   create-architecture: required
   create-epics-and-stories: required
