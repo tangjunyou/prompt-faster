@@ -1,5 +1,6 @@
 generated: "2025-12-12T03:04:00.000Z"
-project: "prompt 自动优化（规范开发）"
+updated: "2025-12-14T12:54:00.000Z"
+project: "Prompt Faster"
 project_level: 2
 project_type: "Medium Project"
 selected_track: "method"
@@ -7,7 +8,7 @@ field_type: "greenfield"
 workflow_path: ".bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
 workflow_status:
   brainstorm-project: docs/analysis/brainstorming-session-2025-12-12.md
-  research: optional
+  research: docs/analysis/research/technical-algorithm-specification-research-2025-12-14.md
   product-brief: optional
   prd: docs/prd.md
   create-ux-design: conditional
