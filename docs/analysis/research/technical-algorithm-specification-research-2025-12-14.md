@@ -1,10 +1,10 @@
 ---
-stepsCompleted: [1, 2]
+stepsCompleted: [1, 2, 3]
 inputDocuments:
   - docs/analysis/brainstorming-session-2025-12-12.md
   - docs/prd.md
 workflowType: 'research'
-lastStep: 2
+lastStep: 3
 research_type: 'technical'
 research_topic: 'algorithm-specification'
 research_goals: '定义 Prompt Faster 核心迭代算法的完整技术规格，以高度模块化、可插拔的架构设计为核心原则'
@@ -12,7 +12,7 @@ user_name: '耶稣'
 date: '2025-12-15'
 web_research_enabled: true
 source_verification: true
-revision_note: '2025-12-15 Step 2 完成：业界调研、假设验证、设计决策确认'
+revision_note: '2025-12-15 Step 3 增量补丁：4.2.1 EvaluationResult、4.2.2 OptimizationResult、4.2.3 ReflectionResult、4.2.4 UnifiedReflection、决策D 分支治理策略'
 ---
 
 # Research Report: Algorithm Specification
@@ -45,16 +45,17 @@ revision_note: '2025-12-15 Step 2 完成：业界调研、假设验证、设计�
 
 1. 文档概述
 2. **研究目标与核心假设** *(Step 1)*
-3. **业界调研与设计决策** *(Step 2 新增)*
-4. 算法总体架构
-5. Phase 0: 规律收敛阶段
-6. Phase 1: 首次 Prompt 生成
-7. Phase 2: 测试与反思迭代
-8. 用户配置规格
-9. 老师 Prompt 模板规格
-10. 状态机定义
-11. 最佳实践来源
-12. 附录：错误处理
+3. **业界调研与设计决策** *(Step 2)*
+4. **核心算法架构设计** *(Step 3 新增)*
+5. 算法总体架构
+6. Phase 0: 规律收敛阶段
+7. Phase 1: 首次 Prompt 生成
+8. Phase 2: 测试与反思迭代
+9. 用户配置规格
+10. 老师 Prompt 模板规格
+11. 状态机定义
+12. 最佳实践来源
+13. 附录：错误处理
 
 ---
 
@@ -294,9 +295,586 @@ enum TaskReference {
 
 ---
 
-## 4. 算法总体架构
+## 4. 核心算法架构设计
 
-### 4.1 三阶段流程
+> **Step 3 产出** — 2025-12-15
+> 
+> 本章节定义四层分层架构、5 个核心 Trait 体系、策略编排层设计、扩展点规格。
+
+### 4.1 四层分层架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    应用层 (Application)                      │
+│  - CLI / Tauri API / UI 接口                                │
+├─────────────────────────────────────────────────────────────┤
+│                    编排层 (Orchestration)                    │
+│  - StrategyOrchestrator / TaskManager / ConfigManager       │
+├─────────────────────────────────────────────────────────────┤
+│                    核心层 (Core)                             │
+│  - RuleEngine / Processor / Evaluator / Optimizer / Aggregator │
+├─────────────────────────────────────────────────────────────┤
+│                    基础层 (Infrastructure)                   │
+│  - TeacherModel / StateManager / EventBus                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| 层级 | 职责 | 变更影响范围 |
+|------|------|--------------|
+| **应用层** | 用户交互、API 暴露 | 仅影响交互方式 |
+| **编排层** | 模块组装、流程控制 | 仅影响流程逻辑 |
+| **核心层** | 算法实现、业务逻辑 | 仅影响具体算法 |
+| **基础层** | 基础设施、外部依赖 | 仅影响底层实现 |
+
+### 4.2 核心 Trait 体系
+
+| Trait | 职责 | 关键方法 |
+|-------|------|----------|
+| **RuleEngine** | 规律提取、冲突检测、冲突解决 | `extract_rules()`, `detect_conflicts()`, `resolve_conflict()` |
+| **Processor** | 四层处理器统一抽象 | `process()`, `processor_type()` |
+| **Evaluator** | 固定/创意任务评估 | `evaluate()`, `evaluate_batch()` |
+| **Optimizer** | 迭代优化策略 | `optimize_step()`, `should_terminate()` |
+| **FeedbackAggregator** | 反馈聚合、冲突仲裁 | `aggregate()`, `arbitrate()` |
+
+#### 4.2.1 EvaluationResult 结构定义
+
+> **增量补丁** — 2025-12-15
+> 
+> 为确保评估信号的结构化与可扩展性，定义 Evaluator Trait 的返回类型。
+> 设计原则：**最小必要 + 预留扩展**，使用开放结构（HashMap）支持后期维度增删。
+
+```rust
+/// 评估结果结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluationResult {
+    // === 核心判定（必须）===
+    /// 是否通过评估
+    pub passed: bool,
+    /// 综合评分 0.0-1.0
+    pub score: f64,
+    
+    // === 多维评估（开放结构，后期增删维度零成本）===
+    /// 各维度评分，key 为维度名称
+    pub dimensions: HashMap<String, DimensionScore>,
+    
+    // === 失败诊断（供 Reflection Agent 使用）===
+    /// 失败点列表，仅在 passed=false 时填充
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub failure_points: Vec<FailurePoint>,
+    
+    // === 元数据（预留扩展）===
+    /// 产生此结果的评估器类型
+    pub evaluator_type: String,
+    /// 评估置信度（LLM 评估时尤为重要）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<f64>,
+    /// 评估推理过程
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// 任意扩展字段
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// 单维度评分
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DimensionScore {
+    /// 该维度评分 0.0-1.0
+    pub score: f64,
+    /// 该维度是否通过
+    pub passed: bool,
+    /// 该维度权重（用于计算综合分数）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f64>,
+    /// 细节说明
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
+}
+
+/// 失败点（供 Reflection Agent 分析）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailurePoint {
+    /// 失败的维度名称
+    pub dimension: String,
+    /// 失败描述
+    pub description: String,
+    /// 严重程度
+    pub severity: Severity,
+    /// 期望值（固定任务时填充）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+    /// 实际值
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
+}
+
+/// 失败严重程度
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Severity {
+    /// 致命错误，必须修复
+    Critical,
+    /// 主要问题，应该修复
+    Major,
+    /// 次要问题，可选修复
+    Minor,
+}
+```
+
+**常见评估维度参考**（不同 Evaluator 可选择性使用）：
+
+| 维度名称 | 适用任务类型 | 说明 |
+|---------|-------------|------|
+| `format_compliance` | 固定/创意 | 输出格式是否符合要求 |
+| `structure_match` | 固定 | 结构是否匹配（JSON/XML 等） |
+| `field_completeness` | 固定 | 必要字段是否齐全 |
+| `type_correctness` | 固定 | 字段类型是否正确 |
+| `information_coverage` | 固定/创意 | 关键信息是否覆盖 |
+| `factual_consistency` | 固定/创意 | 事实是否一致 |
+| `constraint_satisfaction` | 创意 | 约束条件是否满足 |
+| `tone_match` | 创意 | 语气/风格是否匹配 |
+| `length_compliance` | 创意 | 长度是否符合要求 |
+
+#### 4.2.2 OptimizationResult 结构定义
+
+> **增量补丁** — 2025-12-15
+> 
+> Optimizer Trait 的输出类型。设计支持单候选（MVP）和候选池（未来）两种模式。
+
+```rust
+/// 优化结果结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationResult {
+    // === 主输出 ===
+    /// 主候选 Prompt（MVP 只用这个）
+    pub primary: PromptCandidate,
+    
+    // === 候选池（预留给 Racing/Pareto 策略）===
+    /// 备选候选列表
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub alternatives: Vec<PromptCandidate>,
+    
+    // === 终止信号 ===
+    /// 是否建议终止迭代
+    pub should_terminate: bool,
+    /// 终止原因（should_terminate=true 时填充）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub termination_reason: Option<TerminationReason>,
+    
+    // === 迭代元数据 ===
+    /// 当前迭代轮次
+    pub iteration: u32,
+    /// 本轮改进摘要
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub improvement_summary: Option<String>,
+    
+    // === 预留扩展 ===
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// Prompt 候选
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptCandidate {
+    /// 候选 ID
+    pub id: String,
+    /// Prompt 内容
+    pub content: String,
+    /// 综合评分 0.0-1.0
+    pub score: f64,
+    /// 来源（首次生成 / 规律更新 / 表达优化）
+    pub source: CandidateSource,
+    /// 失败指纹（用于去重）
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub failure_fingerprints: Vec<String>,
+}
+
+/// 候选来源
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CandidateSource {
+    /// 首次从规律生成
+    InitialGeneration,
+    /// 规律体系更新后重新生成
+    RuleSystemUpdate,
+    /// 仅表达层优化
+    ExpressionRefinement,
+    /// 多样性注入
+    DiversityInjection,
+    /// 用户手动编辑
+    ManualEdit,
+}
+
+/// 终止原因
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TerminationReason {
+    /// 全部测试通过
+    AllTestsPassed,
+    /// 达到通过率阈值
+    PassThresholdReached { threshold: f64, actual: f64 },
+    /// 达到最大迭代轮数
+    MaxIterationsReached { max: u32 },
+    /// 检测到震荡
+    OscillationDetected,
+    /// 用户手动终止
+    UserStopped,
+    /// 需要人工介入
+    HumanInterventionRequired { reason: String },
+}
+```
+
+#### 4.2.3 ReflectionResult 结构定义
+
+> **增量补丁** — 2025-12-15
+> 
+> ReflectionAgent（Processor 的一种实现）的输出类型，也是 FeedbackAggregator 的输入。
+
+```rust
+/// 反思结果结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectionResult {
+    // === 失败分类 ===
+    /// 失败类型
+    pub failure_type: FailureType,
+    
+    // === 分析内容 ===
+    /// 详细分析
+    pub analysis: String,
+    /// 根因判断
+    pub root_cause: String,
+    
+    // === 改进建议 ===
+    /// 建议列表
+    pub suggestions: Vec<Suggestion>,
+    
+    // === 关联信息 ===
+    /// 关联的失败测试用例 ID
+    pub failed_test_case_ids: Vec<String>,
+    /// 关联的规律 ID（如果是规律问题）
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub related_rule_ids: Vec<String>,
+    /// 关联的 EvaluationResult（用于追溯）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub evaluation_ref: Option<String>,
+    
+    // === 预留扩展 ===
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// 失败类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FailureType {
+    /// 规律不完备（缺少某种模式的规律）
+    RuleIncomplete,
+    /// 规律错误（现有规律有问题）
+    RuleIncorrect,
+    /// 表达问题（规律正确但 Prompt 表达不当）
+    ExpressionIssue,
+    /// 边界情况（测试用例是特殊边界）
+    EdgeCase,
+    /// 无法判断（需要人工介入）
+    Undetermined,
+}
+
+/// 改进建议
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Suggestion {
+    /// 建议类型
+    pub suggestion_type: SuggestionType,
+    /// 建议内容
+    pub content: String,
+    /// 置信度 0.0-1.0
+    pub confidence: f64,
+    /// 预期影响范围（受影响的测试用例数）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected_impact: Option<u32>,
+}
+
+/// 建议类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SuggestionType {
+    /// 新增规律
+    AddRule,
+    /// 修改规律
+    ModifyRule,
+    /// 删除规律
+    RemoveRule,
+    /// 修改 Prompt 格式
+    ChangeFormat,
+    /// 修改 Prompt 措辞
+    Rephrase,
+    /// 增加示例
+    AddExample,
+    /// 增加约束说明
+    AddConstraint,
+}
+```
+
+#### 4.2.4 UnifiedReflection 结构定义
+
+> **增量补丁** — 2025-12-15
+> 
+> FeedbackAggregator 的输出类型，聚合多个 ReflectionResult 后的统一反馈，作为 Optimizer 的输入。
+
+```rust
+/// 统一反思结构（聚合后）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedReflection {
+    // === 聚合结果 ===
+    /// 主要失败类型（投票或权重决定）
+    pub primary_failure_type: FailureType,
+    /// 聚合后的改进建议（已去重、合并、排序）
+    pub unified_suggestions: Vec<UnifiedSuggestion>,
+    
+    // === 冲突处理 ===
+    /// 是否存在建议冲突
+    pub has_conflicts: bool,
+    /// 冲突详情（如有）
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub conflicts: Vec<SuggestionConflict>,
+    /// 仲裁结果（如有冲突）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arbitration_result: Option<ArbitrationResult>,
+    
+    // === 统计信息 ===
+    /// 聚合的原始 ReflectionResult 数量
+    pub source_count: u32,
+    /// 失败类型分布
+    pub failure_type_distribution: HashMap<String, u32>,
+    
+    // === 行动指令 ===
+    /// 推荐的下一步行动
+    pub recommended_action: RecommendedAction,
+    
+    // === 预留扩展 ===
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+/// 统一建议（聚合后）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedSuggestion {
+    /// 建议类型
+    pub suggestion_type: SuggestionType,
+    /// 聚合后的建议内容
+    pub content: String,
+    /// 聚合置信度
+    pub confidence: f64,
+    /// 支持此建议的原始 ReflectionResult 数量
+    pub support_count: u32,
+    /// 优先级（1 最高）
+    pub priority: u32,
+}
+
+/// 建议冲突
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuggestionConflict {
+    /// 冲突的建议 A
+    pub suggestion_a: Suggestion,
+    /// 冲突的建议 B
+    pub suggestion_b: Suggestion,
+    /// 冲突类型
+    pub conflict_type: ConflictType,
+    /// 冲突描述
+    pub description: String,
+}
+
+/// 冲突类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConflictType {
+    /// 直接矛盾（A 说加，B 说删）
+    DirectContradiction,
+    /// 资源竞争（都要修改同一规律）
+    ResourceCompetition,
+    /// 优先级冲突（都重要但只能选一个）
+    PriorityConflict,
+}
+
+/// 仲裁结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArbitrationResult {
+    /// 选择的建议
+    pub chosen_suggestions: Vec<UnifiedSuggestion>,
+    /// 仲裁推理
+    pub reasoning: String,
+    /// 仲裁方式
+    pub method: ArbitrationMethod,
+}
+
+/// 仲裁方式
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ArbitrationMethod {
+    /// 投票（多数决）
+    Voting,
+    /// LLM 仲裁
+    LLMArbitration,
+    /// 人工仲裁
+    HumanArbitration,
+    /// 全部保留（Pareto）
+    KeepAll,
+}
+
+/// 推荐行动
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RecommendedAction {
+    /// 更新规律体系后重新生成 Prompt
+    UpdateRulesAndRegenerate,
+    /// 仅优化 Prompt 表达
+    RefineExpression,
+    /// 需要人工介入
+    RequestHumanIntervention { reason: String },
+    /// 注入多样性
+    InjectDiversity,
+    /// 终止迭代
+    Terminate { reason: TerminationReason },
+}
+```
+
+### 4.3 关键架构决策
+
+#### 决策 A: 运行时模块注册（动态）
+
+**决策**：采用运行时注册机制，模块在启动时注册到 Registry。
+
+**优势**：
+- 运行时切换模块，无需重新编译
+- 支持 A/B 测试，对比不同策略
+- 配置驱动，用户可自定义策略组合
+
+```rust
+pub struct ModuleRegistry {
+    rule_engines: HashMap<String, Arc<dyn RuleEngine>>,
+    evaluators: HashMap<String, Arc<dyn Evaluator>>,
+    optimizers: HashMap<String, Arc<dyn Optimizer>>,
+    aggregators: HashMap<String, Arc<dyn FeedbackAggregator>>,
+}
+```
+
+#### 决策 B: 分层 TeacherModel 配置
+
+**决策**：为不同模块提供不同的模型配置，支持成本优化。
+
+```yaml
+teacher_models:
+  rule_extraction: "gpt-4o"      # 高能力模型
+  conflict_detection: "gpt-4o"   # 高能力模型
+  evaluation: "gpt-4o-mini"      # 轻量模型
+  reflection: "gpt-4o"           # 高能力模型
+```
+
+#### 决策 C: 混合状态持久化策略
+
+**决策**：采用混合策略，关键 Checkpoint 自动保存，用户可配置保存频率。
+
+| 保存点 | 触发条件 | 配置项 |
+|--------|----------|--------|
+| Phase 完成 | 自动 | 不可配置 |
+| 迭代轮次 | 每 N 轮 | `checkpoint_interval: 5` |
+| 用户暂停 | 手动 | 不可配置 |
+| 人工介入 | 自动 | 不可配置 |
+
+#### 决策 D: 分支治理策略
+
+> **增量补丁** — 2025-12-15
+> 
+> 为支持人工介入后的版本追溯与元优化数据统计，定义分支治理机制。
+> 核心原则：**人工介入 = 新分支起点**，确保自动优化路径与人工修改路径可区分。
+
+**决策**：采用完整分支治理，每个 Checkpoint 携带 lineage 信息。
+
+```rust
+/// Checkpoint 结构（扩展 lineage 字段）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Checkpoint {
+    /// 唯一标识
+    pub id: String,
+    /// 所属优化任务 ID
+    pub task_id: String,
+    /// 迭代轮次
+    pub iteration: u32,
+    /// 当前状态
+    pub state: IterationState,
+    /// 当前 Prompt
+    pub prompt: String,
+    /// 当前规律体系
+    pub rule_system: RuleSystem,
+    /// 创建时间
+    pub created_at: DateTime<Utc>,
+    
+    // === 分支治理字段 ===
+    /// 分支 ID（首次创建时生成，人工介入时生成新分支）
+    pub branch_id: String,
+    /// 父 Checkpoint ID（首个 Checkpoint 为 None）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// 分支类型
+    pub lineage_type: LineageType,
+    /// 分支描述（人工介入时记录介入原因）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch_description: Option<String>,
+}
+
+/// 分支类型
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LineageType {
+    /// 自动优化产生
+    Automatic,
+    /// 用户手动编辑 Prompt
+    ManualPromptEdit,
+    /// 用户手动编辑规律
+    ManualRuleEdit,
+    /// 用户通过对话引导修改
+    DialogueGuided,
+    /// 从历史 Checkpoint 恢复
+    Restored,
+}
+```
+
+**分支治理规则**：
+
+| 操作 | branch_id | parent_id | lineage_type |
+|------|-----------|-----------|--------------|
+| 首次创建任务 | 新生成 | None | Automatic |
+| 自动迭代 | 继承 | 上一轮 Checkpoint ID | Automatic |
+| 用户编辑 Prompt | **新生成** | 当前 Checkpoint ID | ManualPromptEdit |
+| 用户编辑规律 | **新生成** | 当前 Checkpoint ID | ManualRuleEdit |
+| 对话引导修改 | **新生成** | 当前 Checkpoint ID | DialogueGuided |
+| 从历史恢复 | **新生成** | 被恢复的 Checkpoint ID | Restored |
+
+**分支治理的价值**：
+
+1. **可追溯性**：任何 Prompt 都可以回溯其完整演化路径
+2. **归因分析**：区分"自动优化成功"和"人工介入成功"
+3. **元优化数据**：只统计 `Automatic` 分支的成功率，避免人工介入污染
+4. **A/B 对比**：同一起点的不同分支可以对比效果
+
+### 4.4 扩展点设计
+
+| 扩展类型 | 扩展成本 | 扩展方式 |
+|----------|----------|----------|
+| **新增评估器** | < 2 小时 | 实现 Evaluator Trait，注册到 Registry |
+| **新增处理器** | < 4 小时 | 实现 Processor Trait，注册到 Registry |
+| **新增优化策略** | < 4 小时 | 实现 Optimizer Trait，注册到 Registry |
+| **新增规律引擎** | < 8 小时 | 实现 RuleEngine Trait（较复杂） |
+
+### 4.5 配置驱动示例
+
+```yaml
+optimization:
+  rule_engine: "default"
+  evaluator: "semantic_f1"
+  optimizer: "iterative"
+  feedback_aggregator: "textgrad"
+  conflict_resolution: "hybrid"
+  output_mode: "single"
+  max_iterations: 20
+  pass_threshold: 0.95
+```
+
+---
+
+## 5. 算法总体架构
+
+### 5.1 三阶段流程
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -314,7 +892,7 @@ enum TaskReference {
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 四层处理器
+### 5.2 四层处理器
 
 | 层级 | 名称 | 职责 |
 |------|------|------|
@@ -325,9 +903,9 @@ enum TaskReference {
 
 ---
 
-## 5. Phase 0: 规律收敛阶段
+## 6. Phase 0: 规律收敛阶段
 
-### 5.1 流程定义
+### 6.1 流程定义
 
 ```
 Step 0.1: 测试用例聚类（可选）
@@ -345,9 +923,9 @@ Step 0.6: 规律体系验证
 输出: RuleSystem
 ```
 
-### 5.2 数据结构定义
+### 6.2 数据结构定义
 
-#### 5.2.1 Rule 结构
+#### 6.2.1 Rule 结构
 
 ```typescript
 interface Rule {
@@ -378,7 +956,7 @@ interface RuleTags {
 }
 ```
 
-#### 5.2.2 RuleSystem 结构
+#### 6.2.2 RuleSystem 结构
 
 ```typescript
 interface RuleSystem {
@@ -406,9 +984,9 @@ interface RuleMerge {
 }
 ```
 
-### 5.3 算法实现
+### 6.3 算法实现
 
-#### 5.3.1 规律提炼算法
+#### 6.3.1 规律提炼算法
 
 ```python
 def extract_rules_from_test_cases(test_cases: List[TestCase], config: Config) -> List[Rule]:
@@ -441,7 +1019,7 @@ def extract_rule_from_cluster(cluster: List[TestCase]) -> Rule:
     return parse_rule_response(response)
 ```
 
-#### 5.3.2 冲突检测算法
+#### 6.3.2 冲突检测算法
 
 ```python
 def detect_conflicts(rules: List[Rule]) -> List[Tuple[Rule, Rule]]:
@@ -468,7 +1046,7 @@ def is_conflicting(rule1: Rule, rule2: Rule) -> bool:
     return parse_conflict_response(response)
 ```
 
-#### 5.3.3 冲突解决算法
+#### 6.3.3 冲突解决算法
 
 ```python
 def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], config: Config) -> Rule:
@@ -501,7 +1079,7 @@ def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], confi
     return unified_rule
 ```
 
-#### 5.3.4 相似合并算法
+#### 6.3.4 相似合并算法
 
 ```python
 def detect_and_merge_similar(rules: List[Rule], config: Config) -> List[Rule]:
@@ -529,9 +1107,9 @@ def detect_and_merge_similar(rules: List[Rule], config: Config) -> List[Rule]:
 
 ---
 
-## 6. Phase 1: 首次 Prompt 生成
+## 7. Phase 1: 首次 Prompt 生成
 
-### 6.1 流程定义
+### 7.1 流程定义
 
 ```
 输入: RuleSystem + 核心目标 + 用户配置
@@ -543,7 +1121,7 @@ Step 1.2: 生成 Prompt（可能多个变体）
 输出: Prompt v1（或多版本）
 ```
 
-### 6.2 输出策略处理
+### 7.2 输出策略处理
 
 ```python
 def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: Config) -> Union[str, List[str]]:
@@ -571,9 +1149,9 @@ def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: Config) 
 
 ---
 
-## 7. Phase 2: 测试与反思迭代
+## 8. Phase 2: 测试与反思迭代
 
-### 7.1 流程定义
+### 8.1 流程定义
 
 ```
 Step 2.1: 执行测试（串行/并行）
@@ -595,7 +1173,7 @@ Step 2.6: 安全检查（回归/震荡）
 回到 Step 2.1
 ```
 
-### 7.2 并行测试实现
+### 8.2 并行测试实现
 
 ```python
 def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system: RuleSystem, config: Config) -> IterationResult:
@@ -640,7 +1218,7 @@ def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system
     )
 ```
 
-### 7.3 反思分类实现
+### 8.3 反思分类实现
 
 ```python
 def classify_failure(failed_case: FailedTestResult, prompt: str, rule_system: RuleSystem) -> ReflectionResult:
@@ -662,7 +1240,7 @@ def classify_failure(failed_case: FailedTestResult, prompt: str, rule_system: Ru
     return result
 ```
 
-### 7.4 梯度聚合实现（借鉴 TextGrad）
+### 8.4 梯度聚合实现（借鉴 TextGrad）
 
 ```python
 def aggregate_reflections(clusters: List[ReflectionCluster], config: Config) -> UnifiedReflection:
@@ -702,7 +1280,7 @@ def arbitrate_conflicts(conflicts: List[Conflict], config: Config) -> UnifiedRef
     return parse_arbitration_response(response)
 ```
 
-### 7.5 安全检查实现
+### 8.5 安全检查实现
 
 ```python
 def safety_check(history: IterationHistory, current_result: IterationResult, config: Config) -> SafetyCheckResult:
@@ -752,9 +1330,9 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 ---
 
-## 8. 用户配置规格
+## 9. 用户配置规格
 
-### 8.1 输出策略配置
+### 9.1 输出策略配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -762,7 +1340,7 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | `conflict_alert_threshold` | int | `3` | 冲突数量达到此值时弹出推荐 |
 | `auto_recommend` | bool | `true` | 是否启用智能推荐 |
 
-### 8.2 Minibatch 配置
+### 9.2 Minibatch 配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -771,20 +1349,20 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | `full_eval_interval` | int | `5` | 全量验证间隔轮数 |
 | `minibatch_recommend_threshold` | int | `20` | 推荐启用阈值 |
 
-### 8.3 震荡检测配置
+### 9.3 震荡检测配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `oscillation_threshold` | int | `3` | 震荡判定轮数 |
 | `oscillation_action` | enum | `"diversity_inject"` | `"diversity_inject"` / `"human_intervention"` / `"stop"` |
 
-### 8.4 规律抽象配置
+### 9.4 规律抽象配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `max_abstraction_level` | int | `3` | 规律抽象最大层级 |
 
-### 8.5 迭代控制配置
+### 9.5 迭代控制配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -794,9 +1372,9 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 ---
 
-## 9. 老师 Prompt 模板规格
+## 10. 老师 Prompt 模板规格
 
-### 9.1 规律提炼 Prompt
+### 10.1 规律提炼 Prompt
 
 ```markdown
 # Role: Pattern Extraction Expert
@@ -845,7 +1423,7 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 }
 ```
 
-### 9.2 冲突检测 Prompt
+### 10.2 冲突检测 Prompt
 
 ```markdown
 # Role: Rule Conflict Detector
@@ -871,7 +1449,7 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 }
 ```
 
-### 9.3 反思分类 Prompt
+### 10.3 反思分类 Prompt
 
 ```markdown
 # Role: Failure Analysis Expert
@@ -906,9 +1484,9 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 ---
 
-## 10. 状态机定义
+## 11. 状态机定义
 
-### 10.1 状态枚举
+### 11.1 状态枚举
 
 ```typescript
 enum IterationState {
@@ -928,7 +1506,7 @@ enum IterationState {
 }
 ```
 
-### 10.2 状态转换规则
+### 11.2 状态转换规则
 
 ```
 INIT → RULE_EXTRACT
@@ -950,7 +1528,7 @@ Any → HUMAN_INTERVENTION (需要人工介入)
 
 ---
 
-## 11. 最佳实践来源
+## 12. 最佳实践来源
 
 | 来源 | 核心机制 | 应用位置 | 参考链接 |
 |------|----------|----------|----------|
@@ -965,9 +1543,9 @@ Any → HUMAN_INTERVENTION (需要人工介入)
 
 ---
 
-## 12. 附录：错误处理
+## 13. 附录：错误处理
 
-### 12.1 HumanInterventionRequired 异常
+### 13.1 HumanInterventionRequired 异常
 
 触发条件：
 - 规律冲突无法自动解决（超过最大抽象层级）
@@ -979,7 +1557,7 @@ Any → HUMAN_INTERVENTION (需要人工介入)
 - 向用户展示问题详情
 - 等待用户指导后继续
 
-### 12.2 MaxIterationReached
+### 13.2 MaxIterationReached
 
 触发条件：
 - 迭代轮数达到 `max_iterations`
