@@ -1,10 +1,10 @@
 ---
-stepsCompleted: [1]
+stepsCompleted: [1, 2]
 inputDocuments:
   - docs/analysis/brainstorming-session-2025-12-12.md
   - docs/prd.md
 workflowType: 'research'
-lastStep: 1
+lastStep: 2
 research_type: 'technical'
 research_topic: 'algorithm-specification'
 research_goals: '定义 Prompt Faster 核心迭代算法的完整技术规格，以高度模块化、可插拔的架构设计为核心原则'
@@ -12,7 +12,7 @@ user_name: '耶稣'
 date: '2025-12-15'
 web_research_enabled: true
 source_verification: true
-revision_note: '2025-12-15 重新按照 research 标准步骤完善，强调模块化设计'
+revision_note: '2025-12-15 Step 2 完成：业界调研、假设验证、设计决策确认'
 ---
 
 # Research Report: Algorithm Specification
@@ -44,16 +44,17 @@ revision_note: '2025-12-15 重新按照 research 标准步骤完善，强调模�
 ## Table of Contents
 
 1. 文档概述
-2. **研究目标与核心假设** *(Step 1 新增)*
-3. 算法总体架构
-4. Phase 0: 规律收敛阶段
-5. Phase 1: 首次 Prompt 生成
-6. Phase 2: 测试与反思迭代
-7. 用户配置规格
-8. 老师 Prompt 模板规格
-9. 状态机定义
-10. 最佳实践来源
-11. 附录：错误处理
+2. **研究目标与核心假设** *(Step 1)*
+3. **业界调研与设计决策** *(Step 2 新增)*
+4. 算法总体架构
+5. Phase 0: 规律收敛阶段
+6. Phase 1: 首次 Prompt 生成
+7. Phase 2: 测试与反思迭代
+8. 用户配置规格
+9. 老师 Prompt 模板规格
+10. 状态机定义
+11. 最佳实践来源
+12. 附录：错误处理
 
 ---
 
@@ -171,9 +172,131 @@ revision_note: '2025-12-15 重新按照 research 标准步骤完善，强调模�
 
 ---
 
-## 3. 算法总体架构
+## 3. 业界调研与设计决策
 
-### 3.1 三阶段流程
+> **Step 2 产出** — 2025-12-15
+> 
+> 本章节记录业界框架调研结果、假设验证结论、关键设计决策。
+
+### 3.1 业界框架调研结果
+
+| 框架 | 核心抽象 | 优化机制 | 模块化设计 | 借鉴点 |
+|------|----------|----------|------------|--------|
+| **DSPy MIPROv2** | `Module` 基类 + `forward()` | `Teleprompter.compile()` | ✅ 每个 Module 可独立替换 | Optimizer 接口设计 |
+| **TextGrad** | `Variable` (值+梯度) | `TextualGradientDescent.step()` | ✅ 梯度函数可自定义 | 反馈聚合机制 |
+| **PromptWizard** | `DatasetSpecificProcessing` | Mutation + Refinement | ✅ 配置驱动 | 任务特定处理抽象 |
+| **Reflexion** | Episodic Memory | Verbal Reinforcement | ✅ 反馈类型可扩展 | 反思策略设计 |
+| **GEPA** | Pareto 前沿 | 遗传算法 + 反思 | ✅ 多目标优化 | 多样性保持策略 |
+
+### 3.2 假设验证结论
+
+| 假设 | 验证状态 | 结论 | 后续行动 |
+|------|----------|------|----------|
+| **H1: 规律驱动** | ✅ 保留 | 业界无直接对应，是我们的**创新点**；通过 RuleEngine Trait 模块化降低风险 | 作为核心机制，支持可替换 |
+| **H2: 四层处理器** | ✅ 验证 | 与 DSPy Module 组合模式一致，抽象粒度合理 | 定义 Processor Trait |
+| **H3: 反思分类** | ✅ 验证 | Reflexion + TextGrad 验证了 verbal feedback，我们的分类是细化 | 保留反思分类机制 |
+| **H4: 冲突解决** | ⚠️ 增强 | 单纯抽象层级不够，需增加 Pareto 前沿作为备选 | 三层策略设计 |
+
+### 3.3 关键设计决策
+
+#### 决策 D1: 规律驱动定位
+
+**决策**：规律驱动作为**核心机制**保留，通过 `RuleEngine Trait` 实现模块化。
+
+**理由**：
+- 符合产品愿景（可解释性、人机协作）
+- 独特价值（显式知识表示）
+- 问题归因能力强
+- 通过 Trait 降低风险，支持未来算法升级
+
+#### 决策 D2: 三层冲突解决策略
+
+**决策**：采用三层策略处理规律冲突。
+
+| 层级 | 策略 | 适用场景 |
+|------|------|----------|
+| **主策略** | 抽象层级提升 | 大多数可调和的冲突 |
+| **备选策略** | Pareto 前沿 | 难以调和时保留多候选 |
+| **兜底策略** | 人工介入 | 极端情况 |
+
+**配置项**：`conflict_resolution_strategy: "abstract" | "pareto" | "hybrid"`
+
+#### 决策 D3: Rust Trait 风格
+
+**决策**：使用 Rust Trait 定义核心接口，自动生成 TypeScript 类型。
+
+**架构**：
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     TypeScript (前端)                        │
+│  - UI 组件 + 状态管理                                        │
+│  - 类型定义 (从 Rust 自动生成，使用 ts-rs 或 specta)         │
+├─────────────────────────────────────────────────────────────┤
+│                     Tauri Bridge                             │
+├─────────────────────────────────────────────────────────────┤
+│                     Rust (后端)                              │
+│  - trait RuleEngine { ... }                                 │
+│  - trait Processor { ... }                                  │
+│  - trait Evaluator { ... }                                  │
+│  - trait Optimizer { ... }                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 决策 D4: 双任务模式统一
+
+**决策**：使用 `TaskReference` 枚举统一固定任务和创意任务。
+
+```rust
+enum TaskReference {
+    Exact { expected: String },                    // 固定任务
+    Constrained { constraints: Vec<Constraint>, quality_dimensions: Vec<QualityDimension> },  // 创意任务
+    Hybrid { exact_parts: HashMap<String, String>, constraints: Vec<Constraint> },  // 混合任务
+}
+```
+
+### 3.4 模块化架构保障
+
+为确保**高度模块化**和**可重构性**，设计遵循以下原则：
+
+| 保障措施 | 说明 |
+|----------|------|
+| **Trait 体系** | 每个核心模块定义清晰的 Trait 接口 |
+| **配置驱动** | 用户可通过配置选择不同策略组合 |
+| **依赖倒置** | 高层模块依赖抽象，不依赖具体实现 |
+| **编译时检查** | Rust Trait + 类型系统保证接口契约 |
+| **独立测试** | 每个模块可独立测试 |
+
+**模块化架构总览**：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Strategy Orchestrator (编排层)                  │
+│  - 读取配置，组装模块                                        │
+│  - 不包含具体算法逻辑                                        │
+├──────────────┬──────────────┬──────────────┬────────────────┤
+│  RuleEngine  │   Optimizer  │  Evaluator   │  Aggregator    │
+│    Trait     │     Trait    │    Trait     │     Trait      │
+│  ┌────────┐  │  ┌────────┐  │  ┌────────┐  │  ┌──────────┐  │
+│  │Default │  │  │Default │  │  │Semantic│  │  │TextGrad  │  │
+│  │RuleEng │  │  │Optim   │  │  │  F1    │  │  │  Style   │  │
+│  └────────┘  │  └────────┘  │  └────────┘  │  └──────────┘  │
+│  ┌────────┐  │  ┌────────┐  │  ┌────────┐  │  ┌──────────┐  │
+│  │Future  │  │  │Genetic │  │  │Exact   │  │  │Voting    │  │
+│  │V2 Eng  │  │  │Style   │  │  │ Match  │  │  │  Style   │  │
+│  └────────┘  │  └────────┘  │  └────────┘  │  └──────────┘  │
+└──────────────┴──────────────┴──────────────┴────────────────┘
+```
+
+**重构保障**：
+- 重构具体算法不影响编排逻辑
+- 新增算法只需实现对应 Trait
+- 模块间低耦合，修改影响范围可控
+
+---
+
+## 4. 算法总体架构
+
+### 4.1 三阶段流程
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -202,9 +325,9 @@ revision_note: '2025-12-15 重新按照 research 标准步骤完善，强调模�
 
 ---
 
-## 4. Phase 0: 规律收敛阶段
+## 5. Phase 0: 规律收敛阶段
 
-### 4.1 流程定义
+### 5.1 流程定义
 
 ```
 Step 0.1: 测试用例聚类（可选）
@@ -222,9 +345,9 @@ Step 0.6: 规律体系验证
 输出: RuleSystem
 ```
 
-### 4.2 数据结构定义
+### 5.2 数据结构定义
 
-#### 4.2.1 Rule 结构
+#### 5.2.1 Rule 结构
 
 ```typescript
 interface Rule {
@@ -255,7 +378,7 @@ interface RuleTags {
 }
 ```
 
-#### 4.2.2 RuleSystem 结构
+#### 5.2.2 RuleSystem 结构
 
 ```typescript
 interface RuleSystem {
@@ -283,9 +406,9 @@ interface RuleMerge {
 }
 ```
 
-### 4.3 算法实现
+### 5.3 算法实现
 
-#### 4.3.1 规律提炼算法
+#### 5.3.1 规律提炼算法
 
 ```python
 def extract_rules_from_test_cases(test_cases: List[TestCase], config: Config) -> List[Rule]:
@@ -318,7 +441,7 @@ def extract_rule_from_cluster(cluster: List[TestCase]) -> Rule:
     return parse_rule_response(response)
 ```
 
-#### 4.3.2 冲突检测算法
+#### 5.3.2 冲突检测算法
 
 ```python
 def detect_conflicts(rules: List[Rule]) -> List[Tuple[Rule, Rule]]:
@@ -345,7 +468,7 @@ def is_conflicting(rule1: Rule, rule2: Rule) -> bool:
     return parse_conflict_response(response)
 ```
 
-#### 4.3.3 冲突解决算法
+#### 5.3.3 冲突解决算法
 
 ```python
 def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], config: Config) -> Rule:
@@ -378,7 +501,7 @@ def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], confi
     return unified_rule
 ```
 
-#### 4.3.4 相似合并算法
+#### 5.3.4 相似合并算法
 
 ```python
 def detect_and_merge_similar(rules: List[Rule], config: Config) -> List[Rule]:
@@ -406,9 +529,9 @@ def detect_and_merge_similar(rules: List[Rule], config: Config) -> List[Rule]:
 
 ---
 
-## 5. Phase 1: 首次 Prompt 生成
+## 6. Phase 1: 首次 Prompt 生成
 
-### 5.1 流程定义
+### 6.1 流程定义
 
 ```
 输入: RuleSystem + 核心目标 + 用户配置
@@ -420,7 +543,7 @@ Step 1.2: 生成 Prompt（可能多个变体）
 输出: Prompt v1（或多版本）
 ```
 
-### 5.2 输出策略处理
+### 6.2 输出策略处理
 
 ```python
 def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: Config) -> Union[str, List[str]]:
@@ -448,9 +571,9 @@ def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: Config) 
 
 ---
 
-## 6. Phase 2: 测试与反思迭代
+## 7. Phase 2: 测试与反思迭代
 
-### 6.1 流程定义
+### 7.1 流程定义
 
 ```
 Step 2.1: 执行测试（串行/并行）
@@ -472,7 +595,7 @@ Step 2.6: 安全检查（回归/震荡）
 回到 Step 2.1
 ```
 
-### 6.2 并行测试实现
+### 7.2 并行测试实现
 
 ```python
 def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system: RuleSystem, config: Config) -> IterationResult:
@@ -517,7 +640,7 @@ def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system
     )
 ```
 
-### 6.3 反思分类实现
+### 7.3 反思分类实现
 
 ```python
 def classify_failure(failed_case: FailedTestResult, prompt: str, rule_system: RuleSystem) -> ReflectionResult:
@@ -539,7 +662,7 @@ def classify_failure(failed_case: FailedTestResult, prompt: str, rule_system: Ru
     return result
 ```
 
-### 6.4 梯度聚合实现（借鉴 TextGrad）
+### 7.4 梯度聚合实现（借鉴 TextGrad）
 
 ```python
 def aggregate_reflections(clusters: List[ReflectionCluster], config: Config) -> UnifiedReflection:
@@ -579,7 +702,7 @@ def arbitrate_conflicts(conflicts: List[Conflict], config: Config) -> UnifiedRef
     return parse_arbitration_response(response)
 ```
 
-### 6.5 安全检查实现
+### 7.5 安全检查实现
 
 ```python
 def safety_check(history: IterationHistory, current_result: IterationResult, config: Config) -> SafetyCheckResult:
@@ -629,9 +752,9 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 ---
 
-## 7. 用户配置规格
+## 8. 用户配置规格
 
-### 7.1 输出策略配置
+### 8.1 输出策略配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -639,7 +762,7 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | `conflict_alert_threshold` | int | `3` | 冲突数量达到此值时弹出推荐 |
 | `auto_recommend` | bool | `true` | 是否启用智能推荐 |
 
-### 7.2 Minibatch 配置
+### 8.2 Minibatch 配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -648,20 +771,20 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | `full_eval_interval` | int | `5` | 全量验证间隔轮数 |
 | `minibatch_recommend_threshold` | int | `20` | 推荐启用阈值 |
 
-### 7.3 震荡检测配置
+### 8.3 震荡检测配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `oscillation_threshold` | int | `3` | 震荡判定轮数 |
 | `oscillation_action` | enum | `"diversity_inject"` | `"diversity_inject"` / `"human_intervention"` / `"stop"` |
 
-### 7.4 规律抽象配置
+### 8.4 规律抽象配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `max_abstraction_level` | int | `3` | 规律抽象最大层级 |
 
-### 7.5 迭代控制配置
+### 8.5 迭代控制配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
@@ -671,9 +794,9 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 ---
 
-## 8. 老师 Prompt 模板规格
+## 9. 老师 Prompt 模板规格
 
-### 8.1 规律提炼 Prompt
+### 9.1 规律提炼 Prompt
 
 ```markdown
 # Role: Pattern Extraction Expert
@@ -722,7 +845,7 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 }
 ```
 
-### 8.2 冲突检测 Prompt
+### 9.2 冲突检测 Prompt
 
 ```markdown
 # Role: Rule Conflict Detector
@@ -748,7 +871,7 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 }
 ```
 
-### 8.3 反思分类 Prompt
+### 9.3 反思分类 Prompt
 
 ```markdown
 # Role: Failure Analysis Expert
@@ -783,9 +906,9 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 ---
 
-## 9. 状态机定义
+## 10. 状态机定义
 
-### 9.1 状态枚举
+### 10.1 状态枚举
 
 ```typescript
 enum IterationState {
@@ -805,7 +928,7 @@ enum IterationState {
 }
 ```
 
-### 9.2 状态转换规则
+### 10.2 状态转换规则
 
 ```
 INIT → RULE_EXTRACT
@@ -827,7 +950,7 @@ Any → HUMAN_INTERVENTION (需要人工介入)
 
 ---
 
-## 10. 最佳实践来源
+## 11. 最佳实践来源
 
 | 来源 | 核心机制 | 应用位置 | 参考链接 |
 |------|----------|----------|----------|
@@ -842,9 +965,9 @@ Any → HUMAN_INTERVENTION (需要人工介入)
 
 ---
 
-## 11. 附录：错误处理
+## 12. 附录：错误处理
 
-### 11.1 HumanInterventionRequired 异常
+### 12.1 HumanInterventionRequired 异常
 
 触发条件：
 - 规律冲突无法自动解决（超过最大抽象层级）
@@ -856,7 +979,7 @@ Any → HUMAN_INTERVENTION (需要人工介入)
 - 向用户展示问题详情
 - 等待用户指导后继续
 
-### 11.2 MaxIterationReached
+### 12.2 MaxIterationReached
 
 触发条件：
 - 迭代轮数达到 `max_iterations`
