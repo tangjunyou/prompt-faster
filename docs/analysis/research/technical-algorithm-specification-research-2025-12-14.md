@@ -155,7 +155,7 @@ revision_note: '2025-12-15 新增：4.6 架构模式研究总结(Step 4)、14 �
 |----------|----------|----------|
 | **S1** | 每个核心模块可独立测试 | 架构评审 |
 | **S2** | 新增评估器的工作量 < 2 小时 | 实现 Evaluator trait 的复杂度评估 |
-| **S3** | 新增处理器的工作量 < 4 小时 | 实现 Processor trait 的复杂度评估 |
+| **S3** | 新增 Trait 实现的工作量 < 4 小时 | 实现新 Trait（如 PromptGenerator）的复杂度评估 |
 | **S4** | 策略可通过配置组合而非代码修改 | 配置文件设计评审 |
 | **S5** | 核心算法替换仅影响算法模块 | 模块依赖分析 |
 
@@ -194,7 +194,7 @@ revision_note: '2025-12-15 新增：4.6 架构模式研究总结(Step 4)、14 �
 | 假设 | 验证状态 | 结论 | 后续行动 |
 |------|----------|------|----------|
 | **H1: 规律驱动** | ✅ 保留 | 业界无直接对应，是我们的**创新点**；通过 RuleEngine Trait 模块化降低风险 | 作为核心机制，支持可替换 |
-| **H2: 四层处理器** | ✅ 验证 | 与 DSPy Module 组合模式一致，抽象粒度合理 | 定义 Processor Trait |
+| **H2: 四层处理器** | ✅ 验证 | 与 DSPy Module 组合模式一致，抽象粒度合理 | 定义四层对应 Trait（RuleEngine/PromptGenerator/Evaluator/FeedbackAggregator） |
 | **H3: 反思分类** | ✅ 验证 | Reflexion + TextGrad 验证了 verbal feedback，我们的分类是细化 | 保留反思分类机制 |
 | **H4: 冲突解决** | ⚠️ 增强 | 单纯抽象层级不够，需增加 Pareto 前沿作为备选 | 三层策略设计 |
 
@@ -237,7 +237,7 @@ revision_note: '2025-12-15 新增：4.6 架构模式研究总结(Step 4)、14 �
 ├─────────────────────────────────────────────────────────────┤
 │                     Rust (后端)                              │
 │  - trait RuleEngine { ... }                                 │
-│  - trait Processor { ... }                                  │
+│  - trait PromptGenerator { ... }                            │
 │  - trait Evaluator { ... }                                  │
 │  - trait Optimizer { ... }                                  │
 └─────────────────────────────────────────────────────────────┘
@@ -275,7 +275,7 @@ enum TaskReference {
 │  - 读取配置，组装模块                                        │
 │  - 不包含具体算法逻辑                                        │
 ├──────────────┬──────────────┬──────────────┬────────────────┤
-│  RuleEngine  │   Optimizer  │  Evaluator   │  Aggregator    │
+│  RuleEngine  │   Optimizer  │  Evaluator   │  FeedbackAggr  │
 │    Trait     │     Trait    │    Trait     │     Trait      │
 │  ┌────────┐  │  ┌────────┐  │  ┌────────┐  │  ┌──────────┐  │
 │  │Default │  │  │Default │  │  │Semantic│  │  │TextGrad  │  │
@@ -312,7 +312,7 @@ enum TaskReference {
 │  - StrategyOrchestrator / TaskManager / ConfigManager       │
 ├─────────────────────────────────────────────────────────────┤
 │                    核心层 (Core)                             │
-│  - RuleEngine / Processor / Evaluator / Optimizer / Aggregator │
+│  - RuleEngine / PromptGenerator / Evaluator / Optimizer / FeedbackAggregator │
 ├─────────────────────────────────────────────────────────────┤
 │                    基础层 (Infrastructure)                   │
 │  - TeacherModel / StateManager / EventBus                   │
@@ -566,7 +566,7 @@ pub enum TerminationReason {
 
 > **增量补丁** — 2025-12-15
 > 
-> ReflectionAgent（Processor 的一种实现）的输出类型，也是 FeedbackAggregator 的输入。
+> ReflectionAgent（Layer 4 Reflection Agent 的实现）的输出类型，也是 FeedbackAggregator 的输入。
 
 ```rust
 /// 反思结果结构
@@ -930,6 +930,280 @@ pub enum ExecutionTargetConfig {
 }
 ```
 
+#### 4.2.6.1 OptimizationConfig 结构定义
+
+> **新增** — 2025-12-16
+> 
+> 优化配置是用户可调整的算法参数集合。采用**嵌套分组设计**，
+> 每个功能模块的配置独立成 struct，便于模块化管理和未来扩展。
+
+```rust
+/// 优化配置（用户可调整的算法参数）
+/// 
+/// 设计原则：
+/// - 嵌套分组：按功能模块组织配置，便于维护和扩展
+/// - 合理默认：所有配置项都有经过验证的默认值
+/// - 渐进披露：核心配置在顶层，高级配置在子模块
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationConfig {
+    /// 输出策略配置
+    pub output: OutputConfig,
+    /// Minibatch 配置
+    pub minibatch: MinibatchConfig,
+    /// 震荡检测配置
+    pub oscillation: OscillationConfig,
+    /// 规律相关配置
+    pub rule: RuleConfig,
+    /// 迭代控制配置
+    pub iteration: IterationConfig,
+}
+
+/// 输出策略配置（对应 Section 9.1）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputConfig {
+    /// 输出策略: "single" / "adaptive" / "multi"
+    #[serde(default = "default_output_strategy")]
+    pub strategy: OutputStrategy,
+    /// 冲突数量达到此值时弹出推荐
+    #[serde(default = "default_conflict_alert_threshold")]
+    pub conflict_alert_threshold: u32,
+    /// 是否启用智能推荐
+    #[serde(default = "default_true")]
+    pub auto_recommend: bool,
+}
+
+/// 输出策略枚举
+/// 
+/// 序列化时使用 snake_case 字符串，例如：
+/// - `Single` → `"single"`
+/// - `Adaptive` → `"adaptive"`
+/// - `Multi` → `"multi"`
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputStrategy {
+    /// 强制收敛，输出单一 Prompt
+    #[default]
+    Single,
+    /// 自适应 Prompt（根据输入类型选择）
+    Adaptive,
+    /// 多版本输出（每种类型一个 Prompt）
+    Multi,
+}
+
+/// Minibatch 配置（对应 Section 9.2）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MinibatchConfig {
+    /// 是否启用 Minibatch
+    #[serde(default)]
+    pub enabled: bool,
+    /// 每批测试数量
+    #[serde(default = "default_minibatch_size")]
+    pub size: u32,
+    /// 全量验证间隔轮数
+    #[serde(default = "default_full_eval_interval")]
+    pub full_eval_interval: u32,
+    /// 推荐启用阈值（测试用例数超过此值时推荐启用）
+    #[serde(default = "default_minibatch_recommend_threshold")]
+    pub recommend_threshold: u32,
+}
+
+/// 震荡检测配置（对应 Section 9.3）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OscillationConfig {
+    /// 震荡判定轮数
+    #[serde(default = "default_oscillation_threshold")]
+    pub threshold: u32,
+    /// 震荡触发动作
+    #[serde(default)]
+    pub action: OscillationAction,
+}
+
+/// 震荡触发动作枚举
+/// 
+/// 序列化时使用 snake_case 字符串，例如：
+/// - `DiversityInject` → `"diversity_inject"`
+/// - `HumanIntervention` → `"human_intervention"`
+/// - `Stop` → `"stop"`
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum OscillationAction {
+    /// 自动注入多样性
+    #[default]
+    DiversityInject,
+    /// 请求人工介入
+    HumanIntervention,
+    /// 停止迭代
+    Stop,
+}
+
+/// 规律相关配置（对应 Section 9.4）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuleConfig {
+    /// 规律抽象最大层级
+    #[serde(default = "default_max_abstraction_level")]
+    pub max_abstraction_level: u32,
+    /// 规律相似度阈值（用于合并相似规律）
+    #[serde(default = "default_similarity_threshold")]
+    pub similarity_threshold: f64,
+    /// 是否启用测试用例聚类
+    #[serde(default)]
+    pub enable_clustering: bool,
+    /// 聚类启用阈值（测试用例数超过此值时启用聚类）
+    #[serde(default = "default_clustering_threshold")]
+    pub clustering_threshold: u32,
+}
+
+/// 迭代控制配置（对应 Section 9.5）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IterationConfig {
+    /// 最大迭代轮数
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: u32,
+    /// 通过率阈值
+    #[serde(default = "default_pass_threshold")]
+    pub pass_threshold: f64,
+    /// 连续失败多少次后触发多样性注入
+    #[serde(default = "default_diversity_inject_after")]
+    pub diversity_inject_after: u32,
+}
+
+// ===== 默认值函数 =====
+fn default_output_strategy() -> OutputStrategy { OutputStrategy::Single }
+fn default_conflict_alert_threshold() -> u32 { 3 }
+fn default_true() -> bool { true }
+fn default_minibatch_size() -> u32 { 10 }
+fn default_full_eval_interval() -> u32 { 5 }
+fn default_minibatch_recommend_threshold() -> u32 { 20 }
+fn default_oscillation_threshold() -> u32 { 3 }
+fn default_max_abstraction_level() -> u32 { 3 }
+fn default_similarity_threshold() -> f64 { 0.8 }
+fn default_clustering_threshold() -> u32 { 50 }
+fn default_max_iterations() -> u32 { 20 }
+fn default_pass_threshold() -> f64 { 0.95 }
+fn default_diversity_inject_after() -> u32 { 3 }
+```
+
+**配置分组说明**：
+
+| 分组 | 对应 Section | 职责 |
+|------|-------------|------|
+| `OutputConfig` | 9.1 | 控制 Prompt 输出策略 |
+| `MinibatchConfig` | 9.2 | 控制测试批次采样 |
+| `OscillationConfig` | 9.3 | 控制震荡检测和响应 |
+| `RuleConfig` | 9.4 | 控制规律抽象和合并 |
+| `IterationConfig` | 9.5 | 控制迭代终止条件 |
+
+#### 4.2.6.2 迭代辅助数据结构定义
+
+> **新增** — 2025-12-16
+> 
+> 定义 Phase 2 迭代过程中使用的辅助数据结构，用于伪代码逻辑表达。
+
+```rust
+/// 迭代结果（parallel_test_iteration 返回值）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IterationResult {
+    /// 迭代状态
+    pub status: IterationResultStatus,
+    /// 当前/新生成的 Prompt
+    pub prompt: String,
+    /// 更新后的规律体系（如有更新）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rule_system: Option<RuleSystem>,
+    /// 所有执行结果（用于回归检测）
+    #[serde(default)]
+    pub results: Vec<ExecutionResult>,
+    /// 失败的测试用例
+    #[serde(default)]
+    pub failed_cases: Vec<FailedTestResult>,
+    /// 上一轮通过的用例 ID（用于回归检测）
+    #[serde(default)]
+    pub previous_passed_cases: Vec<String>,
+}
+
+/// 迭代结果状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum IterationResultStatus {
+    /// 全部通过，迭代成功
+    Success,
+    /// 需要继续迭代
+    Continue,
+    /// 达到最大轮数
+    MaxIterationsReached,
+    /// 需要人工介入
+    HumanInterventionRequired,
+}
+
+/// 失败测试结果（包装 ExecutionResult 的失败情况）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedTestResult {
+    /// 对应的测试用例
+    pub test_case: TestCase,
+    /// 执行结果
+    pub execution_result: ExecutionResult,
+    /// 失败原因摘要
+    pub failure_summary: String,
+}
+
+/// 安全检查结果（safety_check 返回值）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetyCheckResult {
+    /// 检查状态
+    pub status: SafetyStatus,
+    /// 回归的测试用例 ID（如检测到回归）
+    #[serde(default)]
+    pub regressions: Vec<String>,
+}
+
+/// 安全检查状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SafetyStatus {
+    /// 安全检查通过
+    Ok,
+    /// 检测到回归
+    Regression,
+    /// 检测到震荡，需要注入多样性
+    OscillationInject,
+    /// 停止迭代
+    Stop,
+}
+
+/// 反思聚类（cluster_by_root_cause 返回值）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectionCluster {
+    /// 聚类 ID
+    pub cluster_id: String,
+    /// 根因描述
+    pub root_cause: String,
+    /// 该聚类包含的反思结果
+    pub reflections: Vec<ReflectionResult>,
+    /// 该聚类的改进建议
+    pub suggestions: Vec<Suggestion>,
+}
+
+/// 迭代历史（用于震荡检测）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IterationHistory {
+    /// 历史状态列表（按时间顺序）
+    pub states: Vec<IterationStateSnapshot>,
+}
+
+/// 迭代状态快照（用于震荡检测比较）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IterationStateSnapshot {
+    /// 迭代轮次
+    pub iteration: u32,
+    /// 当前状态
+    pub state: IterationState,
+    /// 通过率
+    pub pass_rate: f64,
+    /// 失败用例 ID 集合（用于比较状态相似性）
+    pub failed_case_ids: Vec<String>,
+    /// 时间戳
+    pub timestamp: DateTime<Utc>,
+}
+```
+
 #### 4.2.7 核心 Trait 完整签名定义
 
 > **新增** — 2025-12-15
@@ -1120,6 +1394,169 @@ pub trait ExecutionTarget: Send + Sync {
 }
 ```
 
+#### 4.2.8 错误类型定义
+
+> **新增** — 2025-12-16
+> 
+> 定义各 Trait 的错误类型，供开发者实现参考。
+
+##### 错误类型设计原则
+
+- **模块边界表达**：每个 Trait 拥有自己的错误类型，用于在模块边界上表达「该模块能失败的主要原因」
+- **大类优先**：保持变体数量适中（3-5 个大类），避免过度约束实现细节
+- **可扩展性**：允许实现内部再细分，底层错误可 wrap 到 `Internal` 变体中
+- **可观测性**：错误应包含足够上下文信息，便于日志和监控
+
+##### RuleEngineError
+
+```rust
+/// 规律引擎错误
+#[derive(Debug, thiserror::Error)]
+pub enum RuleEngineError {
+    /// 规律解析或验证失败
+    #[error("invalid rule: {0}")]
+    InvalidRule(String),
+    /// 冲突解决失败（无法找到有效解决方案）
+    #[error("conflict resolution failed: {0}")]
+    ConflictResolutionFailed(String),
+    /// 老师模型调用失败
+    #[error("model failure: {0}")]
+    ModelFailure(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
+##### GeneratorError
+
+```rust
+/// Prompt 生成器错误
+#[derive(Debug, thiserror::Error)]
+pub enum GeneratorError {
+    /// 模板渲染失败
+    #[error("template error: {0}")]
+    TemplateError(String),
+    /// 规律体系不完整或无效
+    #[error("invalid rule system: {0}")]
+    InvalidRuleSystem(String),
+    /// 老师模型调用失败
+    #[error("model failure: {0}")]
+    ModelFailure(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
+##### EvaluatorError
+
+```rust
+/// 评估器错误
+#[derive(Debug, thiserror::Error)]
+pub enum EvaluatorError {
+    /// 输入格式无效
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+    /// 评估超时
+    #[error("evaluation timeout: {0}")]
+    Timeout(String),
+    /// 老师模型调用失败（LLM 评估时）
+    #[error("model failure: {0}")]
+    ModelFailure(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
+##### AggregatorError
+
+```rust
+/// 反馈聚合器错误
+#[derive(Debug, thiserror::Error)]
+pub enum AggregatorError {
+    /// 输入反思结果为空或无效
+    #[error("invalid reflections: {0}")]
+    InvalidReflections(String),
+    /// 仲裁失败（无法解决建议冲突）
+    #[error("arbitration failed: {0}")]
+    ArbitrationFailed(String),
+    /// 老师模型调用失败
+    #[error("model failure: {0}")]
+    ModelFailure(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
+##### OptimizerError
+
+```rust
+/// 优化器错误
+#[derive(Debug, thiserror::Error)]
+pub enum OptimizerError {
+    /// 优化步骤失败
+    #[error("optimization step failed: {0}")]
+    StepFailed(String),
+    /// 状态不一致
+    #[error("invalid state: {0}")]
+    InvalidState(String),
+    /// 老师模型调用失败
+    #[error("model failure: {0}")]
+    ModelFailure(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
+##### ModelError
+
+```rust
+/// 老师模型错误
+#[derive(Debug, thiserror::Error)]
+pub enum ModelError {
+    /// API 调用失败（网络/认证/配额）
+    #[error("api error: {0}")]
+    ApiError(String),
+    /// 响应解析失败（JSON 格式错误等）
+    #[error("parse error: {0}")]
+    ParseError(String),
+    /// 请求超时
+    #[error("timeout: {0}")]
+    Timeout(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
+##### ExecutionError
+
+```rust
+/// 执行目标错误
+#[derive(Debug, thiserror::Error)]
+pub enum ExecutionError {
+    /// 网络/连接失败
+    #[error("network error: {0}")]
+    Network(String),
+    /// 请求参数无效
+    #[error("invalid request: {0}")]
+    InvalidRequest(String),
+    /// 目标服务返回错误（Dify/AI 模型）
+    #[error("target failure: {0}")]
+    TargetFailure(String),
+    /// 请求超时
+    #[error("timeout: {0}")]
+    Timeout(String),
+    /// 其它内部错误
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+```
+
 ### 4.3 关键架构决策
 
 #### 决策 A: 运行时模块注册（动态）
@@ -1134,6 +1571,7 @@ pub trait ExecutionTarget: Send + Sync {
 ```rust
 pub struct ModuleRegistry {
     rule_engines: HashMap<String, Arc<dyn RuleEngine>>,
+    prompt_generators: HashMap<String, Arc<dyn PromptGenerator>>,
     evaluators: HashMap<String, Arc<dyn Evaluator>>,
     optimizers: HashMap<String, Arc<dyn Optimizer>>,
     aggregators: HashMap<String, Arc<dyn FeedbackAggregator>>,
@@ -1335,6 +1773,72 @@ optimization:
 | 断点续跑 | Checkpoint Lineage + 分支治理 |
 | 模块化功能组合 | 配置驱动 + 运行时注册 |
 
+### 4.7 PRD 接口映射说明
+
+> **新增** — 2025-12-16
+> 
+> 本节说明 PRD（`docs/prd.md` Section 7.4.1）定义的接口与本技术规格 Trait 体系的映射关系，帮助开发者理解设计演进。
+
+#### 4.7.1 PRD 与技术规格的抽象层级差异
+
+**核心判断：差异不是错误，而是抽象层级不同。**
+
+- **PRD = 产品视角**：关注"系统能做什么"，接口更偏"功能角色"
+  - 老师模型可以"提规律 / 生 Prompt / 反思"
+  - Evaluator 能帮用户判断 expected vs actual
+  
+- **技术规格 = 实现视角**：关注"如何高内聚低耦合地拆分职责"，接口更偏"代码抽象"
+  - 规则相关 → `RuleEngine`
+  - Prompt 生成 → `PromptGenerator`
+  - 评估 → `Evaluator`
+  - 反思与聚合 → `FeedbackAggregator`
+  - 迭代策略 → `Optimizer`
+  - 底层 LLM 调用 → `TeacherModel`
+  - 执行目标 → `ExecutionTarget`
+
+#### 4.7.2 四层架构到 Trait 的映射表
+
+| PRD 四层架构 | 技术规格 Trait | 说明 |
+|--------------|---------------|------|
+| Layer 1: Pattern Extractor | `RuleEngine` | 规律提取、冲突检测、解决、合并 |
+| Layer 2: Prompt Engineer | `PromptGenerator` | 基于规律体系生成 Prompt |
+| Layer 3: Quality Assessor | `Evaluator` | 评估执行结果，判断通过/失败 |
+| Layer 4: Reflection Agent | `FeedbackAggregator` + `Optimizer` | 见下方拆分说明 |
+| (底层 LLM 调用) | `TeacherModel` | 通用 LLM 适配层 |
+| (执行目标) | `ExecutionTarget` | Dify 工作流 / 直连模型 |
+
+**Layer 4 拆分说明**：
+
+PRD 视角下"Reflection Agent"是一个整体；技术规格将其拆分为两个独立 Trait：
+
+- **`FeedbackAggregator`**：聚合多个 `ReflectionResult`，解决冲突建议，输出 `UnifiedReflection`
+- **`Optimizer`**：根据聚合结果执行具体优化步骤，决定何时终止
+
+拆分原因：聚合逻辑（如何合并多个反思）与优化策略（如何应用反思）是正交关注点，分离后可独立替换。
+
+#### 4.7.3 TeacherModel 职责演进
+
+| 维度 | PRD 定义 | 技术规格定义 |
+|------|----------|--------------|
+| 方法 | `generate_rules`, `generate_prompt`, `reflect` | `generate`, `generate_structured` |
+| 职责 | 高层业务逻辑（提规律/生Prompt/做反思） | 底层 LLM 调用适配 |
+| 定位 | "万能老师" | "通用 LLM 客户端" |
+
+**演进原因**：
+
+1. **降低耦合**：将高层业务逻辑迁移至对应 Trait（RuleEngine/PromptGenerator/FeedbackAggregator），TeacherModel 只负责"调用 LLM + 返回文本/结构化结果"
+2. **提高复用**：同一个 TeacherModel 实例可被多个模块共享（RuleEngine、Evaluator、FeedbackAggregator 都可能调用 LLM）
+3. **简化测试**：业务逻辑 Trait 可以 mock TeacherModel 进行单元测试
+
+#### 4.7.4 其他签名差异说明
+
+| Trait | PRD 签名 | 技术规格签名 | 演进说明 |
+|-------|----------|--------------|----------|
+| `Evaluator.evaluate` | `(expected, actual, goal)` | `(ctx, test_case, output)` | `expected` 融入 `TestCase.reference`；`goal` 融入 `OptimizationContext`；暴露完整 `TestCase` 支持更复杂评估 |
+| `ExecutionTarget.execute` | `(prompt, input: &TestInput)` | `(prompt, input: &HashMap<String, serde_json::Value>)` | `HashMap` 更通用，可统一表达 Dify 变量和直连模型输入 |
+
+**开发者注意**：实现 Trait 时应参考本技术规格的签名，PRD 签名视为"概念示意"。
+
 ---
 
 ## 5. 算法总体架构
@@ -1369,6 +1873,12 @@ optimization:
 ---
 
 ## 6. Phase 0: 规律收敛阶段
+
+> **伪代码风格说明**
+> 
+> 本节及后续章节（Section 7、8）的伪代码采用 **Python 语法**书写，
+> 但枚举类型使用 **Rust 风格**（如 `OutputStrategy.Single`、`FailureType.RuleIncomplete`）。
+> 这仅用于逻辑表达，不代表真实实现语言。实际实现将使用 Rust。
 
 ### 6.1 流程定义
 
@@ -1512,12 +2022,22 @@ pub struct RuleMergeRecord {
 }
 
 /// 规律冲突（用于 RuleEngine.detect_conflicts 返回）
+/// 
+/// 设计说明：嵌入完整 Rule 对象以便冲突解决算法直接访问规律内容，
+/// 避免多次通过 ID 查找。related_test_cases 用于验证解决方案。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 pub struct RuleConflict {
-    pub rule_a_id: String,
-    pub rule_b_id: String,
+    /// 冲突规律 1（完整对象）
+    pub rule1: Rule,
+    /// 冲突规律 2（完整对象）
+    pub rule2: Rule,
+    /// 冲突类型
     pub conflict_type: RuleConflictType,
+    /// 冲突描述
     pub description: String,
+    /// 相关测试用例（用于验证冲突解决方案）
+    #[serde(default)]
+    pub related_test_cases: Vec<TestCase>,
 }
 
 /// 规律冲突类型
@@ -1537,12 +2057,12 @@ pub enum RuleConflictType {
 #### 6.3.1 规律提炼算法
 
 ```python
-def extract_rules_from_test_cases(test_cases: List[TestCase], config: Config) -> List[Rule]:
+def extract_rules_from_test_cases(test_cases: List[TestCase], config: OptimizationConfig) -> List[Rule]:
     """
     从测试用例中提炼规律
     """
     # Step 1: 可选聚类
-    if config.enable_clustering and len(test_cases) > config.clustering_threshold:
+    if config.rule.enable_clustering and len(test_cases) > config.rule.clustering_threshold:
         clusters = cluster_test_cases(test_cases)
     else:
         clusters = [[tc] for tc in test_cases]
@@ -1574,6 +2094,9 @@ def detect_conflicts(rules: List[Rule]) -> List[Tuple[Rule, Rule]]:
     """
     检测规律之间的冲突
     使用老师模型进行检测
+    
+    注：此处返回 Tuple 为伪代码简化表达。
+    真实实现中将封装为 List[RuleConflict]，包含 conflict_type、related_test_cases 等信息。
     """
     conflicts = []
     for i, rule1 in enumerate(rules):
@@ -1597,17 +2120,25 @@ def is_conflicting(rule1: Rule, rule2: Rule) -> bool:
 #### 6.3.3 冲突解决算法
 
 ```python
-def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], config: Config) -> Rule:
+def resolve_conflict(conflict: RuleConflict, config: OptimizationConfig) -> Rule:
     """
     解决两条冲突规律，提炼更高层的统一规律
+    
+    Args:
+        conflict: RuleConflict 结构（包含 rule1, rule2, conflict_type, related_test_cases）
+        config: 优化配置
+    
+    Returns:
+        统一后的规律
     """
-    # 获取相关测试用例
-    related_cases = get_related_test_cases(rule1, rule2, test_cases)
+    rule1, rule2 = conflict.rule1, conflict.rule2
+    related_cases = conflict.related_test_cases
     
     # 尝试提炼更高层规律
     prompt = CONFLICT_RESOLUTION_PROMPT.format(
         rule1=rule1.description,
         rule2=rule2.description,
+        conflict_type=conflict.conflict_type,
         test_cases=format_test_cases(related_cases)
     )
     response = teacher_model.generate(prompt)
@@ -1618,7 +2149,7 @@ def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], confi
     unified_rule.parent_rules = [rule1.id, rule2.id]
     
     # 检查是否超过最大抽象层级
-    if unified_rule.abstraction_level > config.max_abstraction_level:
+    if unified_rule.abstraction_level > config.rule.max_abstraction_level:
         raise HumanInterventionRequired("规律冲突无法自动解决，需要用户介入")
     
     # 验证新规律
@@ -1630,11 +2161,11 @@ def resolve_conflict(rule1: Rule, rule2: Rule, test_cases: List[TestCase], confi
 #### 6.3.4 相似合并算法
 
 ```python
-def detect_and_merge_similar(rules: List[Rule], config: Config) -> List[Rule]:
+def detect_and_merge_similar(rules: List[Rule], config: OptimizationConfig) -> List[Rule]:
     """
     检测并合并相似规律
     """
-    similar_groups = find_similar_groups(rules, config.similarity_threshold)
+    similar_groups = find_similar_groups(rules, config.rule.similarity_threshold)
     
     merged_rules = []
     merged_ids = set()
@@ -1672,20 +2203,20 @@ Step 1.2: 生成 Prompt（可能多个变体）
 ### 7.2 输出策略处理
 
 ```python
-def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: Config) -> Union[str, List[str]]:
+def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: OptimizationConfig) -> Union[str, List[str]]:
     """
     根据输出策略生成初始 Prompt
     """
-    if config.output_strategy == "single":
+    if config.output.strategy == OutputStrategy.Single:
         # 策略A: 强制收敛，输出单一 Prompt
         return generate_single_prompt(rule_system.rules, goal)
     
-    elif config.output_strategy == "adaptive":
+    elif config.output.strategy == OutputStrategy.Adaptive:
         # 策略B: 自适应 Prompt
         type_rules = group_rules_by_type(rule_system.rules)
         return generate_adaptive_prompt(type_rules, goal)
     
-    elif config.output_strategy == "multi":
+    elif config.output.strategy == OutputStrategy.Multi:
         # 策略C: 多版本输出
         type_rules = group_rules_by_type(rule_system.rules)
         prompts = {}
@@ -1723,35 +2254,72 @@ Step 2.6: 安全检查（回归/震荡）
 
 ### 8.2 并行测试实现
 
+> **执行顺序契约**
+> 
+> `parallel_execute(prompt, batch)` 返回的 `ExecutionResult` 列表**顺序与输入 `batch` 一致**。
+> 后续 `zip(batch, exec_results, eval_results)` 依赖此契约。
+> 若未来改为异步乱序返回，需引入 `test_case_id → ExecutionResult` 的映射机制。
+
 ```python
-def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system: RuleSystem, config: Config) -> IterationResult:
+def parallel_test_iteration(
+    prompt: str, 
+    test_cases: List[TestCase], 
+    rule_system: RuleSystem, 
+    config: OptimizationConfig,
+    ctx: OptimizationContext,
+    evaluator: Evaluator
+) -> IterationResult:
     """
     并行测试迭代
+    
+    流程：执行(RunningTests) → 评估(Evaluating) → 失败聚类 → 反思 → 更新
     """
-    # Step 2.1: 并行执行
-    if config.minibatch_enabled and len(test_cases) > config.minibatch_recommend_threshold:
+    # 确定本轮测试用例集合
+    if config.minibatch.enabled and len(test_cases) > config.minibatch.recommend_threshold:
         # Minibatch 模式
-        batch = sample_minibatch(test_cases, config.minibatch_size)
-        results = parallel_execute(prompt, batch)
+        batch = sample_minibatch(test_cases, config.minibatch.size)
     else:
         # 全量测试
-        results = parallel_execute(prompt, test_cases)
+        batch = test_cases
+    
+    # Step 2.1: 并行执行（对应状态 RunningTests）
+    exec_results: List[ExecutionResult] = parallel_execute(prompt, batch)
+    
+    # Step 2.2: 评估结果（对应状态 Evaluating）
+    eval_results: List[EvaluationResult] = evaluator.evaluate_batch(
+        ctx,
+        [(tc, er.output) for tc, er in zip(batch, exec_results)]
+    )
+    
+    # Step 2.3: 识别失败用例
+    failed_cases: List[FailedTestResult] = [
+        FailedTestResult(
+            test_case=tc,
+            execution_result=er,
+            failure_summary=ev.failure_points[0].description if ev.failure_points else ""
+        )
+        for tc, er, ev in zip(batch, exec_results, eval_results)
+        if not ev.passed
+    ]
     
     # 检查是否全部通过
-    failed_cases = [r for r in results if not r.passed]
     if len(failed_cases) == 0:
-        return IterationResult(status="success", prompt=prompt)
+        return IterationResult(
+            status=IterationResultStatus.Success, 
+            prompt=prompt,
+            results=exec_results
+        )
     
-    # Step 2.2: 失败聚类
+    # Step 2.4: 失败聚类（对应状态 ClusteringFailures）
     reflections = parallel_reflect(failed_cases, prompt, rule_system)
     clusters = cluster_by_root_cause(reflections)
     
-    # Step 2.3: 反思仲裁（借鉴 TextGrad 梯度聚合）
+    # Step 2.5: 反思仲裁（对应状态 Reflecting，借鉴 TextGrad 梯度聚合）
     unified_reflection = aggregate_reflections(clusters, config)
     
-    # Step 2.4: 应用更新（使用分层验证策略）
-    if unified_reflection.type == "rule_incomplete":
-        # 情况A: 规律问题 → 更新规律体系（使用分层验证）
+    # Step 2.6: 应用更新（使用分层验证策略）
+    if unified_reflection.primary_failure_type == FailureType.RuleIncomplete:
+        # 情况A: 规律问题 → 更新规律体系（对应状态 UpdatingRules）
         rule_system = update_rule_system_with_validation(
             rule_system, 
             unified_reflection,
@@ -1759,13 +2327,14 @@ def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system
         )
         new_prompt = generate_prompt_from_rules(rule_system, config)
     else:
-        # 情况B: 表达问题 → 只调整 Prompt
+        # 情况B: 表达问题 → 只调整 Prompt（对应状态 Optimizing）
         new_prompt = refine_prompt(prompt, unified_reflection)
     
     return IterationResult(
-        status="continue",
+        status=IterationResultStatus.Continue,
         prompt=new_prompt,
         rule_system=rule_system,
+        results=exec_results,
         failed_cases=failed_cases
     )
 ```
@@ -1828,7 +2397,7 @@ def parallel_test_iteration(prompt: str, test_cases: List[TestCase], rule_system
 def update_rule_system_with_validation(
     rule_system: RuleSystem, 
     unified_reflection: UnifiedReflection,
-    config: Config
+    config: OptimizationConfig
 ) -> RuleSystem:
     """
     使用分层验证策略更新规律体系（决策 E3）
@@ -1865,7 +2434,7 @@ def update_rule_system_with_validation(
         # ... 其他字段
     )
 
-def apply_full_validation(rules: List[Rule], suggestion: Suggestion, config: Config) -> List[Rule]:
+def apply_full_validation(rules: List[Rule], suggestion: Suggestion, config: OptimizationConfig) -> List[Rule]:
     """
     完整 Phase 0 验证流程
     """
@@ -1895,10 +2464,14 @@ def classify_failure(failed_case: FailedTestResult, prompt: str, rule_system: Ru
     """
     对失败用例进行分类反思
     """
+    # 从嵌套结构中提取字段
+    test_case = failed_case.test_case
+    exec_result = failed_case.execution_result
+    
     prompt_template = REFLECTION_CLASSIFICATION_PROMPT.format(
-        test_input=failed_case.input,
-        expected_output=failed_case.expected,
-        actual_output=failed_case.actual,
+        test_input=test_case.input,
+        expected_output=test_case.reference,
+        actual_output=exec_result.actual_output,
         current_prompt=prompt,
         rules=format_rules(rule_system.rules)
     )
@@ -1913,7 +2486,7 @@ def classify_failure(failed_case: FailedTestResult, prompt: str, rule_system: Ru
 ### 8.5 梯度聚合实现（借鉴 TextGrad）
 
 ```python
-def aggregate_reflections(clusters: List[ReflectionCluster], config: Config) -> UnifiedReflection:
+def aggregate_reflections(clusters: List[ReflectionCluster], config: OptimizationConfig) -> UnifiedReflection:
     """
     聚合多个反思结果，处理冲突
     """
@@ -1934,7 +2507,7 @@ def aggregate_reflections(clusters: List[ReflectionCluster], config: Config) -> 
     
     return unified
 
-def arbitrate_conflicts(conflicts: List[Conflict], config: Config) -> UnifiedReflection:
+def arbitrate_conflicts(conflicts: List[SuggestionConflict], config: OptimizationConfig) -> UnifiedReflection:
     """
     使用老师模型仲裁冲突的建议
     """
@@ -1953,7 +2526,7 @@ def arbitrate_conflicts(conflicts: List[Conflict], config: Config) -> UnifiedRef
 ### 8.6 安全检查实现
 
 ```python
-def safety_check(history: IterationHistory, current_result: IterationResult, config: Config) -> SafetyCheckResult:
+def safety_check(history: IterationHistory, current_result: IterationResult, config: OptimizationConfig) -> SafetyCheckResult:
     """
     安全检查：回归检测 + 震荡检测
     """
@@ -1965,20 +2538,20 @@ def safety_check(history: IterationHistory, current_result: IterationResult, con
         )
         if len(regressions) > 0:
             return SafetyCheckResult(
-                status="regression",
+                status=SafetyStatus.Regression,
                 regressions=regressions
             )
     
     # 震荡检测
-    if is_oscillating(history, config.oscillation_threshold):
-        if config.oscillation_action == "diversity_inject":
-            return SafetyCheckResult(status="oscillation_inject")
-        elif config.oscillation_action == "human_intervention":
+    if is_oscillating(history, config.oscillation.threshold):
+        if config.oscillation.action == OscillationAction.DiversityInject:
+            return SafetyCheckResult(status=SafetyStatus.OscillationInject)
+        elif config.oscillation.action == OscillationAction.HumanIntervention:
             raise HumanInterventionRequired("检测到优化震荡")
         else:
-            return SafetyCheckResult(status="stop")
+            return SafetyCheckResult(status=SafetyStatus.Stop)
     
-    return SafetyCheckResult(status="ok")
+    return SafetyCheckResult(status=SafetyStatus.Ok)
 
 def is_oscillating(history: IterationHistory, threshold: int) -> bool:
     """
@@ -2001,6 +2574,25 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 ---
 
 ## 9. 用户配置规格
+
+> **配置映射说明**
+> 
+> 本节列出的配置项为**外部配置文件中的 key 名称**（采用 `snake_case` 风格），
+> 加载后将映射到 Section 4.2.6.1 所定义的 `OptimizationConfig` 嵌套字段。
+> 
+> **映射示例**：
+> 
+> | 外部配置 key | 内部字段路径 | 枚举值映射 |
+> |--------------|--------------|------------|
+> | `output_strategy` | `config.output.strategy` | `"single"` → `OutputStrategy::Single` |
+> | `minibatch_enabled` | `config.minibatch.enabled` | - |
+> | `oscillation_threshold` | `config.oscillation.threshold` | - |
+> | `oscillation_action` | `config.oscillation.action` | `"diversity_inject"` → `OscillationAction::DiversityInject` |
+> | `max_abstraction_level` | `config.rule.max_abstraction_level` | - |
+> | `max_iterations` | `config.iteration.max_iterations` | - |
+> 
+> **实现约定**：Rust 实现时，枚举类型需使用 `#[serde(rename_all = "snake_case")]` 
+> 确保序列化/反序列化时的字符串值与本节定义一致。
 
 ### 9.1 输出策略配置
 
@@ -2026,11 +2618,14 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | `oscillation_threshold` | int | `3` | 震荡判定轮数 |
 | `oscillation_action` | enum | `"diversity_inject"` | `"diversity_inject"` / `"human_intervention"` / `"stop"` |
 
-### 9.4 规律抽象配置
+### 9.4 规律相关配置
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `max_abstraction_level` | int | `3` | 规律抽象最大层级 |
+| `similarity_threshold` | float | `0.8` | 规律相似度阈值（用于合并相似规律） |
+| `enable_clustering` | bool | `false` | 是否启用测试用例聚类 |
+| `clustering_threshold` | int | `50` | 聚类启用阈值（测试用例数超过此值时启用） |
 
 ### 9.5 迭代控制配置
 
@@ -2363,7 +2958,7 @@ pub enum IterationState {
 - 向用户展示问题详情
 - 等待用户指导后继续
 
-### 13.2 MaxIterationReached
+### 13.2 MaxIterationsReached
 
 触发条件：
 - 迭代轮数达到 `max_iterations`
