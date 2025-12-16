@@ -794,9 +794,34 @@ pub struct TestCase {
     /// 期望输出/约束（区分固定任务和创意任务）
     pub reference: TaskReference,
     
+    /// 数据划分归属（由 DataSplitConfig 策略生成或用户手动指定）
+    /// - None 或 Unassigned：未分配，系统将作为训练集使用
+    /// - Train：训练集，用于规律提炼和 Prompt 生成
+    /// - Validation：验证集，用于迭代过程中的评估
+    /// - Holdout：保留集，用于最终验证，防止过拟合
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split: Option<DataSplit>,
+    
     /// 元数据（可选，如来源、创建时间等）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+}
+
+/// 数据划分类型
+/// 
+/// 用于标识测试用例在 Train/Val/Holdout 三分法中的归属。
+/// 详见 Section 9.6 数据划分配置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+pub enum DataSplit {
+    /// 未分配（系统将作为训练集使用）
+    Unassigned,
+    /// 训练集：用于规律提炼和 Prompt 生成
+    Train,
+    /// 验证集：用于迭代过程中的评估
+    Validation,
+    /// 保留集：用于最终验证，防止过拟合
+    Holdout,
 }
 
 /// 任务参考类型（与决策 D4 一致）
@@ -956,6 +981,8 @@ pub struct OptimizationConfig {
     pub rule: RuleConfig,
     /// 迭代控制配置
     pub iteration: IterationConfig,
+    /// 数据划分配置（Train/Val/Holdout 三分法）
+    pub data_split: DataSplitConfig,
 }
 
 /// 输出策略配置（对应 Section 9.1）
@@ -1067,6 +1094,48 @@ pub struct IterationConfig {
     pub diversity_inject_after: u32,
 }
 
+/// 数据划分配置（对应 Section 9.6）
+/// 
+/// 用于配置 Train/Val/Holdout 三分法，防止测试集过拟合。
+/// 默认关闭，用户可根据需要手动启用。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSplitConfig {
+    /// 是否启用数据划分（默认关闭）
+    #[serde(default)]
+    pub enabled: bool,
+    /// 训练集比例 (0.0-1.0)
+    #[serde(default = "default_train_ratio")]
+    pub train_ratio: f64,
+    /// 验证集比例 (0.0-1.0)
+    #[serde(default = "default_validation_ratio")]
+    pub validation_ratio: f64,
+    /// 保留集比例 = 1.0 - train_ratio - validation_ratio（自动计算，无需配置）
+    /// 划分策略
+    #[serde(default)]
+    pub strategy: SplitStrategy,
+    /// 随机种子（可选，用于可复现划分）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    /// 过拟合警告阈值（Holdout 通过率与 Validation 通过率之差超过此值时警告）
+    #[serde(default = "default_overfitting_threshold")]
+    pub overfitting_threshold: f64,
+}
+
+/// 划分策略
+/// 
+/// 控制如何将测试用例分配到 Train/Val/Holdout 三个集合。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SplitStrategy {
+    /// 随机划分（默认）
+    #[default]
+    Random,
+    /// 分层抽样（按 TaskReference 类型分层，确保各集合中任务类型分布一致）
+    Stratified,
+    /// 用户手动指定（每个 TestCase 自带 split 字段，忽略 ratio 配置）
+    Manual,
+}
+
 // ===== 默认值函数 =====
 fn default_output_strategy() -> OutputStrategy { OutputStrategy::Single }
 fn default_conflict_alert_threshold() -> u32 { 3 }
@@ -1081,6 +1150,9 @@ fn default_clustering_threshold() -> u32 { 50 }
 fn default_max_iterations() -> u32 { 20 }
 fn default_pass_threshold() -> f64 { 0.95 }
 fn default_diversity_inject_after() -> u32 { 3 }
+fn default_train_ratio() -> f64 { 0.70 }
+fn default_validation_ratio() -> f64 { 0.15 }
+fn default_overfitting_threshold() -> f64 { 0.10 }
 ```
 
 **配置分组说明**：
@@ -1092,6 +1164,7 @@ fn default_diversity_inject_after() -> u32 { 3 }
 | `OscillationConfig` | 9.3 | 控制震荡检测和响应 |
 | `RuleConfig` | 9.4 | 控制规律抽象和合并 |
 | `IterationConfig` | 9.5 | 控制迭代终止条件 |
+| `DataSplitConfig` | 9.6 | 控制数据划分（Train/Val/Holdout） |
 
 #### 4.2.6.2 迭代辅助数据结构定义
 
@@ -1153,6 +1226,9 @@ pub struct SafetyCheckResult {
     /// 回归的测试用例 ID（如检测到回归）
     #[serde(default)]
     pub regressions: Vec<String>,
+    /// 详细信息（如过拟合警告的具体描述）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
 }
 
 /// 安全检查状态
@@ -1166,6 +1242,8 @@ pub enum SafetyStatus {
     OscillationInject,
     /// 停止迭代
     Stop,
+    /// 过拟合警告（Holdout 通过率显著低于 Validation）
+    OverfittingWarning,
 }
 
 /// 反思聚类（cluster_by_root_cause 返回值）
@@ -2526,9 +2604,15 @@ def arbitrate_conflicts(conflicts: List[SuggestionConflict], config: Optimizatio
 ### 8.6 安全检查实现
 
 ```python
-def safety_check(history: IterationHistory, current_result: IterationResult, config: OptimizationConfig) -> SafetyCheckResult:
+def safety_check(history: IterationHistory, current_result: IterationResult, config: OptimizationConfig, ctx: OptimizationContext) -> SafetyCheckResult:
     """
-    安全检查：回归检测 + 震荡检测
+    安全检查：回归检测 + 震荡检测 + Holdout 哨兵检测
+    
+    参数说明：
+    - history: 迭代历史记录
+    - current_result: 当前迭代结果
+    - config: 优化配置
+    - ctx: 优化上下文（包含测试用例集）
     """
     # 回归检测
     if current_result.previous_passed_cases:
@@ -2551,6 +2635,44 @@ def safety_check(history: IterationHistory, current_result: IterationResult, con
         else:
             return SafetyCheckResult(status=SafetyStatus.Stop)
     
+    # Holdout 哨兵检测（防止过拟合）
+    # 只有当数据划分功能启用时才执行
+    if config.data_split.enabled:
+        holdout_result = check_holdout_overfitting(current_result, config, ctx)
+        if holdout_result.status == SafetyStatus.OverfittingWarning:
+            return holdout_result
+    
+    return SafetyCheckResult(status=SafetyStatus.Ok)
+
+def check_holdout_overfitting(current_result: IterationResult, config: OptimizationConfig, ctx: OptimizationContext) -> SafetyCheckResult:
+    """
+    Holdout 哨兵检测：检查是否存在过拟合风险
+    
+    原理：如果在验证集上表现很好，但在保留集上表现明显差，说明可能过拟合了。
+    """
+    # 筛选出 Holdout 测试用例
+    holdout_cases = [tc for tc in ctx.test_cases 
+                     if tc.split == DataSplit.Holdout]
+    
+    # 如果没有 Holdout 用例，跳过检测
+    if len(holdout_cases) == 0:
+        return SafetyCheckResult(status=SafetyStatus.Ok)
+    
+    # 在 Holdout 集上评估当前 Prompt
+    holdout_results = evaluate_on_subset(current_result.prompt, holdout_cases)
+    holdout_pass_rate = sum(1 for r in holdout_results if r.passed) / len(holdout_results)
+    
+    # 计算验证集通过率（从当前结果中提取）
+    validation_pass_rate = calculate_validation_pass_rate(current_result)
+    
+    # 如果 Holdout 通过率显著低于 Validation 通过率，发出警告
+    gap = validation_pass_rate - holdout_pass_rate
+    if gap > config.data_split.overfitting_threshold:
+        return SafetyCheckResult(
+            status=SafetyStatus.OverfittingWarning,
+            details=f"Holdout 通过率 ({holdout_pass_rate:.1%}) 显著低于 Validation 通过率 ({validation_pass_rate:.1%})，差距 {gap:.1%} 超过阈值 {config.data_split.overfitting_threshold:.1%}，可能存在过拟合风险"
+        )
+    
     return SafetyCheckResult(status=SafetyStatus.Ok)
 
 def is_oscillating(history: IterationHistory, threshold: int) -> bool:
@@ -2570,6 +2692,14 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
     
     return False
 ```
+
+> **帮助函数说明**
+> 
+> 上述伪代码中出现的 `evaluate_on_subset` 和 `calculate_validation_pass_rate` 为抽象帮助函数：
+> - `evaluate_on_subset(prompt, test_cases)`: 在指定测试用例子集上评估 Prompt，实现时应复用 `Evaluator` Trait
+> - `calculate_validation_pass_rate(result)`: 从当前迭代结果中提取 Validation 集的通过率
+> 
+> 这些函数的具体实现由 Orchestrator 内部封装，不作为对外扩展点。
 
 ---
 
@@ -2634,6 +2764,41 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | `max_iterations` | int | `20` | 最大迭代轮数 |
 | `pass_threshold` | float | `0.95` | 通过率阈值 |
 | `diversity_inject_after` | int | `3` | 连续失败多少次后触发多样性注入 |
+
+### 9.6 数据划分配置
+
+> **新增** — 2025-12-16
+> 
+> 数据划分配置用于控制 Train/Val/Holdout 三分法，防止测试集过拟合。
+> 默认关闭，适合测试用例较多（建议 ≥20 条）的场景。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `enabled` | bool | `false` | 是否启用数据划分 |
+| `train_ratio` | float | `0.70` | 训练集比例 (0.0-1.0) |
+| `validation_ratio` | float | `0.15` | 验证集比例 (0.0-1.0) |
+| `strategy` | enum | `"random"` | `"random"` / `"stratified"` / `"manual"` |
+| `seed` | int | `null` | 随机种子（可选，用于可复现划分） |
+| `overfitting_threshold` | float | `0.10` | 过拟合警告阈值（Val 与 Holdout 通过率差值） |
+
+> **配置路径说明**：上述配置项位于 `OptimizationConfig.data_split` 下，完整路径如 `config.data_split.enabled`。
+
+**划分策略说明**：
+
+| 策略 | 说明 |
+|------|------|
+| `random` | 随机划分，按比例随机分配测试用例到各集合 |
+| `stratified` | 分层抽样，按 TaskReference 类型分层，确保各集合中任务类型分布一致 |
+| `manual` | 用户手动指定，读取每个 TestCase 的 `split` 字段，忽略 ratio 配置 |
+
+**数据集使用方式**：
+
+| 数据集 | 使用阶段 | 说明 |
+|--------|----------|------|
+| **Train** | Phase 0 + Phase 1 | 用于规律提炼和初始 Prompt 生成 |
+| **Validation** | Phase 2 迭代 | 用于每轮迭代的评估和反思 |
+| **Holdout** | Phase 2 安全检查 | 用于最终验证，检测过拟合风险 |
+| **Unassigned** | 同 Train | 未分配的测试用例自动作为训练集使用 |
 
 ---
 
@@ -3267,11 +3432,48 @@ pub enum IterationState {
 基于本小节的审查结论，可以认为当前版本技术规格**已经可以作为后续实现工作的可靠基础文档**，同时为未来的演进与重构预留了清晰的抓手。
 
 ---
+
+## 16. vNext 架构与治理原则（概览）
+
+> **版本**: v1.1 预告 — 2025-12-16
+> 
+> 本节概述即将在后续版本中引入的架构增强方向，为读者提供演进路线图。
+> 所有增强均遵循"接口稳定、配置扩展、渐进演进"的原则。
+
+### 16.1 演进方向总览
+
+| 方向 | 目标 | 涉及章节 | 状态 |
+|------|------|----------|------|
+| **数据划分** | Train/Val/Holdout 三分法，防止过拟合 | 4.2.5, 4.2.6.1, 8.6, 9.6 | ✅ 已完成 |
+| **评估可靠性** | EnsembleEvaluator + confidence 驱动 | 4.2.1, 4.2.7, 8.2, 8.3 | 🔜 待实施 |
+| **规律可计算性** | RuleIR 中间表示（渐进式、可选） | 6.2.1, 6.3 | 🔜 待实施 |
+| **候选池与预算** | Racing 策略 + BudgetConfig | 4.2.2, 4.2.6.1, 8.2 | 🔜 待实施 |
+| **引擎抽象** | OptimizationEngine 作为 7 Trait 封装门面 | 4.1, 4.2, 4.3 | 🔜 待实施 |
+
+### 16.2 设计原则
+
+| 原则 | 说明 |
+|------|------|
+| **接口稳定性** | 优先通过配置/结构扩展能力，尽量不改 Trait 签名 |
+| **渐进式演进** | 新特性设为可选（如 RuleIR = Option），不破坏现有功能 |
+| **配置化策略** | 算法参数开放为配置项，而非硬编码 |
+| **实现层增强** | 新能力通过实现类（如 EnsembleEvaluator）而非新 Trait 引入 |
+
+### 16.3 版本兼容性说明
+
+- **v1.0 → v1.1 迁移**：完全向后兼容
+  - 新增字段均有默认值，现有配置无需修改
+  - `TestCase.split` 为可选字段，默认 `None`（等同于 `Unassigned`）
+  - `DataSplitConfig.enabled` 默认 `false`，不影响现有行为
+- **Checkpoint 兼容性**：v1.0 Checkpoint 可被 v1.1 正常加载
+  - 缺失的新字段将使用默认值填充
+
+---
 ## 技术研究完成
 
-**研究完成日期**：2025-12-15  
-**文档版本**：v1.0  
-**研究步骤完成**：Step 1-6 全部完成  
+**研究完成日期**：2025-12-15（v1.0）/ 2025-12-16（v1.1 数据划分增强）  
+**文档版本**：v1.1  
+**研究步骤完成**：Step 1-6 全部完成 + vNext 数据划分增强  
 **来源验证**：所有关键技术主张均有业界参考支撑  
 **置信度**：高 — 基于多个权威技术来源
 
