@@ -299,7 +299,7 @@ enum TaskReference {
 
 > **Step 3 产出** — 2025-12-15
 > 
-> 本章节定义四层分层架构、5 个核心 Trait 体系、策略编排层设计、扩展点规格。
+> 本章节定义四层分层架构、7 个核心 Trait 体系、策略编排层设计、扩展点规格。
 
 ### 4.1 四层分层架构
 
@@ -2170,6 +2170,8 @@ optimization:
 | **配置驱动（Configuration-Driven）** | 4.5 | 通过 YAML 配置控制行为、用户无需改代码 | PromptWizard 配置系统 |
 | **反馈聚合（Feedback Aggregation）** | 8.5 | 聚合多个反思结果、处理冲突建议（受 TextGrad 启发） | TextGrad 梯度聚合 |
 | **分层验证（Layered Validation）** | 8.3 | 根据修改类型采用不同验证强度、平衡效率与一致性 | 本项目独创 |
+| **门面模式（Facade）** | 4.2.9 OptimizationEngine | 封装 7 个 Trait，提供统一入口，降低用户理解成本 | 经典 GoF 模式 |
+| **构建者模式（Builder）** | 4.2.9 OptimizationEngineBuilder | 支持可选字段链式构建，便于测试场景的精细控制 | 经典 GoF 模式 |
 
 #### 4.6.2 业界框架模式对比
 
@@ -4022,6 +4024,7 @@ pub enum IterationState {
 
 **（2）错误类型与全局级别终止/异常信号**
 - 每个核心 Trait 均定义了各自的错误类型（`RuleEngineError / GeneratorError / EvaluatorError / AggregatorError / OptimizerError / ModelError / ExecutionError`），错误枚举的粒度与模块职责相匹配，避免了过度细碎或过度粗糙。
+- `OptimizationError` 作为顶层封装，统一了 `OptimizationEngine.run()` 的返回类型，通过 `#[from]` 宏实现子错误的自动转换，不破坏现有错误体系。
 - 附录第 13 章讨论了两个**全局级别的终止/异常信号**：
   - `HumanInterventionRequired`：作为异常使用，用于表示“必须人工介入”的情况，例如规律冲突无法解决、建议冲突无法仲裁、根据配置要求在检测到震荡时中止自动流程。
   - `MaxIterationsReached`：作为终止原因/终态使用，对应 `TerminationReason::MaxIterationsReached { max: u32 }` 与 `IterationState::MaxIterationsReached`，在迭代轮数达到 `max_iterations` 时触发，并按文档约定输出历史最佳 Prompt 与优化报告。
@@ -4030,6 +4033,7 @@ pub enum IterationState {
 **（3）配置、ModuleRegistry 与 PRD 接口的对应关系**
 - 配置章节（第 9 章）中的外部配置项（`snake_case` 风格 key）与 `OptimizationConfig` 嵌套结构之间的映射关系清晰，`serde(rename)` 的使用约定得到充分说明。
 - `ModuleRegistry` 的职责是对各类模块（规则引擎、Prompt 生成器、评估器、优化器、反馈聚合器等）进行运行时注册与查找，与 4.2 中的 Trait 体系一一对应，保证了“配置驱动 + 运行时选择实现”的扩展能力。
+- `OptimizationEngine` 通过 `from_registry` 方法从 `ModuleRegistry` 获取 Trait 实现并完成组装，职责边界清晰：Registry 负责发现，Engine 负责组装。
 - 4.7 节对 PRD 中接口与本技术规格间的映射关系给出了明确说明：PRD 采用产品视角的高层接口描述，而技术规格采用实现视角的 Trait 抽象，差异是抽象层级不同而非设计矛盾。
 
 #### 15.6.3 维护与扩展角度的主要风险点（可接受的 Trade-off）
