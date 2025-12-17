@@ -2066,7 +2066,7 @@ pub struct Rule {
     pub description: String,
     /// 结构化标签
     pub tags: RuleTags,
-    /// 来源测试用例 ID
+    /// 来源测试用例 ID（规则可靠性证据）
     pub source_test_cases: Vec<String>,
     /// 抽象层级 (0=原始, 1=冲突解决后, 2=二次抽象)
     pub abstraction_level: u32,
@@ -2075,8 +2075,12 @@ pub struct Rule {
     pub parent_rules: Vec<String>,
     /// 是否已验证
     pub verified: bool,
-    /// 验证分数 0.0-1.0
+    /// 验证分数 0.0-1.0（规则可靠性置信度）
     pub verification_score: f64,
+    /// 中间表示（可选，用于程序化规律操作）
+    /// 详见 RuleIR 结构定义
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ir: Option<RuleIR>,
 }
 
 /// 规律标签（核心字段 + 扩展字段）
@@ -2125,6 +2129,44 @@ pub enum OutputLength {
     Medium,
     Long,
     Flexible,
+}
+
+/// 规律中间表示（可选，用于程序化规律操作）
+/// 
+/// **设计定位**：RuleIR 专注于"规则内容的可计算表达"，
+/// 而 Rule 上的 source_test_cases/verification_score 等字段负责"规则可靠性与证据"。
+/// 两者配合使用，实现"可计算骨架 + 元信息/证据"的职责分离。
+/// 
+/// **演进原则**：字段类型当前保持宽松（String/Vec<String>），
+/// 未来版本可逐步收紧为结构化类型，并给出推荐语法规范。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+pub struct RuleIR {
+    /// 适用范围表达式（字段路径/标签组合/条件表达式）
+    /// 示例："input.type == 'json'" 或 "tags.contains('extraction')"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    
+    /// 结构化约束列表（类型约束/值域约束/存在性约束等）
+    /// 预期采用机器可解析的表达方式（如 path op value 形式），
+    /// 未来版本将给出推荐语法规范。
+    /// 示例：["output.format == 'json'", "output.fields.contains('name')"]
+    #[serde(default)]
+    pub constraints: Vec<String>,
+    
+    /// 输出格式 Schema 引用（JSON Schema URI 或内联定义）
+    /// 示例："schemas/response.json" 或 inline JSON Schema
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<String>,
+    
+    /// 冲突解决优先级（数值越高优先级越高）
+    /// 当两条规则冲突时，高优先级规则的约束优先
+    #[serde(default)]
+    pub priority: u32,
+    
+    /// 例外场景描述（本规则不适用的情况）
+    /// 示例：["当输入为空时", "当用户明确要求简短回复时"]
+    #[serde(default)]
+    pub exceptions: Vec<String>,
 }
 ```
 
@@ -2238,6 +2280,12 @@ def extract_rule_from_cluster(cluster: List[TestCase]) -> Rule:
 
 #### 6.3.2 冲突检测算法
 
+> **RuleIR 演进说明** — 2025-12-17
+> 
+> 当前实现采用 LLM-first 策略。未来版本当 `Rule.ir` 可用时，推荐优先基于 RuleIR 的 
+> `scope/constraints/priority` 等字段进行静态冲突判断，LLM 仅用于解释与兜底。
+> 这将显著提升冲突检测的效率和一致性。
+
 ```python
 def detect_conflicts(rules: List[Rule]) -> List[Tuple[Rule, Rule]]:
     """
@@ -2246,6 +2294,8 @@ def detect_conflicts(rules: List[Rule]) -> List[Tuple[Rule, Rule]]:
     
     注：此处返回 Tuple 为伪代码简化表达。
     真实实现中将封装为 List[RuleConflict]，包含 conflict_type、related_test_cases 等信息。
+    
+    TODO（RuleIR 演进）：当 rule.ir 存在时，优先使用 IR 的 scope/constraints 进行静态判断
     """
     conflicts = []
     for i, rule1 in enumerate(rules):
@@ -2257,6 +2307,9 @@ def detect_conflicts(rules: List[Rule]) -> List[Tuple[Rule, Rule]]:
 def is_conflicting(rule1: Rule, rule2: Rule) -> bool:
     """
     使用老师模型判断两条规律是否冲突
+    
+    TODO（RuleIR 演进）：当 rule.ir 存在时，先比较 IR 的 scope 是否重叠、
+    constraints 是否矛盾，仅在无法静态判定时才调用 LLM
     """
     prompt = CONFLICT_DETECTION_PROMPT.format(
         rule1=rule1.description,
@@ -2309,10 +2362,18 @@ def resolve_conflict(conflict: RuleConflict, config: OptimizationConfig) -> Rule
 
 #### 6.3.4 相似合并算法
 
+> **RuleIR 演进说明** — 2025-12-17
+> 
+> 当前相似度计算依赖 LLM 或基于 description 的文本相似度。
+> 未来版本当 `Rule.ir` 可用时，推荐基于 RuleIR 的 `scope/constraints/output_schema` 
+> 进行结构化相似度计算，实现更精确的规则合并判定。
+
 ```python
 def detect_and_merge_similar(rules: List[Rule], config: OptimizationConfig) -> List[Rule]:
     """
     检测并合并相似规律
+    
+    TODO（RuleIR 演进）：当 rule.ir 存在时，基于 IR 的结构化字段计算相似度
     """
     similar_groups = find_similar_groups(rules, config.rule.similarity_threshold)
     
@@ -3615,13 +3676,29 @@ pub enum IterationState {
 | **配置化策略** | 算法参数开放为配置项，而非硬编码 |
 | **实现层增强** | 新能力通过实现类（如 EnsembleEvaluator）而非新 Trait 引入 |
 
+> **RuleIR 演进路线** — 2025-12-17
+> 
+> RuleIR 已在 v1.2 的结构层预留（`Rule.ir: Option<RuleIR>`），当前为空壳占位。
+> 未来版本将逐步将 6.3 中的冲突检测/相似合并/coverage 迁移为"**IR-first + LLM 兜底**"模式：
+> 
+> 1. **Phase 1**：RuleIR 生成器（从 description + tags 推导）
+> 2. **Phase 2**：基于 IR 的静态冲突预筛（scope/constraints 比较）
+> 3. **Phase 3**：基于 IR 的结构化相似度计算
+> 4. **Phase 4**：基于 IR 的 coverage_map 精确计算
+> 
+> 每个 Phase 独立可用，不强制全部实现后才能启用。
+
 ### 16.3 版本兼容性说明
 
 - **v1.0 → v1.1 迁移**：完全向后兼容
   - 新增字段均有默认值，现有配置无需修改
   - `TestCase.split` 为可选字段，默认 `None`（等同于 `Unassigned`）
   - `DataSplitConfig.enabled` 默认 `false`，不影响现有行为
-- **Checkpoint 兼容性**：v1.0 Checkpoint 可被 v1.1 正常加载
+- **v1.1 → v1.2 迁移**：完全向后兼容
+  - `EvaluatorConfig` 所有字段均有默认值
+  - `Rule.ir` 为可选字段，默认 `None`，不影响现有行为
+  - `IterationResult.deferred_suggestions` 默认为空列表
+- **Checkpoint 兼容性**：v1.0/v1.1 Checkpoint 可被 v1.2 正常加载
   - 缺失的新字段将使用默认值填充
 
 ---
