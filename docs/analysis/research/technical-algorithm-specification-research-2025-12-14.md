@@ -475,6 +475,35 @@ pub enum Severity {
 | `tone_match` | 创意 | 语气/风格是否匹配 |
 | `length_compliance` | 创意 | 长度是否符合要求 |
 
+**confidence 字段语义说明**：
+
+> **新增** — 2025-12-17
+> 
+> `confidence` 字段表示本次评估结果的可信程度，取值范围 0.0-1.0。
+> 该字段在多评估器场景（EnsembleEvaluator）下尤为重要，用于驱动分层门控策略。
+
+| confidence 范围 | 语义 | 对规则更新的影响 |
+|----------------|------|-----------------|
+| `≥ high_threshold` | 高置信度，评估结果可靠 | 允许规则层更新（AddRule/ModifyRule/RemoveRule） |
+| `[low_threshold, high_threshold)` | 中等置信度，有一定不确定性 | 仅允许表达层更新；规则层建议记为候选 |
+| `< low_threshold` | 低置信度，评估结果不可靠 | 标记为"不可靠"，不驱动任何自动更新 |
+
+**confidence 计算方式**（推荐，可配置）：
+
+```text
+confidence ≈ w_hard × I(hard_checks_all_passed)
+           + w_agreement × agreement_among_evaluators
+           - w_variance × variance_among_samples
+```
+
+其中：
+- `w_hard`：HardChecks 权重（推荐 0.4）
+- `w_agreement`：多评估器一致性权重（推荐 0.4）
+- `w_variance`：多次采样方差惩罚权重（推荐 0.2）
+- `I()`：指示函数，条件成立为 1，否则为 0
+
+具体权重由 `EvaluatorConfig` 配置，详见 Section 4.2.6.1 和 Section 9.7。
+
 #### 4.2.2 OptimizationResult 结构定义
 
 > **增量补丁** — 2025-12-15
@@ -983,6 +1012,8 @@ pub struct OptimizationConfig {
     pub iteration: IterationConfig,
     /// 数据划分配置（Train/Val/Holdout 三分法）
     pub data_split: DataSplitConfig,
+    /// 评估器配置（EnsembleEvaluator + confidence 门控）
+    pub evaluator: EvaluatorConfig,
 }
 
 /// 输出策略配置（对应 Section 9.1）
@@ -1136,6 +1167,35 @@ pub enum SplitStrategy {
     Manual,
 }
 
+/// 评估器配置（对应 Section 9.7）
+/// 
+/// 控制 EnsembleEvaluator 的行为和 confidence 门控策略。
+/// 默认启用多评估器组合，提供更稳定的评估信号。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluatorConfig {
+    /// 是否启用多评估器组合（EnsembleEvaluator）
+    #[serde(default = "default_true")]
+    pub ensemble_enabled: bool,
+    /// 高置信度阈值（允许规则层更新）
+    #[serde(default = "default_confidence_high_threshold")]
+    pub confidence_high_threshold: f64,
+    /// 低置信度阈值（标记为不可靠）
+    #[serde(default = "default_confidence_low_threshold")]
+    pub confidence_low_threshold: f64,
+    /// LLM 评估器采样次数（多次采样可提高一致性）
+    #[serde(default = "default_llm_judge_samples")]
+    pub llm_judge_samples: u32,
+    /// HardChecks 权重（用于 confidence 计算）
+    #[serde(default = "default_hard_checks_weight")]
+    pub hard_checks_weight: f64,
+    /// 多评估器一致性权重
+    #[serde(default = "default_agreement_weight")]
+    pub agreement_weight: f64,
+    /// 采样方差惩罚权重
+    #[serde(default = "default_variance_penalty")]
+    pub variance_penalty: f64,
+}
+
 // ===== 默认值函数 =====
 fn default_output_strategy() -> OutputStrategy { OutputStrategy::Single }
 fn default_conflict_alert_threshold() -> u32 { 3 }
@@ -1153,6 +1213,12 @@ fn default_diversity_inject_after() -> u32 { 3 }
 fn default_train_ratio() -> f64 { 0.70 }
 fn default_validation_ratio() -> f64 { 0.15 }
 fn default_overfitting_threshold() -> f64 { 0.10 }
+fn default_confidence_high_threshold() -> f64 { 0.8 }
+fn default_confidence_low_threshold() -> f64 { 0.5 }
+fn default_llm_judge_samples() -> u32 { 1 }
+fn default_hard_checks_weight() -> f64 { 0.4 }
+fn default_agreement_weight() -> f64 { 0.4 }
+fn default_variance_penalty() -> f64 { 0.2 }
 ```
 
 **配置分组说明**：
@@ -1165,6 +1231,7 @@ fn default_overfitting_threshold() -> f64 { 0.10 }
 | `RuleConfig` | 9.4 | 控制规律抽象和合并 |
 | `IterationConfig` | 9.5 | 控制迭代终止条件 |
 | `DataSplitConfig` | 9.6 | 控制数据划分（Train/Val/Holdout） |
+| `EvaluatorConfig` | 9.7 | 控制评估器组合与 confidence 门控 |
 
 #### 4.2.6.2 迭代辅助数据结构定义
 
@@ -1192,6 +1259,10 @@ pub struct IterationResult {
     /// 上一轮通过的用例 ID（用于回归检测）
     #[serde(default)]
     pub previous_passed_cases: Vec<String>,
+    /// 延迟执行的规则层建议（因 confidence 不足被暂缓）
+    /// 应记入 Checkpoint，待后续高置信度时再次尝试
+    #[serde(default)]
+    pub deferred_suggestions: Vec<Suggestion>,
 }
 
 /// 迭代结果状态
@@ -2395,25 +2466,37 @@ def parallel_test_iteration(
     # Step 2.5: 反思仲裁（对应状态 Reflecting，借鉴 TextGrad 梯度聚合）
     unified_reflection = aggregate_reflections(clusters, config)
     
-    # Step 2.6: 应用更新（使用分层验证策略）
+    # Step 2.6: 应用更新（使用分层验证策略 + confidence 门控）
+    # 计算当前轮评估的聚合置信度（取所有评估结果的 confidence 均值或最小值）
+    evaluation_confidence = compute_aggregated_confidence(eval_results)
+    
     if unified_reflection.primary_failure_type == FailureType.RuleIncomplete:
         # 情况A: 规律问题 → 更新规律体系（对应状态 UpdatingRules）
-        rule_system = update_rule_system_with_validation(
+        # 注意：confidence 门控会限制低置信度时的规则层更新
+        rule_system, deferred_suggestions = update_rule_system_with_validation(
             rule_system, 
             unified_reflection,
-            config
+            config,
+            evaluation_confidence
         )
+        # 延迟的候选建议记入 backlog，供后续高置信度时再次尝试
+        if len(deferred_suggestions) > 0:
+            log_info(f"本轮有 {len(deferred_suggestions)} 条规则层建议因置信度不足被延迟")
+            # TODO: 将 deferred_suggestions 写入 Checkpoint.deferred_rule_suggestions
         new_prompt = generate_prompt_from_rules(rule_system, config)
     else:
         # 情况B: 表达问题 → 只调整 Prompt（对应状态 Optimizing）
+        # 表达层更新不受 confidence 门控限制
         new_prompt = refine_prompt(prompt, unified_reflection)
+        deferred_suggestions = []
     
     return IterationResult(
         status=IterationResultStatus.Continue,
         prompt=new_prompt,
         rule_system=rule_system,
         results=exec_results,
-        failed_cases=failed_cases
+        failed_cases=failed_cases,
+        deferred_suggestions=deferred_suggestions  # 新增：传递延迟建议
     )
 ```
 
@@ -2475,42 +2558,72 @@ def parallel_test_iteration(
 def update_rule_system_with_validation(
     rule_system: RuleSystem, 
     unified_reflection: UnifiedReflection,
-    config: OptimizationConfig
-) -> RuleSystem:
+    config: OptimizationConfig,
+    evaluation_confidence: float  # 新增：当前评估结果的置信度
+) -> Tuple[RuleSystem, List[Suggestion]]:
     """
     使用分层验证策略更新规律体系（决策 E3）
+    
+    新增 confidence 门控逻辑（2025-12-17）：
+    - 高置信度：允许所有类型的更新
+    - 中等置信度：仅允许轻量级更新，重型建议记为候选
+    - 低置信度：不执行任何更新，仅记录
+    
+    返回值：
+    - 更新后的 RuleSystem
+    - 被延迟的候选建议列表（低/中置信度时未执行的重型建议）
     """
     updated_rules = rule_system.rules.copy()
+    deferred_suggestions = []  # 被延迟的候选建议
+    
+    # 获取置信度阈值
+    high_threshold = config.evaluator.confidence_high_threshold
+    low_threshold = config.evaluator.confidence_low_threshold
+    
+    # 低置信度：标记为不可靠，不驱动任何自动更新
+    if evaluation_confidence < low_threshold:
+        log_warning(f"评估置信度过低 ({evaluation_confidence:.2f} < {low_threshold})，跳过所有规则更新")
+        return RuleSystem(rules=updated_rules, version=rule_system.version), unified_reflection.unified_suggestions
     
     for suggestion in unified_reflection.unified_suggestions:
         suggestion_type = suggestion.suggestion_type
         
-        # 轻量级类型：直接应用
+        # 轻量级类型：直接应用（不受 confidence 限制）
         if suggestion_type in [SuggestionType.Rephrase, SuggestionType.ChangeFormat]:
             updated_rules = apply_lightweight_update(updated_rules, suggestion)
             continue
         
         # 中等类型：冲突检测
         if suggestion_type in [SuggestionType.AddExample, SuggestionType.AddConstraint]:
+            # 中等置信度时，中等类型建议也允许执行
             temp_rules = apply_suggestion(updated_rules, suggestion)
             conflicts = detect_conflicts(temp_rules)
             
             if len(conflicts) == 0:
                 updated_rules = temp_rules
             else:
-                # 有冲突，降级到完整流程
-                updated_rules = apply_full_validation(updated_rules, suggestion, config)
+                # 有冲突，降级到完整流程（但需要高置信度）
+                if evaluation_confidence >= high_threshold:
+                    updated_rules = apply_full_validation(updated_rules, suggestion, config)
+                else:
+                    deferred_suggestions.append(suggestion)
+                    log_info(f"中等置信度下发现冲突，建议 {suggestion.id} 延迟执行")
             continue
         
-        # 重型类型：完整 Phase 0 验证流程
+        # 重型类型：完整 Phase 0 验证流程（需要高置信度）
         if suggestion_type in [SuggestionType.AddRule, SuggestionType.ModifyRule, SuggestionType.RemoveRule]:
-            updated_rules = apply_full_validation(updated_rules, suggestion, config)
+            if evaluation_confidence >= high_threshold:
+                updated_rules = apply_full_validation(updated_rules, suggestion, config)
+            else:
+                # 中等置信度：记为候选，不立即执行
+                deferred_suggestions.append(suggestion)
+                log_info(f"置信度 ({evaluation_confidence:.2f}) 不足，规则层建议 {suggestion.id} 延迟执行")
     
     return RuleSystem(
         rules=updated_rules,
-        version=rule_system.version + 1,
+        version=rule_system.version + 1 if updated_rules != rule_system.rules else rule_system.version,
         # ... 其他字段
-    )
+    ), deferred_suggestions
 
 def apply_full_validation(rules: List[Rule], suggestion: Suggestion, config: OptimizationConfig) -> List[Rule]:
     """
@@ -2695,9 +2808,10 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 
 > **帮助函数说明**
 > 
-> 上述伪代码中出现的 `evaluate_on_subset` 和 `calculate_validation_pass_rate` 为抽象帮助函数：
+> 上述伪代码中出现的帮助函数为抽象函数，由 Orchestrator 内部封装：
 > - `evaluate_on_subset(prompt, test_cases)`: 在指定测试用例子集上评估 Prompt，实现时应复用 `Evaluator` Trait
 > - `calculate_validation_pass_rate(result)`: 从当前迭代结果中提取 Validation 集的通过率
+> - `compute_aggregated_confidence(eval_results)`: 聚合多个评估结果的置信度，推荐策略为取最小值（保守）或加权均值
 > 
 > 这些函数的具体实现由 Orchestrator 内部封装，不作为对外扩展点。
 
@@ -2799,6 +2913,48 @@ def is_oscillating(history: IterationHistory, threshold: int) -> bool:
 | **Validation** | Phase 2 迭代 | 用于每轮迭代的评估和反思 |
 | **Holdout** | Phase 2 安全检查 | 用于最终验证，检测过拟合风险 |
 | **Unassigned** | 同 Train | 未分配的测试用例自动作为训练集使用 |
+
+### 9.7 评估器配置
+
+> **新增** — 2025-12-17
+> 
+> 评估器配置用于控制 EnsembleEvaluator 的行为和 confidence 门控策略。
+> 默认启用多评估器组合，提供更稳定的评估信号。
+
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `ensemble_enabled` | bool | `true` | 是否启用多评估器组合 |
+| `confidence_high_threshold` | float | `0.8` | 高置信度阈值（允许规则层更新） |
+| `confidence_low_threshold` | float | `0.5` | 低置信度阈值（标记为不可靠） |
+| `llm_judge_samples` | int | `1` | LLM 评估器采样次数 |
+| `hard_checks_weight` | float | `0.4` | HardChecks 权重（用于 confidence 计算） |
+| `agreement_weight` | float | `0.4` | 多评估器一致性权重 |
+| `variance_penalty` | float | `0.2` | 采样方差惩罚权重 |
+
+> **配置路径说明**：上述配置项位于 `OptimizationConfig.evaluator` 下，完整路径如 `config.evaluator.confidence_high_threshold`。
+
+**confidence 门控策略**：
+
+| confidence 范围 | 允许的动作 | 说明 |
+|----------------|-----------|------|
+| `≥ confidence_high_threshold` | 全部允许 | 可执行规则层更新（AddRule/ModifyRule/RemoveRule） |
+| `[low, high)` | 仅表达层更新 | 规则层建议记为候选，待后续高置信度时执行 |
+| `< confidence_low_threshold` | 仅记录 | 标记为"不可靠"，不驱动任何自动更新 |
+
+**EnsembleEvaluator 实现说明**：
+
+`EnsembleEvaluator` 是 `Evaluator` Trait 的推荐实现，通过组合多个内部评估器来提供更稳定的评估信号：
+
+| 内部评估器 | 职责 | 结果类型 |
+|-----------|------|---------|
+| **HardChecksEvaluator** | JSON Schema 校验、字段存在性、类型检查、格式合法性 | 通过/失败 + 错误列表 |
+| **MetricEvaluator**（可选） | 传统指标（F1、ROUGE、文本相似度等） | 多维数值分数 |
+| **LLMJudgeEvaluator** | 由老师模型作为 judge，给出语义判断 | 通过/失败 + 多维解释 |
+
+聚合逻辑：
+- `passed`: HardChecks 必须通过，Soft/LLM 综合表决
+- `score`: 加权和聚合
+- `confidence`: 基于一致性 + HardChecks 状态计算（详见 Section 4.2.1）
 
 ---
 
@@ -3445,7 +3601,7 @@ pub enum IterationState {
 | 方向 | 目标 | 涉及章节 | 状态 |
 |------|------|----------|------|
 | **数据划分** | Train/Val/Holdout 三分法，防止过拟合 | 4.2.5, 4.2.6.1, 8.6, 9.6 | ✅ 已完成 |
-| **评估可靠性** | EnsembleEvaluator + confidence 驱动 | 4.2.1, 4.2.7, 8.2, 8.3 | 🔜 待实施 |
+| **评估可靠性** | EnsembleEvaluator + confidence 门控 | 4.2.1, 4.2.6.1, 8.3, 9.7 | ✅ 已完成 |
 | **规律可计算性** | RuleIR 中间表示（渐进式、可选） | 6.2.1, 6.3 | 🔜 待实施 |
 | **候选池与预算** | Racing 策略 + BudgetConfig | 4.2.2, 4.2.6.1, 8.2 | 🔜 待实施 |
 | **引擎抽象** | OptimizationEngine 作为 7 Trait 封装门面 | 4.1, 4.2, 4.3 | 🔜 待实施 |
@@ -3471,9 +3627,9 @@ pub enum IterationState {
 ---
 ## 技术研究完成
 
-**研究完成日期**：2025-12-15（v1.0）/ 2025-12-16（v1.1 数据划分增强）  
-**文档版本**：v1.1  
-**研究步骤完成**：Step 1-6 全部完成 + vNext 数据划分增强  
+**研究完成日期**：2025-12-15（v1.0）/ 2025-12-16（v1.1 数据划分增强）/ 2025-12-17（v1.2 评估可靠性增强）  
+**文档版本**：v1.2  
+**研究步骤完成**：Step 1-6 全部完成 + vNext 数据划分增强 + 评估可靠性增强  
 **来源验证**：所有关键技术主张均有业界参考支撑  
 **置信度**：高 — 基于多个权威技术来源
 
