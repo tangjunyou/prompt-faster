@@ -1790,6 +1790,170 @@ pub enum ExecutionError {
 }
 ```
 
+##### OptimizationError（顶层封装）
+
+> **新增** — 2025-12-17
+> 
+> `OptimizationError` 是子错误的统一封装，作为 `OptimizationEngine.run()` 的返回类型。
+> 不是新的错误分类体系，而是现有错误的 view/wrapper。
+
+```rust
+/// 优化引擎顶层错误（子错误的统一封装）
+/// 
+/// **设计原则**：
+/// - 对外 API 形态统一：`Result<OptimizationResult, OptimizationError>`
+/// - 内部沿用已有子错误，不推翻现有错误体系
+/// - 每个变体对应一个子系统的错误
+#[derive(Debug, thiserror::Error)]
+pub enum OptimizationError {
+    /// 规律引擎错误
+    #[error("rule engine: {0}")]
+    RuleEngine(#[from] RuleEngineError),
+    /// Prompt 生成器错误
+    #[error("generator: {0}")]
+    Generator(#[from] GeneratorError),
+    /// 评估器错误
+    #[error("evaluator: {0}")]
+    Evaluator(#[from] EvaluatorError),
+    /// 反馈聚合器错误
+    #[error("aggregator: {0}")]
+    Aggregator(#[from] AggregatorError),
+    /// 优化器错误
+    #[error("optimizer: {0}")]
+    Optimizer(#[from] OptimizerError),
+    /// 老师模型错误
+    #[error("model: {0}")]
+    Model(#[from] ModelError),
+    /// 执行目标错误
+    #[error("execution: {0}")]
+    Execution(#[from] ExecutionError),
+    /// 构建错误（from_registry / Builder 失败）
+    #[error("build error: {0}")]
+    Build(String),
+    /// 预算耗尽
+    #[error("budget exhausted: {0}")]
+    BudgetExhausted(String),
+    /// Checkpoint 加载/保存失败
+    #[error("checkpoint error: {0}")]
+    Checkpoint(String),
+    /// 其它内部错误
+    #[error("internal: {0}")]
+    Internal(String),
+}
+```
+
+#### 4.2.9 OptimizationEngine 结构定义
+
+> **新增** — 2025-12-17
+> 
+> OptimizationEngine 是 7 Trait 的封装门面，作为用户唯一的优化入口。
+> 内部委托 StrategyOrchestrator 执行实际的优化流程。
+
+```rust
+/// 优化引擎（7 Trait 的封装门面）
+/// 
+/// **设计定位**：
+/// - 对外：用户唯一的优化入口，暴露 `run` / `resume` 方法
+/// - 对内：持有 7 个 Trait 实现，委托 StrategyOrchestrator 编排执行
+/// 
+/// **与其他组件的关系**：
+/// - ModuleRegistry：通过 `from_registry` 从注册表获取 Trait 实现
+/// - StrategyOrchestrator：内部编排器，负责 Phase 0/1/2 的执行顺序
+/// - OptimizationConfig：控制所有配置项（含 Budget/Racing 等）
+pub struct OptimizationEngine {
+    // === 核心 Trait 实现（对应 Layer 1-4）===
+    rule_engine: Arc<dyn RuleEngine>,
+    prompt_generator: Arc<dyn PromptGenerator>,
+    evaluator: Arc<dyn Evaluator>,
+    feedback_aggregator: Arc<dyn FeedbackAggregator>,
+    optimizer: Arc<dyn Optimizer>,
+    
+    // === 辅助 Trait 实现 ===
+    teacher_model: Arc<dyn TeacherModel>,
+    execution_target: Arc<dyn ExecutionTarget>,
+    
+    // === 内部编排器 ===
+    orchestrator: StrategyOrchestrator,
+    
+    // === 配置 ===
+    config: OptimizationConfig,
+}
+
+impl OptimizationEngine {
+    /// 执行完整优化流程（Phase 0 → Phase 1 → Phase 2）
+    /// 
+    /// # 参数
+    /// - `ctx`: 优化上下文，包含测试集、初始 Prompt、任务描述等
+    /// 
+    /// # 返回
+    /// - `Ok(OptimizationResult)`: 优化成功，包含最终 Prompt 和规则体系
+    /// - `Err(OptimizationError)`: 优化失败，包含具体错误信息
+    pub async fn run(&self, ctx: &OptimizationContext) 
+        -> Result<OptimizationResult, OptimizationError>;
+    
+    /// 从 Checkpoint 恢复并继续优化
+    /// 
+    /// 适用于：用户暂停后恢复、人工介入后继续、崩溃恢复等场景
+    pub async fn resume(&self, checkpoint: Checkpoint, ctx: &OptimizationContext) 
+        -> Result<OptimizationResult, OptimizationError>;
+    
+    /// 从 ModuleRegistry 构建引擎
+    /// 
+    /// 根据配置从注册表中选择对应的 Trait 实现，组装成完整引擎。
+    /// 
+    /// # 错误
+    /// - 缺少某 Trait 的实现
+    /// - 配置与 Registry 中模块不匹配
+    pub fn from_registry(
+        registry: &ModuleRegistry, 
+        config: OptimizationConfig
+    ) -> Result<Self, OptimizationError>;
+}
+```
+
+**Builder 模式**（用于测试和手动装配）：
+
+```rust
+/// OptimizationEngine 构建器
+/// 
+/// 适用场景：
+/// - 单元测试中使用 mock 实现
+/// - 需要精细控制各 Trait 实现的场景
+pub struct OptimizationEngineBuilder {
+    rule_engine: Option<Arc<dyn RuleEngine>>,
+    prompt_generator: Option<Arc<dyn PromptGenerator>>,
+    evaluator: Option<Arc<dyn Evaluator>>,
+    // ... 其他字段 ...
+    config: Option<OptimizationConfig>,
+}
+
+impl OptimizationEngineBuilder {
+    pub fn new() -> Self;
+    pub fn with_rule_engine(self, engine: Arc<dyn RuleEngine>) -> Self;
+    pub fn with_evaluator(self, evaluator: Arc<dyn Evaluator>) -> Self;
+    pub fn with_config(self, config: OptimizationConfig) -> Self;
+    // ... 其他 with_* 方法 ...
+    
+    /// 构建引擎，缺少必要组件时返回错误
+    pub fn build(self) -> Result<OptimizationEngine, OptimizationError>;
+}
+```
+
+**典型使用方式**：
+
+```rust
+// 方式 1：从 Registry 构建（推荐，配置驱动）
+let engine = OptimizationEngine::from_registry(&registry, config)?;
+let result = engine.run(&context).await?;
+
+// 方式 2：Builder 构建（测试场景）
+let engine = OptimizationEngineBuilder::new()
+    .with_rule_engine(mock_rule_engine)
+    .with_evaluator(mock_evaluator)
+    .with_config(test_config)
+    .build()?;
+```
+
 ### 4.3 关键架构决策
 
 #### 决策 A: 运行时模块注册（动态）
@@ -1810,6 +1974,21 @@ pub struct ModuleRegistry {
     aggregators: HashMap<String, Arc<dyn FeedbackAggregator>>,
 }
 ```
+
+**与 OptimizationEngine 的协作**：
+
+- **Registry 职责**：模块发现与选择（提供候选实现和元信息）
+- **Engine 职责**：模块组装（根据配置从 Registry 选用并构建引擎）
+
+```rust
+// Registry 提供模块，Engine 负责组装
+let engine = OptimizationEngine::from_registry(&registry, config)?;
+```
+
+**构建失败场景**（由 `OptimizationError` 表示）：
+- 配置中指定的模块在 Registry 中不存在
+- 必要的 Trait 实现未注册
+- 模块版本不兼容
 
 #### 决策 B: 分层 TeacherModel 配置
 
@@ -1908,6 +2087,44 @@ pub enum LineageType {
 2. **归因分析**：区分"自动优化成功"和"人工介入成功"
 3. **元优化数据**：只统计 `Automatic` 分支的成功率，避免人工介入污染
 4. **A/B 对比**：同一起点的不同分支可以对比效果
+
+#### 决策 E: OptimizationEngine 作为统一入口
+
+> **新增** — 2025-12-17
+
+**决策**：引入 `OptimizationEngine` 作为 7 Trait 的封装门面，对外提供统一的 `run` / `resume` 接口。
+
+**为什么需要统一入口**：
+
+| 问题 | 解决方案 |
+|------|---------|
+| 用户需要理解 7 个 Trait 的协作关系 | 封装为单一入口，屏蔽内部细节 |
+| 模块组装逻辑分散 | 集中在 `from_registry` / Builder |
+| 生命周期管理不统一 | Engine 统一管理 Checkpoint / Budget / Racing |
+
+**为什么选择 Struct 而非 Trait**：
+
+- **多态性已由 7 个子 Trait 提供**：RuleEngine / Evaluator / ... 本身就是扩展边界
+- **用户视角只需要一个黑盒**：给配置 + 测试集，返回优化结果
+- **避免过度抽象**：再加一层顶层 Trait 会增加文档和实现复杂度
+
+**与 StrategyOrchestrator 的关系**：
+
+```
+用户 → OptimizationEngine.run()
+              ↓
+       StrategyOrchestrator（内部编排器）
+              ↓
+       Phase 0 / Phase 1 / Phase 2 执行
+```
+
+- `OptimizationEngine`：对外 API + 生命周期管理
+- `StrategyOrchestrator`：内部算法流程编排（用户无需直接接触）
+
+**vNext 演进展望**：
+
+> 如果未来出现"不同级别的 Engine 实现"需求（如 online/offline 两套管线），
+> 可在 vNext 中引入 `Engine` Trait，当前 `OptimizationEngine` 作为默认实现。
 
 ### 4.4 扩展点设计
 
@@ -2523,6 +2740,25 @@ def generate_initial_prompt(rule_system: RuleSystem, goal: str, config: Optimiza
 ---
 
 ## 8. Phase 2: 测试与反思迭代
+
+> **用户视角：OptimizationEngine 入口** — 2025-12-17
+> 
+> 从用户角度，整个优化流程通过 `OptimizationEngine.run()` 启动：
+> 
+> ```rust
+> // 1. 从 Registry 构建引擎
+> let engine = OptimizationEngine::from_registry(&registry, config)?;
+> 
+> // 2. 执行优化（内部自动完成 Phase 0/1/2）
+> let result = engine.run(&context).await?;
+> 
+> // 3. 获取结果
+> println!("最终 Prompt: {}", result.final_prompt);
+> println!("规律体系: {:?}", result.rule_system);
+> ```
+> 
+> 后续 8.2 ~ 8.6 各小节的伪代码，都是 `OptimizationEngine.run()` **内部实现的拆解**。
+> 用户无需直接调用这些内部函数。
 
 ### 8.1 流程定义
 
@@ -3867,7 +4103,7 @@ pub enum IterationState {
 | **评估可靠性** | EnsembleEvaluator + confidence 门控 | 4.2.1, 4.2.6.1, 8.3, 9.7 | ✅ 已完成 |
 | **规律可计算性** | RuleIR 中间表示（渐进式、可选） | 6.2.1, 6.3 | 🔜 待实施 |
 | **候选池与预算** | Racing 策略 + BudgetConfig | 4.2.2, 4.2.6.1, 8.2, 9.8, 9.9 | 🔜 待实施 |
-| **引擎抽象** | OptimizationEngine 作为 7 Trait 封装门面 | 4.1, 4.2, 4.3 | 🔜 待实施 |
+| **引擎抽象** | OptimizationEngine 作为 7 Trait 封装门面 | 4.2.9, 4.3 决策 E, 8.1 | ✅ 已完成 |
 
 > **Budget/Racing 结构预留说明** — 2025-12-17
 > 
@@ -3910,6 +4146,8 @@ pub enum IterationState {
   - `IterationResult.deferred_suggestions` 默认为空列表
   - `BudgetConfig.enabled` 默认 `false`，不影响现有行为
   - `RacingConfig.enabled` 默认 `false`，不影响现有行为
+  - `OptimizationEngine` 为新增封装门面，不改变现有 Trait 接口与配置语义
+  - `OptimizationError` 为子错误的统一封装，旧代码仍可按需直接调用底层 Trait 实现
 - **Checkpoint 兼容性**：v1.0/v1.1 Checkpoint 可被 v1.2 正常加载
   - 缺失的新字段将使用默认值填充
 - **配置文件兼容性**：
@@ -3919,9 +4157,9 @@ pub enum IterationState {
 ---
 ## 技术研究完成
 
-**研究完成日期**：2025-12-15（v1.0）/ 2025-12-16（v1.1 数据划分增强）/ 2025-12-17（v1.2 评估可靠性 + RuleIR + Budget/Racing）  
+**研究完成日期**：2025-12-15（v1.0）/ 2025-12-16（v1.1 数据划分增强）/ 2025-12-17（v1.2 评估可靠性 + RuleIR + Budget/Racing + OptimizationEngine）  
 **文档版本**：v1.2  
-**研究步骤完成**：Step 1-6 全部完成 + vNext 数据划分增强 + 评估可靠性增强 + RuleIR 结构预留 + Budget/Racing 结构预留  
+**研究步骤完成**：Step 1-6 全部完成 + vNext 数据划分增强 + 评估可靠性增强 + RuleIR 结构预留 + Budget/Racing 结构预留 + OptimizationEngine 封装门面  
 **来源验证**：所有关键技术主张均有业界参考支撑  
 **置信度**：高 — 基于多个权威技术来源
 
