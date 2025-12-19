@@ -2,9 +2,10 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 inputDocuments:
   - docs/analysis/brainstorming-session-2025-12-12.md
+  - docs/analysis/research/technical-algorithm-specification-research-2025-12-14.md
 documentCounts:
   briefs: 0
-  research: 0
+  research: 1
   brainstorming: 1
   projectDocs: 0
 workflowType: 'prd'
@@ -188,7 +189,7 @@ date: '2025-12-12'
 
 ### Growth Features (Post-MVP)
 
-1. **并行测试集执行** — 提升迭代效率（需配套算法适配，差异 < 5%）
+1. **高级并行策略（Racing/多候选早期淘汰）** — 在基础并行之上，引入 Racing 机制实现多候选早期淘汰，进一步提升迭代效率
 2. **多老师模型支持** — 可配置多个老师模型，按场景选择
 3. **更多执行引擎** — 扩展支持其他 LLM 平台
 4. **高级可视化** — 节点图流动展示、思考过程透明
@@ -316,13 +317,17 @@ date: '2025-12-12'
 
 ### 创新验证策略
 
-**当前状态**：核心优化算法尚未完成设计，需要深入研究
+**当前状态**：核心优化算法技术规格已在《technical-algorithm-specification-research-2025-12-14.md》中定义完成，当前处于按该规格实现与验证阶段。
+
+**已完成工作**：
+1. **文献调研** — 已系统梳理 OPRO、Reflexion、DSPy SIMBA、PromptWizard 等学术成果的核心机制
+2. **技术规格设计** — 已完成四层处理器架构、7 Trait 体系、三阶段迭代流程、完整数据结构定义
+3. **算法配置体系** — 已设计 OptimizationConfig（含 9 个配置分组），支持灵活调优
 
 **验证路径**：
-1. **文献调研** — 系统梳理 OPRO、Reflexion、DSPy SIMBA、PromptWizard 等学术成果的核心机制
-2. **竞品分析** — 分析 LangChain、DSPy 等框架的优化策略实现
-3. **原型验证** — 在核心算法设计完成后，用官方基准测试集验证有效性
-4. **迭代优化** — 基于实测数据持续改进算法
+1. **原型实现** — 按技术规格实现核心算法模块
+2. **基准测试** — 用官方基准测试集验证有效性，目标 ≥70% 成功率
+3. **迭代优化** — 基于实测数据持续改进算法
 
 ### 事前验尸：失败场景与预防
 
@@ -524,50 +529,95 @@ date: '2025-12-12'
 
 ### 7.4 后端架构
 
-#### 7.4.1 模块化设计（Trait 抽象）
+#### 7.4.1 算法与架构依赖（Algorithm Contract）
+
+**权威规范声明**：本产品的核心算法与 Trait 体系完全以《technical-algorithm-specification-research-2025-12-14.md》为准。本 PRD 只总结关键职责与能力，不重复技术细节。**如 PRD 与技术规格在同一概念上存在冲突，以技术规格为准，并在后续 PRD 修订中对齐。**
+
+**四层架构 ↔ Trait 映射**：
+
+| PRD 四层架构 | 技术规格 Trait | 职责说明 |
+|-------------|---------------|---------|
+| Layer 1: Pattern Extractor | `RuleEngine` | 从测试用例提取规律、检测冲突、解决冲突、合并相似规律 |
+| Layer 2: Prompt Engineer | `PromptGenerator` | 基于规律体系生成 Prompt |
+| Layer 3: Quality Assessor | `Evaluator` | 评估执行结果，判断通过/失败 |
+| Layer 4: Reflection Agent | `FeedbackAggregator` + `Optimizer` | 聚合多个反思结果、解决冲突建议、执行优化步骤 |
+| (辅助) | `TeacherModel` | 底层 LLM 调用适配（generate/generate_structured） |
+| (辅助) | `ExecutionTarget` | 执行目标（Dify 工作流 / 直连 AI 模型） |
+
+**统一入口**：所有优化流程由 `OptimizationEngine` 封装，对外暴露 `run`/`resume` 接口。用户与 UI 通过此门面使用系统。
+
+**核心数据结构映射**：
+
+| PRD 概念 | 技术规格结构 | 说明 |
+|---------|-------------|------|
+| 优化上下文 | `OptimizationContext` | 贯穿整个迭代流程的共享状态 |
+| 算法配置 | `OptimizationConfig` | 用户可调整的算法参数（9 个配置分组） |
+| 测试用例 | `TestCase` | 支持 Dify 模式和直接 AI 模型模式 |
+| 评估结果 | `EvaluationResult` | 包含 passed、score、confidence 等 |
+| 迭代快照 | `Checkpoint` | 支持断点续跑和分支治理 |
+
+> **详细字段定义**：见技术规格文档 Section 4.2
+
+#### 7.4.2 模块化设计（Trait 概述）
+
+以下为核心 Trait 的高层角色说明，**具体方法签名见技术规格 Section 4.2.7**：
 
 ```rust
-// 执行引擎接口 — 对接不同的 AI 服务
-#[async_trait]
+// 执行引擎接口 — 对接不同的 AI 服务（Dify / 直连模型）
 pub trait ExecutionTarget: Send + Sync {
-    async fn execute(&self, prompt: &str, input: &TestInput) -> Result<ExecutionResult>;
-    fn name(&self) -> &str;
+    // execute: 执行 Prompt 并返回输出
+    // execute_batch: 批量执行（支持并行优化）
 }
 
 // 评估器接口 — 判断输出是否符合预期
-#[async_trait]
 pub trait Evaluator: Send + Sync {
-    async fn evaluate(&self, expected: &str, actual: &str, goal: &str) -> Result<EvaluationResult>;
-    fn name(&self) -> &str;
+    // evaluate: 评估单个测试用例
+    // evaluate_batch: 批量评估
 }
 
-// 老师模型接口 — 生成规律假设、Prompt、反思
-#[async_trait]
+// 老师模型接口 — 底层 LLM 调用适配
 pub trait TeacherModel: Send + Sync {
-    async fn generate_rules(&self, context: &RuleContext) -> Result<Vec<Rule>>;
-    async fn generate_prompt(&self, context: &PromptContext) -> Result<String>;
-    async fn reflect(&self, context: &ReflectionContext) -> Result<ReflectionResult>;
-    fn name(&self) -> &str;
+    // generate: 生成文本响应
+    // generate_structured: 生成结构化响应（JSON 模式）
 }
 
-// 数据访问接口 — 为数据库替换预留
-#[async_trait]
-pub trait Repository<T>: Send + Sync {
-    async fn save(&self, entity: &T) -> Result<()>;
-    async fn get(&self, id: &str) -> Result<Option<T>>;
-    async fn list(&self, filter: &Filter) -> Result<Vec<T>>;
-    async fn delete(&self, id: &str) -> Result<()>;
+// 规律引擎接口 — Layer 1 的核心实现
+pub trait RuleEngine: Send + Sync {
+    // extract_rules: 从测试用例提取规律
+    // detect_conflicts: 检测规律冲突
+    // resolve_conflict: 解决规律冲突
+    // merge_similar_rules: 合并相似规律
+}
+
+// Prompt 生成器接口 — Layer 2 的核心实现
+pub trait PromptGenerator: Send + Sync {
+    // generate: 基于规律体系生成 Prompt
+}
+
+// 反馈聚合器接口 — Layer 4 聚合部分
+pub trait FeedbackAggregator: Send + Sync {
+    // aggregate: 聚合多个反思结果
+    // arbitrate: 仲裁冲突的建议
+}
+
+// 优化器接口 — Layer 4 优化部分
+pub trait Optimizer: Send + Sync {
+    // optimize_step: 基于统一反馈执行一步优化
+    // should_terminate: 判断是否应该终止迭代
 }
 ```
 
-#### 7.4.2 扩展性保障
+**持久化策略**：技术规格采用 `StateManager` + `ModuleRegistry` + `Checkpoint` 组合，而非通用 `Repository` 模式。具体实现见技术规格 Section 4.3。
+
+#### 7.4.3 扩展性保障
 
 | 扩展场景 | 实现方式 | 预估工作量 |
 |----------|----------|------------|
-| 新增执行引擎（如 Dify API） | 实现 `ExecutionTarget` trait | < 4 小时 |
+| 新增执行引擎（如 OpenAI API） | 实现 `ExecutionTarget` trait | < 4 小时 |
 | 新增评估器（如自定义评分） | 实现 `Evaluator` trait | < 2 小时 |
-| 替换老师模型（如换用 Claude） | 实现 `TeacherModel` trait | < 4 小时 |
-| 替换数据库（如换用 SurrealDB） | 实现 `Repository` trait | 1-2 天 |
+| 新增老师模型适配（如 Claude） | 实现 `TeacherModel` trait | < 2 小时 |
+| 新增规律引擎策略 | 实现 `RuleEngine` trait | < 8 小时 |
+| 新增优化策略 | 实现 `Optimizer` trait | < 4 小时 |
 
 ### 7.5 数据持久化
 
@@ -596,6 +646,17 @@ let opts = SqliteConnectOptions::from_str("sqlite://data.db")?
 - **存储粒度**：每个迭代步骤（rules → prompt → test → reflect → update）都存一个 Checkpoint
 - **版本链**：通过 `parent_id` 形成树状结构，支持任意回滚
 - **断点续跑**：启动时检查未完成的 Checkpoint，自动恢复
+- **分支治理**：Checkpoint 除了 `parent_id`，还记录 `lineage_type`（Automatic/ManualPromptEdit/ManualRuleEdit/DialogueGuided/Restored），用于区分自动优化分支与人工介入分支。人工分支对元优化统计的影响见技术规格 Section 4.3。
+
+#### 7.5.4 数据划分与防过拟合
+
+**产品层面承诺**：通过数据划分（Train/Validation/Holdout 三分法）与防过拟合策略，保证测试集通过率具有一定泛化能力，避免"只针对已知测试集优化"的过拟合问题。
+
+- **Train**：用于规律提炼和 Prompt 生成
+- **Validation**：用于迭代过程中的评估
+- **Holdout**：用于最终验证，防止过拟合
+
+> **详细配置**：见技术规格 DataSplitConfig（Section 4.2.6.1）
 
 ### 7.6 实时通信
 
@@ -736,10 +797,11 @@ services:
 - 失败档案 + 历史回溯
 - 异常恢复（断网/断电/进程杀死）
 
-**8. 并行测试集执行**
-- 多条测试集可并行运行，提升迭代效率
+**8. 并行测试集执行（基础并行）**
+- 多条测试用例可并行运行，提升迭代效率
 - 配套算法适配，确保并行 vs 串行成功率差异 < 5%
 - 用户可选择串行模式（保守）或并行模式（高效）
+- 高级并行策略（Racing/多候选早期淘汰）为 Phase 2 功能
 
 **9. 元优化能力**
 - 用 Prompt Faster 优化自己的老师模型 Prompt
@@ -755,6 +817,7 @@ services:
 
 | 功能 | 描述 | 依赖 |
 |------|------|------|
+| 高级并行策略（Racing） | 多候选早期淘汰机制，进一步提升迭代效率 | 基础并行能力 |
 | 更多执行引擎 | OpenAI、Anthropic、更多国内服务商 | ExecutionTarget trait 扩展 |
 | 优化历史分析 | 跨任务的优化规律洞察 | 数据积累 |
 | 版本对比功能 | 对比不同版本 Prompt 在任务上的差距 | 历史数据 |
@@ -803,21 +866,39 @@ services:
 - ✅ 多工作区管理
 - ✅ 测试集管理（手动 + 批量导入 + 模板 + 双场景适配）
 - ✅ 断点续跑 + 状态持久化
-- ✅ 并行测试集执行
+- ✅ 并行测试集执行（基础并行）
 - ✅ 元优化能力（L0-L2）
 
 **MVP 明确不包含**：
+- ❌ 高级并行策略（Racing/多候选早期淘汰）（Phase 2）
 - ❌ OpenAI/Anthropic 等更多执行引擎（Phase 2）
 - ❌ L3 数据驱动自动进化（Phase 2，需数据积累）
 - ❌ 插件生态（Phase 3）
 - ❌ 多用户协作
 - ❌ 云端部署（仅本地 Docker）
 
+**高级算法特性归属表**：
+
+| 特性 | MVP-显式功能 | MVP-内部机制 | Post-MVP |
+|------|-------------|-------------|----------|
+| 基础并行执行 | ✅ 用户可选串行/并行 | - | - |
+| 数据划分（Train/Val/Holdout） | ✅ 用户可配置 | - | - |
+| 最大迭代轮数/通过率阈值 | ✅ 用户可配置 | - | - |
+| 多样性注入阈值 | ✅ 用户可配置 | - | - |
+| Minibatch 采样 | - | ✅ 内部优化 | - |
+| 震荡检测 | - | ✅ 内部保障 | - |
+| 评估置信度门控 | - | ✅ 内部质量 | - |
+| Racing 策略 | - | - | ✅ Phase 2 |
+| Budget 控制 | - | - | ✅ Phase 2 |
+| 多评估器组合 | - | - | ✅ Phase 2 |
+
+> **说明**：MVP-显式功能对用户可见可配置；MVP-内部机制对用户不可见但对质量有影响；Post-MVP 为后续版本功能。
+
 ---
 
 ## Functional Requirements
 
-**共 63 个功能需求，覆盖 10 个能力区域。**
+**共 66 个功能需求，覆盖 10 个能力区域。**
 
 ### 能力区域 1: API 配置与连接
 
@@ -856,6 +937,9 @@ services:
 | FR21 | 用户可以关联测试集到优化任务 |
 | FR22 | 用户可以配置规律假设/候选 Prompt 的生成数量 |
 | FR23 | 用户可以配置连续失败触发多样性注入的阈值 |
+| FR23a | 用户可以配置核心算法参数（IterationConfig/DataSplitConfig/OutputConfig 等；高级参数如 Racing/Budget 在 Phase 2 后开放） |
+| FR23b | 系统提供经过验证的默认配置，用户可随时一键重置为默认值 |
+| FR23c | 用户可以配置最大迭代轮数、通过率阈值、数据划分策略等核心参数 |
 
 ### 能力区域 4: 自动迭代优化
 
@@ -936,7 +1020,7 @@ services:
 
 ## Non-Functional Requirements
 
-**共 26 个非功能需求，覆盖 8 个质量属性类别。**
+**共 28 个非功能需求，覆盖 8 个质量属性类别。**
 
 ### 性能 (Performance)
 
@@ -963,6 +1047,8 @@ services:
 | NFR9 | API Key 存储 | 加密存储 | 本地数据库中加密保存 |
 | NFR10 | 凭证传输 | 仅本地 | API Key 不离开用户设备 |
 | NFR11 | 日志脱敏 | 自动脱敏 | 日志中不记录完整 API Key |
+| NFR11a | 本地用户认证 | 支持本地登录 | 为未来扩展（云同步、多设备）打基础 |
+| NFR11b | 用户数据隔离 | 按用户隔离 | 不同用户的工作区和数据完全隔离 |
 
 ### 可扩展性 (Extensibility)
 
