@@ -20,7 +20,11 @@
       "Bash(./logical_errors_demo)",
       "mcp__sequential-thinking__sequentialthinking",
       "Bash(git reset:*)",
-      "Bash(find . -type f -not -path './.git/*' -exec bash -c 'if ! git ls-files --full-name \"\"$1\"\" | grep -q \"\"^$(git rev-parse --show-prefix)$1$\"\"; then echo \"\"$1\"\"; fi' _ {} ;)"
+      "Bash(find . -type f -not -path './.git/*' -exec bash -c 'if ! git ls-files --full-name \"\"$1\"\" | grep -q \"\"^$(git rev-parse --show-prefix)$1$\"\"; then echo \"\"$1\"\"; fi' _ {} ;)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(/Users/jingshun/.local/bin/droid:*)"
     ]
   }
 }

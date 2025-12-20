@@ -1,5 +1,5 @@
 generated: "2025-12-12T03:04:00.000Z"
-updated: "2025-12-14T12:54:00.000Z"
+updated: "2025-12-20T17:25:00.000Z"
 project: "Prompt Faster"
 project_level: 2
 project_type: "Medium Project"
@@ -11,7 +11,7 @@ workflow_status:
   research: docs/analysis/research/technical-algorithm-specification-research-2025-12-14.md
   product-brief: optional
   prd: docs/prd.md
-  create-ux-design: conditional
+  create-ux-design: docs/ux-design-specification.md
   create-architecture: required
   create-epics-and-stories: required
   test-design: recommended
