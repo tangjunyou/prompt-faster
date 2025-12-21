@@ -13,8 +13,8 @@ workflow_status:
   prd: docs/prd.md
   create-ux-design: docs/ux-design-specification.md
   create-architecture: docs/architecture.md
-  create-epics-and-stories: required
-  test-design: recommended
+  create-epics-and-stories: docs/epics.md
+  test-design: docs/test-design-system.md
   validate-architecture: optional
   implementation-readiness: required
   sprint-planning: required
