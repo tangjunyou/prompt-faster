@@ -107,3 +107,18 @@ out/
 *.bak
 *.backup
 *.old
+
+# Rust specific
+target/
+Cargo.lock
+**/*.rs.bk
+.cargo/config
+.rustup/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# More strict system files
+._*

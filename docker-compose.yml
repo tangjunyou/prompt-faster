@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # 后端服务
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - APP_ENV=development
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=3000
+      - DATABASE_URL=sqlite:data/prompt_faster.db?mode=rwc
+      - RUST_LOG=info,prompt_faster=debug
+    volumes:
+      - ./backend:/app
+      - backend-data:/app/data
+      - cargo-cache:/usr/local/cargo/registry
+      - target-cache:/app/target
+    networks:
+      - prompt-faster-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000/api/v1
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - prompt-faster-network
+    depends_on:
+      - backend
+
+networks:
+  prompt-faster-network:
+    driver: bridge
+
+volumes:
+  backend-data:
+  cargo-cache:
+  target-cache:
