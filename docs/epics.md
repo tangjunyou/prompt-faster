@@ -11,9 +11,9 @@ user_name: '耶稣'
 date: '2025-12-21'
 validation_status: 'PASSED'
 total_epics: 8
-total_stories: 43
+total_stories: 50
 total_frs_covered: 66
-total_nfrs_addressed: 19
+total_nfrs_addressed: 28
 total_ars_addressed: 3
 ---
 
@@ -399,7 +399,7 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 
 **FRs covered:** FR1, FR2, FR3, FR4, FR5
 
-**NFRs addressed:** NFR9（API Key 加密存储）, NFR10（凭证仅本地传输）, NFR11（日志脱敏）, NFR16（首次配置 ≤ 5 分钟）
+**NFRs addressed:** NFR9（API Key 加密存储）, NFR10（凭证仅本地传输）, NFR11（日志脱敏）, NFR11a（本地用户认证）, NFR11b（用户数据隔离）, NFR16（首次配置 ≤ 5 分钟）, NFR19（核心流程端到端测试 ≥ 80%）, NFR20（模块回归测试 100% 通过）
 
 **ARs addressed:** AR1（ApiResponse 响应结构）, AR3（时间字段规范）
 
@@ -440,8 +440,7 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 **用户成果：** 用户可以启动自动迭代优化，系统执行四层架构完成 Prompt 优化。
 
 **FRs covered:** FR24, FR25, FR26, FR27, FR28, FR29, FR30, FR31, FR32, FR33
-
-**NFRs addressed:** NFR1（系统延迟 < 100ms）, NFR4（并行测试集线性加速）, NFR21（优化成功率基准 ≥ 90%）, NFR22（并行 vs 串行差异 < 5%）
+**NFRs addressed:** NFR1（系统延迟 < 100ms）, NFR4（并行测试集线性加速）, NFR12（新增执行引擎 < 4 小时）, NFR13（新增评估器 < 2 小时）, NFR14（新增老师模型 < 2 小时）, NFR15（核心算法替换仅影响算法模块）, NFR21（优化成功率基准 ≥ 90%）, NFR22（并行 vs 串行差异 < 5%）
 
 **依赖：** Epic 1-3（API + 测试集 + 任务配置）
 
@@ -535,6 +534,7 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 **And** 前后端可以通过 API 通信
 **And** 实现 `ApiResponse<T>` 统一响应结构，`data` 与 `error` 字段互斥 (AR1)
 **And** 时间字段使用 Unix 毫秒时间戳，字段命名 `*_at` 后缀 (AR3)
+**And** 数据库迁移使用 `SQLx migrations` 管理（对应 Architecture 要求）
 
 ---
 
@@ -639,6 +639,182 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 
 ---
 
+### Story 1.6: 本地用户认证与登录流
+
+**Related NFRs:** NFR11a（本地用户认证）
+
+**As a** 本地使用 Prompt Faster 的用户,
+**I want** 通过本地账户登录应用并确保密码安全存储,
+**So that** 我的工作区和优化任务不会被未授权用户访问。
+
+**Acceptance Criteria:**
+
+**Given** 应用第一次启动
+**When** 用户创建本地账户并设置密码
+**Then** 系统使用 Argon2 对密码进行哈希存储
+**And** 数据库中不存在明文密码或可逆加密密码字段
+
+**Given** 本地账户已创建
+**When** 用户输入正确的用户名和密码并尝试登录
+**Then** 系统校验通过并建立登录会话
+**And** UI 显示清晰的"已登录用户"状态
+
+**Given** 用户输入错误的用户名或密码
+**When** 连续尝试登录
+**Then** 系统始终返回通用的"用户名或密码错误"提示
+**And** 不泄露"用户名是否存在"等敏感信息
+
+**Given** 用户已登录
+**When** 用户点击"退出登录"或会话过期
+**Then** 清理本地会话状态
+**And** 后续访问工作区/任务配置/历史记录页面时需要重新登录
+
+**Given** 前后端之间需要在多个请求中识别当前登录用户
+**When** 设计和实现认证相关的 HTTP API 调用
+**Then** 统一通过单一机制在请求中携带会话标识（例如 HTTP-only Cookie 或统一的 Authorization 头）
+**And** 所有需要鉴权的接口都只依赖该机制, 不混用 query 参数、本地存储拼接等多种身份来源
+
+**Given** 测试人员检查本地数据库和日志
+**When** 查看与用户认证相关的记录
+**Then** 可以验证密码仅以 Argon2 哈希形式存在
+**And** 日志中不包含明文密码或完整凭证
+
+---
+
+### Story 1.7: 用户数据隔离与访问控制
+
+**Related NFRs:** NFR11b（用户数据隔离）
+
+**As a** 在同一台机器上有多个本地账户的团队成员,
+**I want** 不同本地用户的工作区、优化任务、测试集和历史记录在数据层严格隔离,
+**So that** 我无法看到或修改其他用户的私有数据。
+
+**Acceptance Criteria:**
+
+**Given** 已设计好本地数据库 schema
+**When** 查看涉及工作区、任务配置、测试集、执行历史、检查点等业务表结构
+**Then** 数据模型满足以下其一：
+  - 模式 A：所有核心业务表都直接包含 `user_id` 字段, 用于区分不同用户的数据行
+  - 模式 B：workspace 等顶层实体表包含 `user_id` 字段, 其他业务表通过 `workspace_id` 外键与之关联, 通过 join 实现用户数据隔离
+**And** 无论采用哪种模式, 数据访问层在查询和写入时都必须约束当前登录用户, 确保无法跨不同 `user_id` 读写数据
+
+**Given** 当前有用户 A 已登录
+**When** 用户 A 打开工作区列表、测试集列表或历史记录视图
+**Then** 返回结果仅包含 `user_id = A` 的记录
+**And** 其他用户的数据不会出现在列表或详情中
+
+**Given** 存在多个本地账户（用户 A 与用户 B）
+**When** 用户 B 登录后尝试通过直接访问某个 URL/ID 加载用户 A 的工作区或执行记录
+**Then** API 层基于当前登录用户进行鉴权
+**And** 返回"无权限访问"或等价错误, 而不是加载成功
+
+**Given** 系统支持导出配置或查看调试日志
+**When** 登录用户执行导出或查看针对某任务的调试日志
+**Then** 导出内容和日志仅包含当前用户自己的数据
+**And** 不包含其他用户的任务配置或 Prompt 内容
+
+---
+
+### Story 1.8: 统一错误响应结构与 OpenAPI 文档
+
+**Related ARs:** AR1（ApiResponse 响应结构）
+
+**As a** 使用 Prompt Faster 的前端开发者/调试者,
+**I want** 所有 HTTP API 有统一的错误响应结构并提供可浏览的 OpenAPI 文档,
+**So that** 我可以稳定解析错误并快速理解接口。
+
+**Acceptance Criteria:**
+
+**Given** 服务端已实现 HTTP API
+**When** 使用 HTTP 客户端调用任意业务接口（成功或失败）
+**Then** 外层响应使用 `ApiResponse<T>` 结构, `data` 与 `error` 字段互斥 (AR1)
+**And** 当发生错误时, `error` 字段的内容符合 `{ code: string, message: string, details?: object }` 结构
+**And** `code` 字段遵循统一编码规范
+
+**Given** Rust 服务端代码已经存在
+**When** 检查业务逻辑层与 API 层的错误处理
+**Then** 业务错误使用 `thiserror` 定义
+**And** 应用入口/HTTP 层使用 `anyhow` 或等价机制将内部错误映射为统一响应结构 (AR1 对应实现)
+
+**Given** HTTP 服务已启动
+**When** 检查路由配置
+**Then** 所有对外公开的 REST API 均挂载在 `/api/v1/...` 路径下
+**And** 不存在无版本前缀的对外 API
+
+**Given** 应用在本地开发模式启动
+**When** 访问 `http://localhost:PORT/swagger`
+**Then** 可以看到通过 utoipa 生成的 OpenAPI 文档
+**And** 至少包含核心业务 API 的路径及请求/响应 schema
+
+**Given** 测试人员构造多个典型错误场景（参数缺失、权限不足、资源不存在、服务内部错误等）
+**When** 观察返回的 JSON 错误体
+**Then** 均符合统一结构
+**And** `message` 字段可读、明确, 便于前端展示与用户理解
+
+---
+
+### Story 1.9: 前端应用架构与类型安全 API 客户端
+
+**As a** 参与 Prompt Faster 的前端开发者,
+**I want** 前端项目使用约定的路由、数据获取与类型生成方案（React Router 7、TanStack Query、ts-rs）, 
+**So that** 页面路由清晰、数据获取模式统一, 并与后端类型保持一致。
+
+**Acceptance Criteria:**
+
+**Given** 前端项目已创建
+**When** 查看路由配置
+**Then** 采用 React Router 7.x 的官方推荐写法, 并为主视图（Run View/Focus View/Workspace View）预留清晰的路由层级
+
+**Given** 某个需要从后端获取数据的前端模块（如工作区列表、测试集列表）
+**When** 检查数据请求逻辑
+**Then** 使用 TanStack Query 管理请求、缓存与 loading/error 状态
+**And** 避免在业务组件中散落裸露的 `fetch`/`axios` 调用
+
+**Given** 后端已使用 Rust 定义核心 DTO（请求/响应结构）
+**When** 运行 ts-rs 类型生成流程
+**Then** 在前端代码中可以直接 import 对应的 TypeScript 类型
+**And** 不需要手写重复的请求/响应类型定义
+
+**Given** 有新前端开发者加入项目
+**When** 查阅项目内文档或示例代码
+**Then** 可以看到一个"标准页面"示例, 展示路由、TanStack Query 和 ts-rs 类型结合使用的推荐模式
+
+---
+
+### Story 1.10: CI 流水线与测试门禁
+
+**Related NFRs:** NFR19（核心流程端到端测试 ≥ 80% 覆盖率）, NFR20（模块回归测试 100% 通过）
+
+**As a** 维护 Prompt Faster 代码质量的工程负责人,
+**I want** 使用 GitHub Actions + Docker Compose 建立最小可用 CI 流水线并设置测试门槛,
+**So that** 每次提交都能自动验证核心流程和模块回归。
+
+**Acceptance Criteria:**
+
+**Given** 代码仓库托管在 GitHub
+**When** 查看 `.github/workflows` 目录
+**Then** 至少存在一个 CI workflow 文件, 覆盖 lint、单元测试和构建三个基本步骤
+
+**Given** 开发者本地装有 Docker
+**When** 在仓库根目录执行 `docker compose up`（或文档中约定的命令）
+**Then** 可以启动包含后端、前端和数据库的开发环境
+**And** 为端到端测试提供基础运行环境
+
+**Given** 已配置针对核心用户旅程的端到端测试用例
+**When** CI 在主分支或 Pull Request 上运行 E2E 测试
+**Then** 报告中显示的"核心用户旅程集合被自动化 E2E 用例覆盖的比例"不低于 80%（以旅程数量计）
+**And** 当该比例低于阈值时 CI 标记为失败（NFR19）
+
+**Given** 后端和前端模块均有相应的单元/集成测试
+**When** CI 在每次 Pull Request 上运行回归测试任务
+**Then** 所有被标记为"必需通过"的测试全部通过, 否则 CI 状态为失败且不允许合并（NFR20）
+
+**Given** 一次完整的 PR 流程已经执行
+**When** 查看 GitHub Actions 的执行记录
+**Then** 可以看到构建成功、测试通过/失败状态以及必要时的覆盖率报告链接
+
+---
+
 ### Epic 1 Story 总结
 
 | Story | FR 覆盖 | NFR/AR 覆盖 |
@@ -648,8 +824,13 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 | 1.3 | FR2 | - |
 | 1.4 | FR3 | NFR11 |
 | 1.5 | FR4, FR5 | NFR9, NFR10, NFR16 |
+| 1.6 | - | NFR11a |
+| 1.7 | - | NFR11b |
+| 1.8 | - | AR1 |
+| 1.9 | - | 前端架构（React Router 7, TanStack Query, ts-rs） |
+| 1.10 | - | NFR19, NFR20 |
 
-**共 5 个 Stories，覆盖 Epic 1 全部 5 个 FRs + 4 个 NFRs + 2 个 ARs。**
+**共 10 个 Stories，覆盖 Epic 1 全部 5 个 FRs + 8 个 NFRs + 2 个 ARs。**
 
 ---
 
@@ -1220,6 +1401,71 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 
 ---
 
+### Story 4.7: 扩展模板与文档（ExecutionTarget / Evaluator / TeacherModel）
+
+**Related NFRs:** NFR12（新增执行引擎 < 4 小时）, NFR13（新增评估器 < 2 小时）, NFR14（新增老师模型 < 2 小时）
+
+**As a** 开发者,
+**I want** 通过统一的扩展模板和文档快速新增执行目标、评估器和老师模型实现,
+**So that** 可以在不修改核心框架的前提下扩展支持新的执行/评估逻辑。
+
+**Acceptance Criteria:**
+
+**Given** 项目已经实现基础的 ExecutionTarget / Evaluator / TeacherModel trait 定义
+**When** 开发者查阅项目文档
+**Then** 能找到一节专门介绍如何新增执行引擎、评估器和老师模型的扩展点
+**And** 文档中包含从复制模板、实现必要方法到在配置中启用新实现的完整步骤
+
+**Given** 开发者按文档为 ExecutionTarget 新增一个示例实现（例如 `ExampleExecutionTarget`）
+**When** 仅在示例模块中实现必要接口并在工厂/注册表中注册该实现
+**Then** 不需要修改现有调用 ExecutionTarget 的业务代码即可在任务配置中选择该执行目标
+**And** 使用该执行目标可以完成一轮端到端优化任务
+**And** 实际人力投入时间不超过 4 小时（NFR12）
+
+**Given** 开发者按文档为 Evaluator 新增一个示例实现（例如 `ExampleEvaluator`）
+**When** 仅在示例模块中实现必要接口并在配置中声明可用
+**Then** 用户可以在任务配置中选择该评估器并成功运行一轮评估
+**And** 实际人力投入时间不超过 2 小时（NFR13）
+
+**Given** 开发者按文档为 TeacherModel 新增一个示例实现（例如 `ExampleTeacherModel`）
+**When** 仅在示例模块中实现必要接口并在配置中声明可用
+**Then** 可以将该老师模型用于一轮完整的优化任务执行
+**And** 实际人力投入时间不超过 2 小时（NFR14）
+
+**Given** 团队需要验证上述扩展耗时指标
+**When** 以具备 Prompt Faster 项目上下文的开发者为基准, 从复制官方扩展模板开始到跑通文档中的示例用例结束计时
+**Then** 计时范围仅包含编码与本地验证时间, 不包含依赖下载、CI 排队等等待时间
+
+---
+
+### Story 4.8: 核心算法模块解耦与替换演练
+
+**Related NFRs:** NFR15（核心算法替换仅影响算法模块）
+
+**As a** 开发者,
+**I want** 将核心算法实现与调用方解耦并完成一次替换演练,
+**So that** 在需要更换优化算法时，只修改算法模块自身。
+
+**Acceptance Criteria:**
+
+**Given** 项目已经实现完整的四层架构和自动迭代优化流程
+**When** 查看代码结构和模块依赖
+**Then** 可以清晰识别出"核心算法模块"所在的 crate/模块/目录
+**And** 该模块对外仅通过少量受控接口（如 trait 或 facade）暴露能力
+**And** 调用方（任务配置、执行调度、可视化、可靠性等）只依赖这些接口而不直接依赖内部实现细节
+
+**Given** 为验证模块可替换性，开发者实现一个替代算法实现（例如不同的搜索/优化策略或 mock 实现）
+**When** 在依赖注入/工厂或编译配置中切换到该替代实现
+**Then** 代码变更局限在算法模块及其测试文件, 以及用于注册/选择算法实现的单一入口点（如工厂或 DI 配置）
+**And** 其他模块无需修改即可完成编译
+
+**Given** 使用替代算法模块重新运行一套核心端到端测试
+**When** 执行测试流水线
+**Then** 所有与算法无关的行为（配置、工作区管理、执行调度、可视化、可靠性、断点续跑等）测试全部通过
+**And** 在切换回原始算法模块后，测试同样全部通过，证明算法模块可以在不影响其他模块的前提下被替换（NFR15）
+
+---
+
 ### Epic 4 Story 总结
 
 | Story | FR 覆盖 | NFR 覆盖 |
@@ -1230,8 +1476,10 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 | 4.4 | FR27 | - |
 | 4.5 | FR28, FR29, FR30 | NFR1, NFR4, NFR22 |
 | 4.6 | FR31, FR32, FR33 | - |
+| 4.7 | - | NFR12, NFR13, NFR14 |
+| 4.8 | - | NFR15 |
 
-**共 6 个 Stories，覆盖 Epic 4 全部 10 个 FRs + 4 个 NFRs。**
+**共 8 个 Stories，覆盖 Epic 4 全部 10 个 FRs + 8 个 NFRs。**
 
 ---
 
