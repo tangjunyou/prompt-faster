@@ -24,6 +24,9 @@ async fn health_check() -> Json<HealthResponse> {
 }
 
 /// 创建健康检查路由
-pub fn router() -> Router {
-    Router::new().route("/health", get(health_check))
+pub fn router<S>() -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    Router::<S>::new().route("/health", get(health_check))
 }

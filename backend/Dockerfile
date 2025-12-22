@@ -1,5 +1,5 @@
 # Prompt Faster 后端 Dockerfile
-FROM rust:1.83-slim-bookworm
+FROM rust:1.85-slim-bookworm
 
 WORKDIR /app
 

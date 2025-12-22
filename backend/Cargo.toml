@@ -2,6 +2,7 @@
 name = "prompt_faster"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 authors = ["耶稣"]
 description = "AI Prompt 自动迭代优化系统"
 
@@ -13,7 +14,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
 # 数据库
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "time", "migrate"] }
 
 # 序列化
 serde = { version = "1", features = ["derive"] }

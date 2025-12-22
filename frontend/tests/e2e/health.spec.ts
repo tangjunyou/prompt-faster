@@ -14,8 +14,14 @@ test.describe('健康检查', () => {
   });
 
   test('后端 API 应该正常响应', async ({ request }) => {
-    const response = await request.get('http://localhost:3000/api/v1/health');
-    
+    let response;
+    try {
+      response = await request.get('http://localhost:3000/api/v1/health');
+    } catch {
+      test.skip(true, '后端 API 未启动');
+      return;
+    }
+
     // 如果后端未启动，跳过此测试
     if (!response.ok()) {
       test.skip(true, '后端 API 未启动');

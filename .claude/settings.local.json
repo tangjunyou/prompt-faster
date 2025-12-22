@@ -24,7 +24,10 @@
       "Bash(curl:*)",
       "Bash(ls:*)",
       "Bash(cat:*)",
-      "Bash(/Users/jingshun/.local/bin/droid:*)"
+      "Bash(/Users/jingshun/.local/bin/droid:*)",
+      "Bash(du:*)",
+      "Bash(file:*)",
+      "Bash(xargs:*)"
     ]
   }
 }

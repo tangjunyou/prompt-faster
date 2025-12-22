@@ -16,5 +16,6 @@ workflow_status:
   create-epics-and-stories: docs/epics.md
   test-design: docs/test-design-system.md
   validate-architecture: optional
-  implementation-readiness: required
+  implementation-readiness: completed
   sprint-planning: required
+  story-1.1-project-init: completed

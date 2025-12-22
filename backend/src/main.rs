@@ -9,6 +9,8 @@ use tracing::info;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::routes::health;
+use prompt_faster::api::state::AppState;
+use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::shared::config::AppConfig;
 use prompt_faster::shared::tracing_setup::init_tracing;
 
@@ -26,9 +28,19 @@ async fn main() -> anyhow::Result<()> {
     // 创建数据目录
     std::fs::create_dir_all("data")?;
 
+    // 初始化数据库连接池（包含 WAL/FULL synchronous 设置）
+    let db = create_pool(&config.database_url).await?;
+
+    // 自动运行 migrations（确保 schema 就绪）
+    sqlx::migrate!().run(&db).await?;
+
+    // 构建应用状态
+    let state = AppState { db };
+
     // 构建路由
-    let app = Router::new()
-        .nest("/api/v1", health::router())
+    let app = Router::<AppState>::new()
+        .nest("/api/v1", health::router::<AppState>())
+        .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))
         .layer(TraceLayer::new_for_http())
         .layer(
