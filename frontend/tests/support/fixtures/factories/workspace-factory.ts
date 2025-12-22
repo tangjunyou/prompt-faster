@@ -4,7 +4,7 @@
  * 自动创建和清理测试工作区
  */
 
-const API_URL = process.env.API_URL || 'http://localhost:3000/api/v1';
+const API_URL = (globalThis as any).process?.env?.API_URL || 'http://localhost:3000/api/v1';
 
 export interface TestWorkspace {
   id: string;
@@ -49,7 +49,7 @@ export class WorkspaceFactory {
         ...workspace,
         id: created.data?.id || created.id,
       };
-    } catch (error) {
+    } catch {
       // 如果 API 尚未实现，返回模拟数据
       console.warn('工作区 API 尚未实现，使用模拟数据');
       const mockWorkspace = {
