@@ -35,4 +35,11 @@ export default defineConfig([
       'no-empty-pattern': 'off',
     },
   },
+  // shadcn/ui 组件允许导出 variants 常量
+  {
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

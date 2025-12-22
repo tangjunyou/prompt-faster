@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import reactLogo from '../assets/react.svg'
 import viteLogo from '/vite.svg'
 import { HealthCheck } from '../components/HealthCheck'
@@ -32,6 +33,11 @@ export function HomePage() {
       <p className="read-the-docs">
         Click on the Vite and React logos to learn more
       </p>
+      <div className="card">
+        <Link to="/settings/api" className="text-primary hover:underline">
+          ⚙️ API 配置
+        </Link>
+      </div>
     </>
   )
 }
