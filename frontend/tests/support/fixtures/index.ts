@@ -19,15 +19,15 @@ type TestFixtures = {
  * 扩展的 test 对象，包含自定义 fixtures
  */
 export const test = base.extend<TestFixtures>({
-  userFactory: async (_args, useFixture) => {
+  userFactory: async (_args, runFixture) => {
     const factory = new UserFactory();
-    await useFixture(factory);
+    await runFixture(factory);
     await factory.cleanup();
   },
 
-  workspaceFactory: async (_args, useFixture) => {
+  workspaceFactory: async (_args, runFixture) => {
     const factory = new WorkspaceFactory();
-    await useFixture(factory);
+    await runFixture(factory);
     await factory.cleanup();
   },
 });

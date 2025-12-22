@@ -1,12 +1,7 @@
 //! correlationId 中间件
 //! 确保全链路透传 (AR2)
 
-use axum::{
-    extract::Request,
-    http::HeaderValue,
-    middleware::Next,
-    response::Response,
-};
+use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Response};
 use tracing::Span;
 
 /// correlationId 请求头名称

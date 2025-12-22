@@ -1,7 +1,7 @@
 //! Prompt Faster - AI Prompt 自动迭代优化系统
 //! 主入口点
 
-use axum::{middleware, Router};
+use axum::{Router, middleware};
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;

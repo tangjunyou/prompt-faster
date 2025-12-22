@@ -14,14 +14,22 @@ pub trait RuleEngine: Send + Sync {
 #[async_trait]
 pub trait PromptGenerator: Send + Sync {
     /// 基于规律生成候选 Prompt
-    async fn generate(&self, rules: &[Rule], context: &OptimizationContext) -> anyhow::Result<Vec<String>>;
+    async fn generate(
+        &self,
+        rules: &[Rule],
+        context: &OptimizationContext,
+    ) -> anyhow::Result<Vec<String>>;
 }
 
 /// 评估器 Trait
 #[async_trait]
 pub trait Evaluator: Send + Sync {
     /// 评估 Prompt 效果
-    async fn evaluate(&self, prompt: &str, test_cases: &[TestCase]) -> anyhow::Result<EvaluationResult>;
+    async fn evaluate(
+        &self,
+        prompt: &str,
+        test_cases: &[TestCase],
+    ) -> anyhow::Result<EvaluationResult>;
 }
 
 /// 反馈聚合器 Trait
@@ -35,7 +43,11 @@ pub trait FeedbackAggregator: Send + Sync {
 #[async_trait]
 pub trait Optimizer: Send + Sync {
     /// 执行优化步骤
-    async fn optimize(&self, feedback: &AggregatedFeedback, context: &OptimizationContext) -> anyhow::Result<String>;
+    async fn optimize(
+        &self,
+        feedback: &AggregatedFeedback,
+        context: &OptimizationContext,
+    ) -> anyhow::Result<String>;
 }
 
 /// 老师模型 Trait
@@ -43,9 +55,12 @@ pub trait Optimizer: Send + Sync {
 pub trait TeacherModel: Send + Sync {
     /// 生成 LLM 响应
     async fn generate(&self, prompt: &str) -> anyhow::Result<String>;
-    
+
     /// 流式生成（返回 channel）
-    async fn generate_stream(&self, prompt: &str) -> anyhow::Result<tokio::sync::mpsc::Receiver<String>>;
+    async fn generate_stream(
+        &self,
+        prompt: &str,
+    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<String>>;
 }
 
 /// 执行目标 Trait

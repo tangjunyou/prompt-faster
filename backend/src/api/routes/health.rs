@@ -1,6 +1,6 @@
 //! 健康检查路由
 
-use axum::{routing::get, Json, Router};
+use axum::{Json, Router, routing::get};
 use serde::Serialize;
 
 /// 健康检查响应

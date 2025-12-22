@@ -4,7 +4,7 @@
  * 自动创建和清理测试用户
  */
 
-const API_URL = (globalThis as any).process?.env?.API_URL || 'http://localhost:3000/api/v1';
+const API_URL = process.env.API_URL || 'http://localhost:3000/api/v1';
 
 export interface TestUser {
   id: string;

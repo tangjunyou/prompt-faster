@@ -2,9 +2,9 @@
 //! 使用 thiserror 定义类型安全错误
 
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::Serialize;
 use thiserror::Error;
@@ -48,11 +48,7 @@ impl IntoResponse for AppError {
                 "DATABASE_ERROR",
                 format!("数据库操作失败: {}", e),
             ),
-            AppError::Validation(msg) => (
-                StatusCode::BAD_REQUEST,
-                "VALIDATION_ERROR",
-                msg.clone(),
-            ),
+            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone()),
             AppError::NotFound(resource) => (
                 StatusCode::NOT_FOUND,
                 "NOT_FOUND",
@@ -63,11 +59,7 @@ impl IntoResponse for AppError {
                 "UNAUTHORIZED",
                 "请先登录".to_string(),
             ),
-            AppError::Forbidden => (
-                StatusCode::FORBIDDEN,
-                "FORBIDDEN",
-                "无权访问".to_string(),
-            ),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN", "无权访问".to_string()),
             AppError::Internal(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "INTERNAL_ERROR",
