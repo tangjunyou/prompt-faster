@@ -93,6 +93,7 @@ temp/
 # Claude specific - ignore session files but keep config
 .claude/session*
 .claude/tmp/
+.claude/settings.local.json
 
 # Windsurf specific - only ignore temp/cache, keep workflows
 .windsurf/tmp/
