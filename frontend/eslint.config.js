@@ -32,6 +32,7 @@ export default defineConfig([
     rules: {
       'react-hooks/rules-of-hooks': 'off',
       'react-refresh/only-export-components': 'off',
+      'no-empty-pattern': 'off',
     },
   },
 ])
