@@ -1,5 +1,6 @@
 //! 统一错误处理
 //! 使用 thiserror 定义类型安全错误
+//! 与 api/response.rs 的 ApiError 结构保持一致 (AR1)
 
 use axum::{
     Json,
@@ -31,13 +32,20 @@ pub enum AppError {
     Internal(#[from] anyhow::Error),
 }
 
-/// API 错误响应结构
+/// 错误详情（与 api/response.rs 的 ErrorDetail 结构一致）
 #[derive(Serialize)]
-pub struct ErrorResponse {
+pub struct ErrorDetail {
     pub code: String,
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+}
+
+/// API 错误响应结构（与 api/response.rs 的 ApiError 结构一致）
+/// 统一使用 { error: { code, message, details? } } 格式
+#[derive(Serialize)]
+pub struct ApiErrorResponse {
+    pub error: ErrorDetail,
 }
 
 impl IntoResponse for AppError {
@@ -67,10 +75,12 @@ impl IntoResponse for AppError {
             ),
         };
 
-        let body = Json(ErrorResponse {
-            code: code.to_string(),
-            message,
-            details: None,
+        let body = Json(ApiErrorResponse {
+            error: ErrorDetail {
+                code: code.to_string(),
+                message,
+                details: None,
+            },
         });
 
         (status, body).into_response()

@@ -1,25 +1,27 @@
 //! 健康检查路由
 
-use axum::{Json, Router, routing::get};
+use axum::{Router, routing::get};
 use serde::Serialize;
+
+use crate::api::response::ApiResponse;
+use crate::shared::time::now_millis;
 
 /// 健康检查响应
 #[derive(Serialize)]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
+    #[serde(rename = "timestampMs")]
     pub timestamp_ms: i64,
 }
 
 /// 健康检查处理器
-async fn health_check() -> Json<HealthResponse> {
-    Json(HealthResponse {
+/// 必须使用 ApiResponse<HealthResponse> 返回（Task 5.4）
+async fn health_check() -> ApiResponse<HealthResponse> {
+    ApiResponse::ok(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        timestamp_ms: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64,
+        timestamp_ms: now_millis(),
     })
 }
 

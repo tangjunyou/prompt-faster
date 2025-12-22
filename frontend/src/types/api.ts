@@ -6,7 +6,7 @@
 export interface HealthResponse {
   status: string
   version: string
-  timestamp_ms: number
+  timestampMs: number
 }
 
 export interface User {

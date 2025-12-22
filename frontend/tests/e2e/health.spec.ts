@@ -30,7 +30,9 @@ test.describe('健康检查', () => {
 
     expect(response.status()).toBe(200);
     
-    const data = await response.json();
-    expect(data.status).toBe('ok');
+    const json = await response.json();
+    // ApiResponse<T> 结构：{ data: T } 或 { error: {...} }
+    expect(json.data).toBeDefined();
+    expect(json.data.status).toBe('ok');
   });
 });

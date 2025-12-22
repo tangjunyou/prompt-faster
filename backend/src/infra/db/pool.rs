@@ -5,6 +5,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 use std::str::FromStr;
+use std::time::Duration;
 
 fn normalize_sqlite_url(database_url: &str) -> String {
     if database_url.starts_with("sqlite::") {
@@ -24,7 +25,9 @@ pub async fn create_pool(database_url: &str) -> anyhow::Result<SqlitePool> {
 
     let options = SqliteConnectOptions::from_str(&database_url)?
         .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Full);
+        .synchronous(SqliteSynchronous::Full)
+        .busy_timeout(Duration::from_secs(30))
+        .create_if_missing(true);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)

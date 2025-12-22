@@ -6,19 +6,50 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 
 /**
- * API 响应类型
+ * API 成功响应
  */
-export interface ApiResponse<T> {
-  data?: T
-  error?: {
-    code: string
-    message: string
-    details?: unknown
+export interface ApiSuccess<T> {
+  data: T
+  meta?: {
+    page?: number
+    pageSize?: number
+    total?: number
   }
 }
 
 /**
+ * API 错误响应
+ */
+export interface ApiError {
+  error: {
+    code: string
+    message: string
+    details?: Record<string, unknown>
+  }
+}
+
+/**
+ * API 响应类型 - data 与 error 互斥
+ */
+export type ApiResponse<T> = ApiSuccess<T> | ApiError
+
+/**
+ * 类型守卫：检查是否为错误响应
+ */
+export function isApiError<T>(response: ApiResponse<T>): response is ApiError {
+  return 'error' in response
+}
+
+/**
+ * 类型守卫：检查是否为成功响应
+ */
+export function isApiSuccess<T>(response: ApiResponse<T>): response is ApiSuccess<T> {
+  return 'data' in response
+}
+
+/**
  * 发送 API 请求
+ * 包含完整的错误处理：网络错误、非 JSON 响应、HTTP 错误
  */
 export async function apiRequest<T>(
   endpoint: string,
@@ -26,21 +57,41 @@ export async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const url = `${API_BASE_URL}${endpoint}`
 
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    })
 
-  const data = await response.json()
+    // 检查 Content-Type 是否为 JSON
+    const contentType = response.headers.get('content-type')
+    if (!contentType || !contentType.includes('application/json')) {
+      // 非 JSON 响应，构造符合 ApiError 的兜底结构
+      return {
+        error: {
+          code: 'INVALID_RESPONSE',
+          message: `服务器返回非 JSON 响应: ${response.status} ${response.statusText}`,
+        },
+      }
+    }
 
-  if (!response.ok) {
-    return { error: data.error || { code: 'UNKNOWN_ERROR', message: '未知错误' } }
+    const json = await response.json() as ApiResponse<T>
+
+    // 严格执行 ApiResponse<T> 契约，不做 fallback
+    return json
+  } catch (err) {
+    // 网络错误或 JSON 解析失败，构造符合 ApiError 的兜底结构
+    const message = err instanceof Error ? err.message : '网络请求失败'
+    return {
+      error: {
+        code: 'NETWORK_ERROR',
+        message,
+      },
+    }
   }
-
-  return { data: data.data || data }
 }
 
 /**

@@ -111,15 +111,22 @@ out/
 
 # Rust specific
 target/
-Cargo.lock
+# Cargo.lock 应该提交以保证可复现构建（bin crate）
+# Cargo.lock
 **/*.rs.bk
 .cargo/config
 .rustup/
 
 # Database files
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 
 # More strict system files
 ._*

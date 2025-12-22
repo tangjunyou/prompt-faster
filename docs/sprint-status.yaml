@@ -1,0 +1,147 @@
+# generated: 2025-12-22
+# project: Prompt Faster
+# project_key: prompt-faster
+# tracking_system: file-system
+# story_location: docs/stories
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2025-12-22
+project: Prompt Faster
+project_key: prompt-faster
+tracking_system: file-system
+story_location: docs/stories
+
+development_status:
+  # ============================================
+  # Epic 1: 系统基础与 API 连接
+  # FRs: FR1, FR2, FR3, FR4, FR5
+  # ============================================
+  epic-1: in-progress
+  1-1-project-initialization-and-basic-architecture: done
+  1-2-dify-api-credential-configuration: backlog
+  1-3-generic-llm-api-credential-configuration: backlog
+  1-4-api-connection-test: backlog
+  1-5-credential-persistence-and-teacher-model-params: backlog
+  1-6-local-user-authentication-and-login-flow: backlog
+  1-7-user-data-isolation-and-access-control: backlog
+  1-8-unified-error-response-and-openapi-docs: backlog
+  1-9-frontend-architecture-and-type-safe-api-client: backlog
+  1-10-ci-pipeline-and-test-gates: backlog
+  epic-1-retrospective: optional
+
+  # ============================================
+  # Epic 2: 测试集管理
+  # FRs: FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
+  # ============================================
+  epic-2: backlog
+  2-1-test-set-data-model-and-basic-crud: backlog
+  2-2-test-set-batch-import: backlog
+  2-3-test-set-template-save-and-reuse: backlog
+  2-4-dify-variable-parsing-and-prompt-variable-designation: backlog
+  2-5-generic-api-custom-variables-and-fixed-task-answers: backlog
+  2-6-creative-task-configuration: backlog
+  epic-2-retrospective: optional
+
+  # ============================================
+  # Epic 3: 优化任务配置与工作区
+  # FRs: FR16-FR23c, FR47-FR51
+  # ============================================
+  epic-3: backlog
+  3-1-optimization-task-creation-and-basic-config: backlog
+  3-2-initial-prompt-and-iteration-termination-conditions: backlog
+  3-3-candidate-generation-and-diversity-injection-config: backlog
+  3-4-core-algorithm-parameters-and-default-config: backlog
+  3-5-workspace-creation-and-switching: backlog
+  3-6-workspace-deletion-and-data-isolation: backlog
+  3-7-multi-teacher-model-switching: backlog
+  epic-3-retrospective: optional
+
+  # ============================================
+  # Epic 4: 自动迭代优化执行
+  # FRs: FR24-FR33
+  # ============================================
+  epic-4: backlog
+  4-1-pattern-extraction-layer: backlog
+  4-2-prompt-generation-layer: backlog
+  4-3-quality-assessment-layer: backlog
+  4-4-reflection-iteration-layer: backlog
+  4-5-execution-mode-and-parallel-scheduling: backlog
+  4-6-failure-archive-and-diversity-injection: backlog
+  4-7-extension-templates-and-docs: backlog
+  4-8-core-algorithm-module-decoupling-and-replacement: backlog
+  epic-4-retrospective: optional
+
+  # ============================================
+  # Epic 5: 可视化与实时反馈
+  # FRs: FR35-FR39
+  # ============================================
+  epic-5: backlog
+  5-1-node-graph-basic-rendering: backlog
+  5-2-edge-animation-and-data-flow-visualization: backlog
+  5-3-streaming-thinking-process-display: backlog
+  5-4-thinking-panel-stage-indicator: backlog
+  epic-5-retrospective: optional
+
+  # ============================================
+  # Epic 6: 用户介入与控制
+  # FRs: FR40-FR46
+  # ============================================
+  epic-6: backlog
+  6-1-pause-and-resume-iteration: backlog
+  6-2-edit-intermediate-artifacts: backlog
+  6-3-dialogue-guidance-for-teacher-model: backlog
+  6-4-historical-iteration-artifacts-view: backlog
+  6-5-iteration-control-add-rounds-manual-terminate: backlog
+  epic-6-retrospective: optional
+
+  # ============================================
+  # Epic 7: 可靠性与断点续跑
+  # FRs: FR52-FR55
+  # ============================================
+  epic-7: backlog
+  7-1-checkpoint-auto-save: backlog
+  7-2-breakpoint-recovery-and-exception-handling: backlog
+  7-3-historical-checkpoint-rollback: backlog
+  7-4-complete-iteration-history-record: backlog
+  epic-7-retrospective: optional
+
+  # ============================================
+  # Epic 8: 结果输出与元优化
+  # FRs: FR34, FR56-FR63
+  # ============================================
+  epic-8: backlog
+  8-1-result-view-and-export: backlog
+  8-2-diagnostic-report: backlog
+  8-3-meta-optimization-basics: backlog
+  8-4-advanced-user-edit-teacher-model-prompt: backlog
+  8-5-prompt-version-comparison-growth: backlog
+  8-6-creative-task-diversity-detection-growth: backlog
+  epic-8-retrospective: optional

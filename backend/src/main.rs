@@ -2,8 +2,9 @@
 //! 主入口点
 
 use axum::{Router, middleware};
+use axum::http::{header, Method, HeaderValue};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
@@ -37,6 +38,12 @@ async fn main() -> anyhow::Result<()> {
     // 构建应用状态
     let state = AppState { db };
 
+    // 允许的前端 Origin（开发环境）
+    let allowed_origins = [
+        "http://localhost:5173".parse::<HeaderValue>().unwrap(),
+        "http://127.0.0.1:5173".parse::<HeaderValue>().unwrap(),
+    ];
+
     // 构建路由
     let app = Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
@@ -45,9 +52,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(TraceLayer::new_for_http())
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
+                .allow_origin(allowed_origins)
+                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT]),
         );
 
     // 启动服务器
