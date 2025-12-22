@@ -2,7 +2,7 @@
 //! 确保全链路透传 (AR2)
 
 use axum::{extract::Request, http::HeaderValue, middleware::Next, response::Response};
-use tracing::{info_span, Instrument};
+use tracing::{Instrument, info_span};
 
 /// correlationId 请求头名称
 pub const CORRELATION_ID_HEADER: &str = "x-correlation-id";
@@ -33,11 +33,9 @@ pub async fn correlation_id_middleware(mut request: Request, next: Next) -> Resp
     );
 
     // 在 span 中执行后续处理
-    let mut response = async move {
-        next.run(request).await
-    }
-    .instrument(span)
-    .await;
+    let mut response = async move { next.run(request).await }
+        .instrument(span)
+        .await;
 
     // 在响应头中也添加 correlationId
     response.headers_mut().insert(

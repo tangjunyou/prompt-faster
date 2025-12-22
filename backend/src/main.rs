@@ -1,8 +1,8 @@
 //! Prompt Faster - AI Prompt 自动迭代优化系统
 //! 主入口点
 
+use axum::http::{HeaderValue, Method, header};
 use axum::{Router, middleware};
-use axum::http::{header, Method, HeaderValue};
 use std::net::SocketAddr;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -53,7 +53,13 @@ async fn main() -> anyhow::Result<()> {
         .layer(
             CorsLayer::new()
                 .allow_origin(allowed_origins)
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
                 .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION, header::ACCEPT]),
         );
 
