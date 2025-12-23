@@ -5,6 +5,9 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 
+/** 默认请求超时时间（毫秒）- Code Review Fix: 添加超时配置 */
+const DEFAULT_TIMEOUT_MS = 30000
+
 /**
  * API 成功响应
  */
@@ -49,17 +52,27 @@ export function isApiSuccess<T>(response: ApiResponse<T>): response is ApiSucces
 
 /**
  * 发送 API 请求
- * 包含完整的错误处理：网络错误、非 JSON 响应、HTTP 错误
+ * 包含完整的错误处理：网络错误、非 JSON 响应、HTTP 错误、请求超时
+ * 
+ * @param endpoint - API 端点路径
+ * @param options - fetch 请求选项
+ * @param timeoutMs - 请求超时时间（毫秒），默认 30 秒
  */
 export async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<ApiResponse<T>> {
   const url = `${API_BASE_URL}${endpoint}`
+
+  // Code Review Fix: 添加请求超时控制
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const response = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -83,6 +96,19 @@ export async function apiRequest<T>(
     // 严格执行 ApiResponse<T> 契约，不做 fallback
     return json
   } catch (err) {
+    // 清理超时定时器
+    clearTimeout(timeoutId)
+    
+    // 处理超时错误
+    if (err instanceof Error && err.name === 'AbortError') {
+      return {
+        error: {
+          code: 'TIMEOUT_ERROR',
+          message: '请求超时，请检查网络连接后重试',
+        },
+      }
+    }
+    
     // 网络错误或 JSON 解析失败，构造符合 ApiError 的兜底结构
     const message = err instanceof Error ? err.message : '网络请求失败'
     return {
@@ -91,6 +117,8 @@ export async function apiRequest<T>(
         message,
       },
     }
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

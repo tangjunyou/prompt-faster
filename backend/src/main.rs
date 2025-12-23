@@ -4,6 +4,7 @@
 use axum::http::{HeaderName, HeaderValue, Method, header};
 use axum::{Router, middleware};
 use std::net::SocketAddr;
+use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::info;
@@ -14,6 +15,7 @@ use prompt_faster::api::middleware::correlation_id::{
 use prompt_faster::api::routes::{auth, health};
 use prompt_faster::api::state::AppState;
 use prompt_faster::infra::db::pool::create_pool;
+use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
 use prompt_faster::shared::tracing_setup::init_tracing;
@@ -42,8 +44,38 @@ async fn main() -> anyhow::Result<()> {
     let http_client = create_http_client()?;
     info!("HTTP 客户端初始化成功");
 
+    // 初始化 API Key 管理器
+    // TODO(Story-1.6): 替换为用户登录密码派生，当前使用临时主密码
+    //
+    // 安全约束 (Story 1.5 Task 2.2):
+    // - 非开发模式下必须设置 MASTER_PASSWORD 环境变量
+    // - 密钥仅存于内存，不持久化到文件
+    let master_password = match std::env::var("MASTER_PASSWORD") {
+        Ok(pwd) if !pwd.is_empty() => {
+            info!("使用环境变量中的主密码");
+            pwd
+        }
+        _ => {
+            #[cfg(debug_assertions)]
+            {
+                tracing::warn!("⚠️ 使用默认开发密码，请勿在生产环境使用！");
+                "default_dev_password_change_me".to_string()
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                panic!("❌ 生产模式必须设置 MASTER_PASSWORD 环境变量！请在 .env 或环境中配置安全的主密码。");
+            }
+        }
+    };
+    let api_key_manager = Arc::new(ApiKeyManager::new(master_password));
+    info!("API Key 管理器初始化成功");
+
     // 构建应用状态
-    let state = AppState { db, http_client };
+    let state = AppState {
+        db,
+        http_client,
+        api_key_manager,
+    };
 
     // 允许的前端 Origin（从配置读取）
     let allowed_origins: Vec<HeaderValue> = config

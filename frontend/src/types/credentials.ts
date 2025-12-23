@@ -3,10 +3,11 @@
  * - empty: 未配置
  * - filled: 已填写，待测试
  * - testing: 测试中
- * - valid: 连接成功
+ * - valid: 连接成功（本次会话已测试通过）
  * - invalid: 连接失败
+ * - saved: 已保存到后端（但本次会话未测试，需重新测试才能更新）
  */
-export type CredentialStatus = 'empty' | 'filled' | 'testing' | 'valid' | 'invalid';
+export type CredentialStatus = 'empty' | 'filled' | 'testing' | 'valid' | 'invalid' | 'saved';
 
 /**
  * 凭证状态徽章配置映射
@@ -17,6 +18,7 @@ export const statusBadgeMap: Record<CredentialStatus, { color: string; variant: 
   testing: { color: 'blue', variant: 'default', text: '测试中...' },
   valid: { color: 'green', variant: 'default', text: '连接成功' },
   invalid: { color: 'red', variant: 'destructive', text: '连接失败' },
+  saved: { color: 'blue', variant: 'secondary', text: '已保存，需重新测试' },
 };
 
 /**
@@ -41,4 +43,76 @@ export interface GenericLlmCredential {
   baseUrl: string;
   apiKey: string;
   status: CredentialStatus;  // 由 Store 方法推断，不允许外部直接设置
+}
+
+/**
+ * 老师模型参数配置
+ */
+export interface TeacherModelSettings {
+  temperature: number;  // 0.0 ~ 2.0，默认 0.7
+  topP: number;         // 0.0 ~ 1.0，默认 0.9
+  maxTokens: number;    // 1 ~ 8192，默认 2048
+}
+
+/**
+ * 老师模型参数默认值
+ */
+export const defaultTeacherSettings: TeacherModelSettings = {
+  temperature: 0.7,
+  topP: 0.9,
+  maxTokens: 2048,
+};
+
+/**
+ * 老师模型参数范围约束
+ */
+export const teacherSettingsConstraints = {
+  temperature: { min: 0.0, max: 2.0, step: 0.1 },  // 与后端 validate_teacher_settings 范围一致
+  topP: { min: 0.0, max: 1.0, step: 0.1 },          // 与后端 validate_teacher_settings 范围一致
+  maxTokens: { min: 1, max: 8192, step: 64 },       // Code Review Fix: step 从 1 改为 64 提升用户体验
+} as const;
+
+/**
+ * API 配置响应类型（后端返回）
+ */
+export interface ApiConfigResponse {
+  has_dify_key: boolean;
+  has_generic_llm_key: boolean;
+  dify_base_url: string | null;
+  generic_llm_base_url: string | null;
+  generic_llm_provider: string | null;
+  masked_dify_key: string | null;
+  masked_generic_llm_key: string | null;
+  teacher_settings: {
+    temperature: number;
+    top_p: number;
+    max_tokens: number;
+  };
+}
+
+/**
+ * 保存配置请求类型
+ * 
+ * 注意: 后端强制要求 dify 和 generic_llm 必须同时存在
+ * 前端在 buildSaveConfigRequest 中有防御性检查确保这一点
+ * Code Review Fix: 类型定义更准确地反映后端约束
+ */
+export interface SaveConfigRequest {
+  /** Dify 凭证 - 后端强制要求 */
+  dify: {
+    base_url: string;
+    api_key: string;
+  };
+  /** 通用大模型凭证 - 后端强制要求 */
+  generic_llm: {
+    provider: string;
+    base_url: string;
+    api_key: string;
+  };
+  /** 老师模型参数 */
+  teacher_settings: {
+    temperature: number;
+    top_p: number;
+    max_tokens: number;
+  };
 }
