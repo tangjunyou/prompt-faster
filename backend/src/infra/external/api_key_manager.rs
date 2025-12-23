@@ -266,7 +266,10 @@ mod tests {
         };
 
         let result = manager.decrypt(&encrypted);
-        assert!(matches!(result, Err(ApiKeyError::InvalidNonceLength { .. })));
+        assert!(matches!(
+            result,
+            Err(ApiKeyError::InvalidNonceLength { .. })
+        ));
     }
 
     #[test]

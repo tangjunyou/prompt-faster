@@ -128,7 +128,21 @@ impl CredentialRepo {
     ) -> Result<CredentialRecord, CredentialRepoError> {
         let type_str = credential_type.as_str();
 
-        let row = sqlx::query_as::<_, (String, String, String, Option<String>, String, Vec<u8>, Vec<u8>, Vec<u8>, i64, i64)>(
+        let row = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                Vec<u8>,
+                Vec<u8>,
+                Vec<u8>,
+                i64,
+                i64,
+            ),
+        >(
             r#"
             SELECT id, user_id, credential_type, provider, base_url,
                    encrypted_api_key, nonce, salt, created_at, updated_at
@@ -142,20 +156,29 @@ impl CredentialRepo {
         .await?;
 
         match row {
-            Some((id, user_id, credential_type, provider, base_url, encrypted_api_key, nonce, salt, created_at, updated_at)) => {
-                Ok(CredentialRecord {
-                    id,
-                    user_id,
-                    credential_type,
-                    provider,
-                    base_url,
-                    encrypted_api_key,
-                    nonce,
-                    salt,
-                    created_at,
-                    updated_at,
-                })
-            }
+            Some((
+                id,
+                user_id,
+                credential_type,
+                provider,
+                base_url,
+                encrypted_api_key,
+                nonce,
+                salt,
+                created_at,
+                updated_at,
+            )) => Ok(CredentialRecord {
+                id,
+                user_id,
+                credential_type,
+                provider,
+                base_url,
+                encrypted_api_key,
+                nonce,
+                salt,
+                created_at,
+                updated_at,
+            }),
             None => Err(CredentialRepoError::NotFound {
                 user_id: user_id.to_string(),
                 credential_type: type_str.to_string(),
@@ -168,7 +191,21 @@ impl CredentialRepo {
         pool: &SqlitePool,
         user_id: &str,
     ) -> Result<Vec<CredentialRecord>, CredentialRepoError> {
-        let rows = sqlx::query_as::<_, (String, String, String, Option<String>, String, Vec<u8>, Vec<u8>, Vec<u8>, i64, i64)>(
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                String,
+                Option<String>,
+                String,
+                Vec<u8>,
+                Vec<u8>,
+                Vec<u8>,
+                i64,
+                i64,
+            ),
+        >(
             r#"
             SELECT id, user_id, credential_type, provider, base_url,
                    encrypted_api_key, nonce, salt, created_at, updated_at
@@ -182,8 +219,8 @@ impl CredentialRepo {
 
         Ok(rows
             .into_iter()
-            .map(|(id, user_id, credential_type, provider, base_url, encrypted_api_key, nonce, salt, created_at, updated_at)| {
-                CredentialRecord {
+            .map(
+                |(
                     id,
                     user_id,
                     credential_type,
@@ -194,8 +231,21 @@ impl CredentialRepo {
                     salt,
                     created_at,
                     updated_at,
-                }
-            })
+                )| {
+                    CredentialRecord {
+                        id,
+                        user_id,
+                        credential_type,
+                        provider,
+                        base_url,
+                        encrypted_api_key,
+                        nonce,
+                        salt,
+                        created_at,
+                        updated_at,
+                    }
+                },
+            )
             .collect())
     }
 

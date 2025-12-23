@@ -3,7 +3,10 @@
 
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
-use axum::{Json, Router, routing::{get, post}};
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -11,8 +14,8 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::ApiResponse;
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{
-    CredentialRepo, CredentialType, UpsertCredentialInput,
-    TeacherSettingsRepo, UpsertTeacherSettingsInput,
+    CredentialRepo, CredentialType, TeacherSettingsRepo, UpsertCredentialInput,
+    UpsertTeacherSettingsInput,
 };
 use crate::infra::external::api_key_manager::EncryptedApiKey;
 use crate::infra::external::dify_client::{self, ConnectionError, TestConnectionResult};
@@ -457,7 +460,10 @@ async fn save_config(
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
                 "VALIDATION_ERROR",
-                format!("无效的 provider: {}，支持 siliconflow 或 modelscope", generic_llm.provider),
+                format!(
+                    "无效的 provider: {}，支持 siliconflow 或 modelscope",
+                    generic_llm.provider
+                ),
             );
         }
         // 验证 URL
@@ -554,13 +560,10 @@ async fn get_config(
     info!(correlation_id = %correlation_id, "获取配置");
 
     // 查询 Dify 凭证
-    let dify_credential = CredentialRepo::find_by_user_and_type(
-        &state.db,
-        DEFAULT_USER_ID,
-        CredentialType::Dify,
-    )
-    .await
-    .ok();
+    let dify_credential =
+        CredentialRepo::find_by_user_and_type(&state.db, DEFAULT_USER_ID, CredentialType::Dify)
+            .await
+            .ok();
 
     // 查询通用大模型凭证
     let generic_llm_credential = CredentialRepo::find_by_user_and_type(
@@ -597,7 +600,8 @@ async fn get_config(
     let (has_generic_llm_key, generic_llm_base_url, generic_llm_provider, masked_generic_llm_key) =
         match generic_llm_credential {
             Some(cred) => {
-                let masked = decrypt_and_mask(&state, &cred.encrypted_api_key, &cred.nonce, &cred.salt);
+                let masked =
+                    decrypt_and_mask(&state, &cred.encrypted_api_key, &cred.nonce, &cred.salt);
                 (true, Some(cred.base_url), cred.provider, masked)
             }
             None => (false, None, None, None),

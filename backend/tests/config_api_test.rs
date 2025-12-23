@@ -17,9 +17,7 @@
 //! - 不同凭证类型独立存储
 
 use prompt_faster::infra::db::pool::create_pool;
-use prompt_faster::infra::db::repositories::{
-    CredentialRepo, CredentialType, TeacherSettingsRepo,
-};
+use prompt_faster::infra::db::repositories::{CredentialRepo, CredentialType, TeacherSettingsRepo};
 use prompt_faster::infra::external::api_key_manager::{ApiKeyManager, NONCE_LENGTH, SALT_LENGTH};
 use sqlx::SqlitePool;
 
@@ -31,8 +29,13 @@ const DEFAULT_USER_ID: &str = "default_user";
 
 /// 创建测试数据库（内存数据库 + 运行 migrations）
 async fn setup_test_db() -> SqlitePool {
-    let pool = create_pool("sqlite::memory:").await.expect("创建测试数据库失败");
-    sqlx::migrate!().run(&pool).await.expect("运行 migrations 失败");
+    let pool = create_pool("sqlite::memory:")
+        .await
+        .expect("创建测试数据库失败");
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("运行 migrations 失败");
     pool
 }
 
@@ -71,11 +74,7 @@ async fn test_encrypted_data_is_not_plaintext() {
     );
 
     // 验证 salt 长度
-    assert_eq!(
-        encrypted.salt.len(),
-        SALT_LENGTH,
-        "salt 长度应为 16 字节"
-    );
+    assert_eq!(encrypted.salt.len(), SALT_LENGTH, "salt 长度应为 16 字节");
 }
 
 /// 测试相同明文 + 不同 salt/nonce 产生不同密文
@@ -144,9 +143,10 @@ async fn test_credential_storage_is_encrypted() {
     );
 
     // 验证可以从数据库读取并解密
-    let loaded = CredentialRepo::find_by_user_and_type(&pool, DEFAULT_USER_ID, CredentialType::Dify)
-        .await
-        .expect("读取凭证失败");
+    let loaded =
+        CredentialRepo::find_by_user_and_type(&pool, DEFAULT_USER_ID, CredentialType::Dify)
+            .await
+            .expect("读取凭证失败");
 
     let loaded_encrypted = prompt_faster::infra::external::api_key_manager::EncryptedApiKey {
         ciphertext: loaded.encrypted_api_key,

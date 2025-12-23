@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { TeacherModelParamsForm } from './TeacherModelParamsForm';
 import { useCredentialStore } from '@/stores/useCredentialStore';
-import { defaultTeacherSettings, teacherSettingsConstraints } from '@/types/credentials';
+import { defaultTeacherSettings } from '@/types/credentials';
 
 describe('TeacherModelParamsForm', () => {
   beforeEach(() => {

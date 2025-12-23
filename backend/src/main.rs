@@ -63,7 +63,9 @@ async fn main() -> anyhow::Result<()> {
             }
             #[cfg(not(debug_assertions))]
             {
-                panic!("❌ 生产模式必须设置 MASTER_PASSWORD 环境变量！请在 .env 或环境中配置安全的主密码。");
+                panic!(
+                    "❌ 生产模式必须设置 MASTER_PASSWORD 环境变量！请在 .env 或环境中配置安全的主密码。"
+                );
             }
         }
     };
