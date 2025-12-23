@@ -1,8 +1,26 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { DifyCredentialForm } from './DifyCredentialForm';
 import { useCredentialStore } from '@/stores/useCredentialStore';
+
+// 创建测试用的 QueryClient
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+// 渲染组件的 wrapper
+const renderWithProviders = (ui: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+};
 
 /**
  * DifyCredentialForm 组件测试
@@ -16,7 +34,7 @@ describe('DifyCredentialForm 组件', () => {
 
   describe('初始渲染', () => {
     it('应正确渲染标题和表单字段', () => {
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       expect(screen.getByText('Dify 工作流凭证')).toBeInTheDocument();
       expect(screen.getByLabelText('API 地址')).toBeInTheDocument();
@@ -25,7 +43,7 @@ describe('DifyCredentialForm 组件', () => {
     });
 
     it('初始状态应显示"未配置"徽章', () => {
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       expect(screen.getByText('未配置')).toBeInTheDocument();
     });
@@ -34,7 +52,7 @@ describe('DifyCredentialForm 组件', () => {
   describe('表单验证', () => {
     it('空字段失焦时应显示错误提示', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       // 聚焦再失焦 baseUrl
       const baseUrlInput = screen.getByLabelText('API 地址');
@@ -46,7 +64,7 @@ describe('DifyCredentialForm 组件', () => {
 
     it('无效 URL 应显示格式错误', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.type(screen.getByLabelText('API 地址'), 'invalid-url');
       await user.tab();
@@ -56,7 +74,7 @@ describe('DifyCredentialForm 组件', () => {
 
     it('提交无效表单应显示顶部错误反馈', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.type(screen.getByLabelText('API 地址'), 'invalid');
       await user.click(screen.getByRole('button', { name: '保存' }));
@@ -73,7 +91,7 @@ describe('DifyCredentialForm 组件', () => {
   describe('成功提交', () => {
     it('有效凭证提交后应显示成功反馈', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.type(screen.getByLabelText('API 地址'), 'https://api.dify.ai');
       await user.type(screen.getByLabelText('API Key'), 'app-test-key');
@@ -86,7 +104,7 @@ describe('DifyCredentialForm 组件', () => {
 
     it('提交后徽章应变为"已填写，待测试"', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.type(screen.getByLabelText('API 地址'), 'https://api.dify.ai');
       await user.type(screen.getByLabelText('API Key'), 'app-test-key');
@@ -99,7 +117,7 @@ describe('DifyCredentialForm 组件', () => {
 
     it('清空字段后提交应显示清空成功反馈', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       // 先填写并保存
       await user.type(screen.getByLabelText('API 地址'), 'https://api.dify.ai');
@@ -125,7 +143,7 @@ describe('DifyCredentialForm 组件', () => {
   describe('Store 同步', () => {
     it('输入时 Store 应实时更新', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.type(screen.getByLabelText('API 地址'), 'https://test.dify.ai');
       
@@ -137,7 +155,7 @@ describe('DifyCredentialForm 组件', () => {
   describe('无障碍性', () => {
     it('错误字段应有正确的 aria-invalid 属性', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.click(screen.getByLabelText('API 地址'));
       await user.tab();
@@ -147,7 +165,7 @@ describe('DifyCredentialForm 组件', () => {
 
     it('错误消息应关联到对应输入框', async () => {
       const user = userEvent.setup();
-      render(<DifyCredentialForm />);
+      renderWithProviders(<DifyCredentialForm />);
       
       await user.click(screen.getByLabelText('API 地址'));
       await user.tab();

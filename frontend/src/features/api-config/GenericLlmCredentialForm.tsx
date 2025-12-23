@@ -3,11 +3,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 import { useGenericLlmCredentialForm, type SubmitResult } from './hooks/useGenericLlmCredentialForm';
 import { useFeedback } from './hooks/useFeedback';
+import { useTestGenericLlmConnection } from './hooks/useTestConnection';
 import { FeedbackAlert } from './FeedbackAlert';
 import { API_KEY_MAX_LENGTH, BASE_URL_MAX_LENGTH } from './constants';
-import type { GenericLlmProvider } from '@/types/credentials';
+import { statusBadgeMap, type GenericLlmProvider } from '@/types/credentials';
 
 
 /**
@@ -21,7 +23,7 @@ const PROVIDER_CONFIG: Record<GenericLlmProvider, { label: string; urlPlaceholde
   },
   modelscope: {
     label: '魔搭社区',
-    urlPlaceholder: 'https://dashscope.aliyuncs.com',
+    urlPlaceholder: 'https://dashscope.aliyuncs.com/compatible-mode',
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxx',
   },
 };
@@ -53,6 +55,33 @@ export function GenericLlmCredentialForm() {
   // 使用共享的 useFeedback Hook
   const { feedback, showFeedback } = useFeedback();
 
+  // 连接测试 mutation
+  const testConnection = useTestGenericLlmConnection();
+
+  // 表单是否填写完整（需要 provider 已选择）
+  const isFormComplete = provider !== null && baseUrl.trim() !== '' && apiKey.trim() !== '';
+
+  // 处理测试连接
+  const handleTestConnection = async () => {
+    if (!isFormComplete || !provider) return;
+    
+    try {
+      const result = await testConnection.mutateAsync({ baseUrl, apiKey, provider });
+      // 展示后端返回的 message（包含模型数量）
+      // 如果有模型列表，显示前 5 个作为预览
+      let feedbackMessage = result?.message || '连接成功';
+      if (result?.models && result.models.length > 0) {
+        const preview = result.models.slice(0, 5).join(', ');
+        const suffix = result.models.length > 5 ? ` 等 ${result.models.length} 个模型` : '';
+        feedbackMessage = `${feedbackMessage}：${preview}${suffix}`;
+      }
+      showFeedback('success', feedbackMessage, 5000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '连接失败';
+      showFeedback('error', message, 5000);
+    }
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -80,15 +109,18 @@ export function GenericLlmCredentialForm() {
    * 获取状态徽章显示内容
    */
   const getStatusBadge = () => {
-    if (status === 'empty') {
+    // 特殊处理：未选择 provider 时显示"未配置"
+    if (status === 'empty' && provider === null) {
       return {
         variant: 'secondary' as const,
-        text: provider === null ? '未配置' : '待填写',
+        text: '未配置',
       };
     }
+    // 使用 statusBadgeMap 获取配置
+    const config = statusBadgeMap[status];
     return {
-      variant: 'warning' as const,
-      text: '已填写，待测试',
+      variant: config.variant,
+      text: status === 'empty' && provider !== null ? '待填写' : config.text,
     };
   };
 
@@ -173,14 +205,33 @@ export function GenericLlmCredentialForm() {
             )}
           </div>
 
-          <Button 
-            type="submit" 
-            className="w-full" 
-            disabled={isSubmitting}
-            data-testid="generic-llm-submit-btn"
-          >
-            {isSubmitting ? '保存中...' : '保存'}
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              type="submit" 
+              className="flex-1" 
+              disabled={isSubmitting}
+              data-testid="generic-llm-submit-btn"
+            >
+              {isSubmitting ? '保存中...' : '保存'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              disabled={!isFormComplete || testConnection.isPending}
+              onClick={handleTestConnection}
+              data-testid="generic-llm-test-connection-btn"
+            >
+              {testConnection.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  测试中...
+                </>
+              ) : (
+                '测试连接'
+              )}
+            </Button>
+          </div>
         </>
       )}
     </form>

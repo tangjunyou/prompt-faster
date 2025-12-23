@@ -4,7 +4,10 @@ import type { DifyCredential, CredentialStatus, GenericLlmCredential, GenericLlm
 /**
  * 凭证状态管理 Store
  * 
- * API 设计原则：只暴露明确的领域操作，不允许外部直接设置 status
+ * API 设计原则：
+ * - 通过 setDifyFormField/setGenericLlmFormField 实时更新表单并推断 status
+ * - setDifyStatus/setGenericLlmStatus 供 useTestConnection hook 内部使用，用于测试状态切换
+ * - 修改凭证字段后 status 会自动重置为 filled/empty（修改即失效，需重新测试）
  */
 interface CredentialState {
   dify: DifyCredential;
@@ -14,6 +17,8 @@ interface CredentialState {
   clearDifyCredential: () => void;
   /** 直接更新表单字段（用于受控输入，实时推断 status 以同步状态徽章） */
   setDifyFormField: (field: 'baseUrl' | 'apiKey', value: string) => void;
+  /** 直接设置 Dify 凭证状态（用于连接测试） */
+  setDifyStatus: (status: CredentialStatus) => void;
   
   // 通用大模型凭证相关
   genericLlm: GenericLlmCredential;
@@ -27,6 +32,8 @@ interface CredentialState {
   clearGenericLlmFields: () => void;
   /** 完全重置通用大模型凭证（包括 provider） */
   clearGenericLlmCredential: () => void;
+  /** 直接设置通用大模型凭证状态（用于连接测试） */
+  setGenericLlmStatus: (status: CredentialStatus) => void;
 }
 
 const initialDifyCredential: DifyCredential = {
@@ -62,6 +69,14 @@ export const useCredentialStore = create<CredentialState>((set) => ({
     })),
   
   clearDifyCredential: () => set({ dify: initialDifyCredential }),
+  
+  setDifyStatus: (status) =>
+    set((state) => ({
+      dify: {
+        ...state.dify,
+        status,
+      },
+    })),
   
   setDifyFormField: (field, value) =>
     set((state) => ({
@@ -123,4 +138,12 @@ export const useCredentialStore = create<CredentialState>((set) => ({
     })),
   
   clearGenericLlmCredential: () => set({ genericLlm: initialGenericLlmCredential }),
+  
+  setGenericLlmStatus: (status) =>
+    set((state) => ({
+      genericLlm: {
+        ...state.genericLlm,
+        status,
+      },
+    })),
 }));

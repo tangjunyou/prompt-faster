@@ -1,8 +1,26 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GenericLlmCredentialForm } from './GenericLlmCredentialForm';
 import { useCredentialStore } from '@/stores/useCredentialStore';
+
+// 创建测试用的 QueryClient
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+// 渲染组件的 wrapper
+const renderWithProviders = (ui: React.ReactElement) => {
+  const queryClient = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+  );
+};
 
 /**
  * GenericLlmCredentialForm 组件测试
@@ -16,7 +34,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
   describe('初始渲染', () => {
     it('应正确渲染标题和 Provider 选择按钮', () => {
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       expect(screen.getByText('通用大模型凭证')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: '硅基流动' })).toBeInTheDocument();
@@ -24,13 +42,13 @@ describe('GenericLlmCredentialForm 组件', () => {
     });
 
     it('初始状态应显示"未配置"徽章', () => {
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       expect(screen.getByText('未配置')).toBeInTheDocument();
     });
 
     it('Provider 未选择时不应显示表单字段', () => {
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       expect(screen.queryByLabelText('API 地址')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument();
@@ -40,7 +58,7 @@ describe('GenericLlmCredentialForm 组件', () => {
   describe('Provider 选择交互', () => {
     it('点击硅基流动后应显示表单字段', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       
@@ -51,7 +69,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('选择 Provider 后徽章应变为"待填写"', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '魔搭社区' }));
       
@@ -60,7 +78,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('切换 Provider 应清空已填写的字段', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       // 选择硅基流动并填写
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
@@ -79,7 +97,7 @@ describe('GenericLlmCredentialForm 组件', () => {
   describe('表单验证', () => {
     it('空字段失焦时应显示错误提示', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       
@@ -93,7 +111,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('无效 URL 应显示格式错误', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.type(screen.getByLabelText('API 地址'), 'invalid-url');
@@ -104,7 +122,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('提交无效表单应显示顶部错误反馈', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.type(screen.getByLabelText('API 地址'), 'invalid');
@@ -122,7 +140,7 @@ describe('GenericLlmCredentialForm 组件', () => {
   describe('成功提交', () => {
     it('有效凭证提交后应显示成功反馈', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.type(screen.getByLabelText('API 地址'), 'https://api.siliconflow.cn');
@@ -136,7 +154,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('提交后徽章应变为"已填写，待测试"', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.type(screen.getByLabelText('API 地址'), 'https://api.siliconflow.cn');
@@ -150,7 +168,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('清空字段后提交应显示清空成功反馈', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       // 先填写并保存
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
@@ -180,7 +198,7 @@ describe('GenericLlmCredentialForm 组件', () => {
       useCredentialStore.getState().clearGenericLlmCredential();
       
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.type(screen.getByLabelText('API 地址'), 'https://test.com');
@@ -194,7 +212,7 @@ describe('GenericLlmCredentialForm 组件', () => {
   describe('无障碍性', () => {
     it('错误字段应有正确的 aria-invalid 属性', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.click(screen.getByLabelText('API 地址'));
@@ -205,7 +223,7 @@ describe('GenericLlmCredentialForm 组件', () => {
 
     it('错误消息应关联到对应输入框', async () => {
       const user = userEvent.setup();
-      render(<GenericLlmCredentialForm />);
+      renderWithProviders(<GenericLlmCredentialForm />);
       
       await user.click(screen.getByRole('button', { name: '硅基流动' }));
       await user.click(screen.getByLabelText('API 地址'));

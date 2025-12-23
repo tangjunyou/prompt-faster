@@ -2,8 +2,22 @@
  * 凭证状态类型
  * - empty: 未配置
  * - filled: 已填写，待测试
+ * - testing: 测试中
+ * - valid: 连接成功
+ * - invalid: 连接失败
  */
-export type CredentialStatus = 'empty' | 'filled';
+export type CredentialStatus = 'empty' | 'filled' | 'testing' | 'valid' | 'invalid';
+
+/**
+ * 凭证状态徽章配置映射
+ */
+export const statusBadgeMap: Record<CredentialStatus, { color: string; variant: 'secondary' | 'warning' | 'default' | 'destructive'; text: string }> = {
+  empty: { color: 'gray', variant: 'secondary', text: '未配置' },
+  filled: { color: 'yellow', variant: 'warning', text: '已填写，待测试' },
+  testing: { color: 'blue', variant: 'default', text: '测试中...' },
+  valid: { color: 'green', variant: 'default', text: '连接成功' },
+  invalid: { color: 'red', variant: 'destructive', text: '连接失败' },
+};
 
 /**
  * Dify API 凭证接口

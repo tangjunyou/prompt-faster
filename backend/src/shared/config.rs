@@ -16,6 +16,8 @@ pub struct AppConfig {
     pub log_level: String,
     /// 是否为开发模式
     pub is_dev: bool,
+    /// CORS 允许的 Origins（逗号分隔）
+    pub cors_origins: Vec<String>,
 }
 
 impl AppConfig {
@@ -35,6 +37,12 @@ impl AppConfig {
             is_dev: env::var("APP_ENV")
                 .map(|v| v == "development")
                 .unwrap_or(true),
+            cors_origins: env::var("CORS_ORIGINS")
+                .unwrap_or_else(|_| "http://localhost:5173,http://127.0.0.1:5173".to_string())
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
         })
     }
 

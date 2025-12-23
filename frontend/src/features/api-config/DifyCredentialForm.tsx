@@ -3,10 +3,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Loader2 } from 'lucide-react';
 import { useDifyCredentialForm, type SubmitResult } from './hooks/useDifyCredentialForm';
 import { useFeedback } from './hooks/useFeedback';
+import { useTestDifyConnection } from './hooks/useTestConnection';
 import { FeedbackAlert } from './FeedbackAlert';
 import { API_KEY_MAX_LENGTH, BASE_URL_MAX_LENGTH } from './constants';
+import { statusBadgeMap } from '@/types/credentials';
 
 
 /**
@@ -33,6 +36,29 @@ export function DifyCredentialForm() {
 
   // 使用共享的 useFeedback Hook
   const { feedback, showFeedback } = useFeedback();
+
+  // 连接测试 mutation
+  const testConnection = useTestDifyConnection();
+
+  // 表单是否填写完整
+  const isFormComplete = baseUrl.trim() !== '' && apiKey.trim() !== '';
+
+  // 处理测试连接
+  const handleTestConnection = async () => {
+    if (!isFormComplete) return;
+    
+    try {
+      const result = await testConnection.mutateAsync({ baseUrl, apiKey });
+      // 展示后端返回的 message
+      showFeedback('success', result?.message || '连接成功', 3000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '连接失败';
+      showFeedback('error', message, 5000);
+    }
+  };
+
+  // 获取状态徽章配置
+  const badgeConfig = statusBadgeMap[status];
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,9 +87,8 @@ export function DifyCredentialForm() {
     <form onSubmit={onSubmit} className="space-y-4" data-testid="dify-credential-form">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Dify 工作流凭证</h3>
-        {/* M1: 使用 warning variant 实现黄色徽章，符合 Story 规范 */}
-        <Badge variant={status === 'empty' ? 'secondary' : 'warning'}>
-          {status === 'empty' ? '未配置' : '已填写，待测试'}
+        <Badge variant={badgeConfig.variant}>
+          {badgeConfig.text}
         </Badge>
       </div>
 
@@ -111,14 +136,33 @@ export function DifyCredentialForm() {
         )}
       </div>
 
-      <Button 
-        type="submit" 
-        className="w-full" 
-        disabled={isSubmitting}
-        data-testid="dify-submit-btn"
-      >
-        {isSubmitting ? '保存中...' : '保存'}
-      </Button>
+      <div className="flex gap-2">
+        <Button 
+          type="submit" 
+          className="flex-1" 
+          disabled={isSubmitting}
+          data-testid="dify-submit-btn"
+        >
+          {isSubmitting ? '保存中...' : '保存'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1"
+          disabled={!isFormComplete || testConnection.isPending}
+          onClick={handleTestConnection}
+          data-testid="dify-test-connection-btn"
+        >
+          {testConnection.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              测试中...
+            </>
+          ) : (
+            '测试连接'
+          )}
+        </Button>
+      </div>
     </form>
   );
 }
