@@ -1,42 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { isValidUrl, normalizeBaseUrl, validateDifyCredential, useDifyCredentialForm } from './useDifyCredentialForm';
+import { validateDifyCredential, useDifyCredentialForm } from './useDifyCredentialForm';
 import { useCredentialStore } from '@/stores/useCredentialStore';
 
-describe('isValidUrl', () => {
-  it('应接受有效的 http URL', () => {
-    expect(isValidUrl('http://example.com')).toBe(true);
-    expect(isValidUrl('http://localhost:8080')).toBe(true);
-  });
-
-  it('应接受有效的 https URL', () => {
-    expect(isValidUrl('https://api.dify.ai')).toBe(true);
-    expect(isValidUrl('https://example.com/api')).toBe(true);
-  });
-
-  it('应拒绝无效的 URL', () => {
-    expect(isValidUrl('')).toBe(false);
-    expect(isValidUrl('not-a-url')).toBe(false);
-    expect(isValidUrl('ftp://example.com')).toBe(false);
-    expect(isValidUrl('example.com')).toBe(false);
-  });
-});
-
-describe('normalizeBaseUrl', () => {
-  it('应去除末尾斜杠', () => {
-    expect(normalizeBaseUrl('https://api.dify.ai/')).toBe('https://api.dify.ai');
-    expect(normalizeBaseUrl('https://api.dify.ai///')).toBe('https://api.dify.ai');
-  });
-
-  it('应只保留 origin（去除路径）', () => {
-    expect(normalizeBaseUrl('https://api.dify.ai/v1/chat')).toBe('https://api.dify.ai');
-    expect(normalizeBaseUrl('http://localhost:8080/api')).toBe('http://localhost:8080');
-  });
-
-  it('应去除前后空格', () => {
-    expect(normalizeBaseUrl('  https://api.dify.ai  ')).toBe('https://api.dify.ai');
-  });
-});
+// 注：isValidUrl/normalizeBaseUrl 测试已移至 url-utils.test.ts，避免重复
 
 describe('validateDifyCredential', () => {
   it('应通过有效的凭证验证', () => {
@@ -78,13 +45,7 @@ describe('validateDifyCredential', () => {
   });
 });
 
-describe('normalizeBaseUrl 防御性编程', () => {
-  it('对无效 URL 应返回 trim 后的原值而非抛异常', () => {
-    // 这个测试验证 M5 修复：normalizeBaseUrl 不会抛出异常
-    expect(normalizeBaseUrl('not-a-url')).toBe('not-a-url');
-    expect(normalizeBaseUrl('   invalid   ')).toBe('invalid');
-  });
-});
+// 注：normalizeBaseUrl 防御性测试已移至 url-utils.test.ts
 
 describe('useDifyCredentialForm Hook', () => {
   // 每个测试前重置 Store

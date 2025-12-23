@@ -47,7 +47,7 @@ development_status:
   epic-1: in-progress
   1-1-project-initialization-and-basic-architecture: done
   1-2-dify-api-credential-configuration: done
-  1-3-generic-llm-api-credential-configuration: backlog
+  1-3-generic-llm-api-credential-configuration: done
   1-4-api-connection-test: backlog
   1-5-credential-persistence-and-teacher-model-params: backlog
   1-6-local-user-authentication-and-login-flow: backlog

@@ -4,11 +4,22 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useDifyCredentialForm, type SubmitResult } from './hooks/useDifyCredentialForm';
+import { useFeedback } from './hooks/useFeedback';
+import { FeedbackAlert } from './FeedbackAlert';
+import { API_KEY_MAX_LENGTH, BASE_URL_MAX_LENGTH } from './constants';
+
 
 /**
  * Dify 凭证表单组件
+ * 
+ * @description 提供 Dify 工作流的 API 凭证配置界面
+ * @example
+ * ```tsx
+ * <DifyCredentialForm />
+ * ```
  */
 export function DifyCredentialForm() {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const {
     baseUrl,
     apiKey,
@@ -20,30 +31,34 @@ export function DifyCredentialForm() {
     handleSubmit,
   } = useDifyCredentialForm();
 
-  // 反馈消息状态
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  // 使用共享的 useFeedback Hook
+  const { feedback, showFeedback } = useFeedback();
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    
+    // 添加最小延迟以显示 loading 状态，同时为未来后端对接预留
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    
     const result: SubmitResult = handleSubmit();
     
     // 根据结果显示反馈
     if (result.success) {
       if (result.action === 'saved') {
-        setFeedback({ type: 'success', message: '已保存，待测试连接' });
+        showFeedback('success', '已保存，待测试连接', 3000);
       } else if (result.action === 'cleared') {
-        setFeedback({ type: 'success', message: '凭证已清空' });
+        showFeedback('success', '凭证已清空', 3000);
       }
-      // 3秒后清除反馈
-      setTimeout(() => setFeedback(null), 3000);
     } else {
-      setFeedback({ type: 'error', message: '请修正下方标红字段后重试' });
-      setTimeout(() => setFeedback(null), 5000);
+      showFeedback('error', '请修正下方标红字段后重试', 5000);
     }
+    
+    setIsSubmitting(false);
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4" data-testid="dify-credential-form">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-medium">Dify 工作流凭证</h3>
         {/* M1: 使用 warning variant 实现黄色徽章，符合 Story 规范 */}
@@ -52,18 +67,7 @@ export function DifyCredentialForm() {
         </Badge>
       </div>
 
-      {/* L1: 反馈消息 */}
-      {feedback && (
-        <div
-          className={`p-3 rounded-md text-sm ${
-            feedback.type === 'success'
-              ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}
-        >
-          {feedback.message}
-        </div>
-      )}
+      <FeedbackAlert feedback={feedback} />
 
       <div className="space-y-2">
         <Label htmlFor="dify-base-url">API 地址</Label>
@@ -75,9 +79,13 @@ export function DifyCredentialForm() {
           onChange={(e) => handleBaseUrlChange(e.target.value)}
           onBlur={() => handleBlur('baseUrl')}
           className={errors.baseUrl ? 'border-red-500' : ''}
+          maxLength={BASE_URL_MAX_LENGTH}
+          aria-invalid={!!errors.baseUrl}
+          aria-describedby={errors.baseUrl ? 'dify-base-url-error' : undefined}
+          data-testid="dify-base-url-input"
         />
         {errors.baseUrl && (
-          <p className="text-sm text-red-500">{errors.baseUrl}</p>
+          <p id="dify-base-url-error" className="text-sm text-red-500" role="alert">{errors.baseUrl}</p>
         )}
       </div>
 
@@ -91,14 +99,25 @@ export function DifyCredentialForm() {
           onChange={(e) => handleApiKeyChange(e.target.value)}
           onBlur={() => handleBlur('apiKey')}
           className={errors.apiKey ? 'border-red-500' : ''}
+          maxLength={API_KEY_MAX_LENGTH}
+          autoComplete="new-password"
+          spellCheck={false}
+          aria-invalid={!!errors.apiKey}
+          aria-describedby={errors.apiKey ? 'dify-api-key-error' : undefined}
+          data-testid="dify-api-key-input"
         />
         {errors.apiKey && (
-          <p className="text-sm text-red-500">{errors.apiKey}</p>
+          <p id="dify-api-key-error" className="text-sm text-red-500" role="alert">{errors.apiKey}</p>
         )}
       </div>
 
-      <Button type="submit" className="w-full">
-        保存
+      <Button 
+        type="submit" 
+        className="w-full" 
+        disabled={isSubmitting}
+        data-testid="dify-submit-btn"
+      >
+        {isSubmitting ? '保存中...' : '保存'}
       </Button>
     </form>
   );

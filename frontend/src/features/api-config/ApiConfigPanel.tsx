@@ -1,5 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DifyCredentialForm } from './DifyCredentialForm';
+import { GenericLlmCredentialForm } from './GenericLlmCredentialForm';
 
 /**
  * API 配置面板组件
@@ -14,8 +15,11 @@ export function ApiConfigPanel() {
           配置用于优化测试的 API 凭证
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-8">
         <DifyCredentialForm />
+        <div className="border-t pt-6">
+          <GenericLlmCredentialForm />
+        </div>
       </CardContent>
     </Card>
   );

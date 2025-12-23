@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { DifyCredential, CredentialStatus } from '@/types/credentials';
+import type { DifyCredential, CredentialStatus, GenericLlmCredential, GenericLlmProvider } from '@/types/credentials';
 
 /**
  * 凭证状态管理 Store
@@ -12,11 +12,31 @@ interface CredentialState {
   updateDifyCredentialFromForm: (baseUrl: string, apiKey: string) => void;
   /** 清空 Dify 凭证 */
   clearDifyCredential: () => void;
-  /** 直接更新表单字段（用于受控输入，不改变 status） */
+  /** 直接更新表单字段（用于受控输入，实时推断 status 以同步状态徽章） */
   setDifyFormField: (field: 'baseUrl' | 'apiKey', value: string) => void;
+  
+  // 通用大模型凭证相关
+  genericLlm: GenericLlmCredential;
+  /** 设置通用大模型 Provider（切换时清空 baseUrl/apiKey） */
+  setGenericLlmProvider: (provider: GenericLlmProvider) => void;
+  /** 直接更新表单字段（用于受控输入，实时推断 status 以同步状态徽章） */
+  setGenericLlmFormField: (field: 'baseUrl' | 'apiKey', value: string) => void;
+  /** 从表单更新通用大模型凭证（内部自动推断 status） */
+  updateGenericLlmCredentialFromForm: (baseUrl: string, apiKey: string) => void;
+  /** 清空通用大模型凭证字段（保留 provider 选择） */
+  clearGenericLlmFields: () => void;
+  /** 完全重置通用大模型凭证（包括 provider） */
+  clearGenericLlmCredential: () => void;
 }
 
 const initialDifyCredential: DifyCredential = {
+  baseUrl: '',
+  apiKey: '',
+  status: 'empty',
+};
+
+const initialGenericLlmCredential: GenericLlmCredential = {
+  provider: null,
   baseUrl: '',
   apiKey: '',
   status: 'empty',
@@ -55,4 +75,52 @@ export const useCredentialStore = create<CredentialState>((set) => ({
         ),
       },
     })),
+  
+  // 通用大模型凭证相关实现
+  genericLlm: initialGenericLlmCredential,
+  
+  setGenericLlmProvider: (provider) =>
+    set(() => ({
+      genericLlm: {
+        ...initialGenericLlmCredential,
+        provider,
+        status: 'empty',
+      },
+    })),
+  
+  setGenericLlmFormField: (field, value) =>
+    set((state) => ({
+      genericLlm: {
+        ...state.genericLlm,
+        [field]: value,
+        // 实时更新 status（用于表单输入时的状态徽章同步）
+        status: inferStatus(
+          field === 'baseUrl' ? value : state.genericLlm.baseUrl,
+          field === 'apiKey' ? value : state.genericLlm.apiKey
+        ),
+      },
+    })),
+  
+  updateGenericLlmCredentialFromForm: (baseUrl, apiKey) =>
+    set((state) => ({
+      genericLlm: {
+        ...state.genericLlm,
+        baseUrl,
+        apiKey,
+        // 防御性检查：provider 未选择时强制 status 为 empty
+        status: state.genericLlm.provider ? inferStatus(baseUrl, apiKey) : 'empty',
+      },
+    })),
+  
+  clearGenericLlmFields: () =>
+    set((state) => ({
+      genericLlm: {
+        ...state.genericLlm,
+        baseUrl: '',
+        apiKey: '',
+        status: 'empty',
+      },
+    })),
+  
+  clearGenericLlmCredential: () => set({ genericLlm: initialGenericLlmCredential }),
 }));
