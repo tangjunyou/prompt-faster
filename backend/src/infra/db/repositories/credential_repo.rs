@@ -21,7 +21,7 @@ impl CredentialType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "dify" => Some(CredentialType::Dify),
             "generic_llm" => Some(CredentialType::GenericLlm),

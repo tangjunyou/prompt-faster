@@ -118,7 +118,8 @@ describe('configService', () => {
     });
 
     it('应该在缺少 Dify 凭证时抛出验证错误', async () => {
-      const request: SaveConfigRequest = {
+      // 使用类型断言测试不完整请求的验证逻辑
+      const request = {
         generic_llm: {
           provider: 'siliconflow',
           base_url: 'https://api.siliconflow.cn',
@@ -129,13 +130,14 @@ describe('configService', () => {
           top_p: 0.9,
           max_tokens: 2048,
         },
-      };
+      } as SaveConfigRequest;
 
       await expect(saveConfig(request)).rejects.toThrow();
     });
 
     it('应该在缺少通用大模型凭证时抛出验证错误', async () => {
-      const request: SaveConfigRequest = {
+      // 使用类型断言测试不完整请求的验证逻辑
+      const request = {
         dify: {
           base_url: 'https://api.dify.ai',
           api_key: 'sk-test-dify-key',
@@ -145,7 +147,7 @@ describe('configService', () => {
           top_p: 0.9,
           max_tokens: 2048,
         },
-      };
+      } as SaveConfigRequest;
 
       await expect(saveConfig(request)).rejects.toThrow();
     });

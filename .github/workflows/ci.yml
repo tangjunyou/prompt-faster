@@ -141,7 +141,10 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm run test -- --run --passWithNoTests
+        run: npm run test -- --run
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
 
   frontend-build:
     name: Frontend Build
@@ -208,6 +211,10 @@ jobs:
             backend/target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Build backend release
+        working-directory: ./backend
+        run: cargo build --release
+
       - name: Start backend
         working-directory: ./backend
         env:
@@ -216,9 +223,10 @@ jobs:
           SERVER_PORT: '3000'
           DATABASE_URL: sqlite:data/prompt_faster.db?mode=rwc
           RUST_LOG: info
+          MASTER_PASSWORD: ci_test_master_password_for_e2e
         run: |
           mkdir -p data
-          nohup cargo run > ../backend-e2e.log 2>&1 &
+          nohup ./target/release/prompt_faster > ../backend-e2e.log 2>&1 &
 
       - name: Wait for backend health
         run: |
@@ -255,3 +263,35 @@ jobs:
           name: backend-e2e-log
           path: backend-e2e.log
           retention-days: 30
+
+  # 安全扫描
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        working-directory: ./backend
+        run: cargo audit
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: ./frontend
+        run: npm audit --audit-level=high
