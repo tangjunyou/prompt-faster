@@ -60,7 +60,8 @@ test.describe('认证流程', () => {
     await expect(page.locator('[data-testid="user-menu"]')).toContainText(username);
 
     // 访问受保护页面
-    await page.goto('/settings/api');
+    await page.getByRole('link', { name: /API 配置/ }).click();
+    await page.waitForURL('/settings/api');
     await expect(page.getByText('API 配置')).toBeVisible();
 
     // 退出登录（AC #4）
