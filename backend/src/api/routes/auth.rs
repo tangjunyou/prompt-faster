@@ -10,8 +10,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::middleware::CurrentUser;
+use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::ApiResponse;
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{
@@ -578,13 +578,10 @@ async fn get_config(
             .ok();
 
     // 查询通用大模型凭证
-    let generic_llm_credential = CredentialRepo::find_by_user_and_type(
-        &state.db,
-        user_id,
-        CredentialType::GenericLlm,
-    )
-    .await
-    .ok();
+    let generic_llm_credential =
+        CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::GenericLlm)
+            .await
+            .ok();
 
     // 查询老师模型参数（不存在时返回默认值）
     let teacher_settings = TeacherSettingsRepo::get_or_default(&state.db, user_id)

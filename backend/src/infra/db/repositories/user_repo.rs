@@ -164,12 +164,14 @@ impl UserRepo {
         .fetch_optional(pool)
         .await?;
 
-        Ok(row.map(|(id, username, password_hash, created_at, updated_at)| User {
-            id,
-            username,
-            password_hash,
-            created_at,
-            updated_at,
-        }))
+        Ok(row.map(
+            |(id, username, password_hash, created_at, updated_at)| User {
+                id,
+                username,
+                password_hash,
+                created_at,
+                updated_at,
+            },
+        ))
     }
 }

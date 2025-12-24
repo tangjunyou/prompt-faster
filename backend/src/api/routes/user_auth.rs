@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use tracing::{info, warn};
 
-use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
-use crate::api::middleware::LoginAttemptStore;
-use crate::api::middleware::session::UnlockContext;
 use crate::api::middleware::CurrentUser;
+use crate::api::middleware::LoginAttemptStore;
+use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
+use crate::api::middleware::session::UnlockContext;
 use crate::api::response::ApiResponse;
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{UserRepo, UserRepoError};
@@ -98,7 +98,7 @@ async fn get_system_status(State(state): State<AppState>) -> ApiResponse<SystemS
                 "DATABASE_ERROR",
                 "系统状态检查失败",
             )
-        },
+        }
     }
 }
 
@@ -164,11 +164,7 @@ async fn register(
     let user = match UserRepo::create_user(&state.db, &req.username, &password_hash).await {
         Ok(user) => user,
         Err(UserRepoError::UsernameConflict) => {
-            return ApiResponse::err(
-                StatusCode::CONFLICT,
-                "USERNAME_CONFLICT",
-                "用户名已存在",
-            );
+            return ApiResponse::err(StatusCode::CONFLICT, "USERNAME_CONFLICT", "用户名已存在");
         }
         Err(e) => {
             warn!(error = %e, "创建用户失败");
@@ -217,28 +213,17 @@ async fn login(
 
     if state.login_attempt_store.is_blocked(&key).await {
         warn!(correlation_id = %correlation_id, username = %req.username, ip = %ip, "登录尝试被冷却");
-        return ApiResponse::err(
-            StatusCode::UNAUTHORIZED,
-            "AUTH_FAILED",
-            "用户名或密码错误",
-        );
+        return ApiResponse::err(StatusCode::UNAUTHORIZED, "AUTH_FAILED", "用户名或密码错误");
     }
 
     // 查找用户（不区分用户不存在/密码错误，AC #3）
     let user = match UserRepo::find_by_username(&state.db, &req.username).await {
         Ok(user) => user,
         Err(UserRepoError::NotFound) => {
-            state
-                .login_attempt_store
-                .record_failure(key.clone())
-                .await;
+            state.login_attempt_store.record_failure(key.clone()).await;
             // 不暴露用户是否存在
             warn!("登录失败：用户名或密码错误");
-            return ApiResponse::err(
-                StatusCode::UNAUTHORIZED,
-                "AUTH_FAILED",
-                "用户名或密码错误",
-            );
+            return ApiResponse::err(StatusCode::UNAUTHORIZED, "AUTH_FAILED", "用户名或密码错误");
         }
         Err(e) => {
             warn!(error = %e, "查询用户失败");
@@ -252,17 +237,10 @@ async fn login(
 
     // 验证密码
     if PasswordService::verify_password(&req.password, &user.password_hash).is_err() {
-        state
-            .login_attempt_store
-            .record_failure(key.clone())
-            .await;
+        state.login_attempt_store.record_failure(key.clone()).await;
         // 不暴露具体失败原因
         warn!("登录失败：用户名或密码错误");
-        return ApiResponse::err(
-            StatusCode::UNAUTHORIZED,
-            "AUTH_FAILED",
-            "用户名或密码错误",
-        );
+        return ApiResponse::err(StatusCode::UNAUTHORIZED, "AUTH_FAILED", "用户名或密码错误");
     }
 
     state.login_attempt_store.reset(&key).await;
@@ -290,10 +268,7 @@ async fn login(
 /// POST /api/v1/auth/logout
 ///
 /// 注销当前会话
-async fn logout(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-) -> ApiResponse<LogoutResponse> {
+async fn logout(State(state): State<AppState>, headers: HeaderMap) -> ApiResponse<LogoutResponse> {
     let correlation_id = extract_correlation_id(&headers);
     info!(correlation_id = %correlation_id, "用户登出");
 
@@ -328,10 +303,7 @@ async fn logout(
 /// GET /api/v1/auth/me
 ///
 /// 需要鉴权，返回当前登录用户的信息
-async fn get_me(
-    State(state): State<AppState>,
-    current_user: CurrentUser,
-) -> ApiResponse<UserInfo> {
+async fn get_me(State(state): State<AppState>, current_user: CurrentUser) -> ApiResponse<UserInfo> {
     // 从数据库获取完整用户信息
     match UserRepo::find_by_id(&state.db, &current_user.user_id).await {
         Ok(user) => ApiResponse::ok(UserInfo {
@@ -358,7 +330,9 @@ pub fn public_router() -> Router<AppState> {
 }
 
 pub fn protected_router() -> Router<AppState> {
-    Router::new().route("/logout", post(logout)).route("/me", get(get_me))
+    Router::new()
+        .route("/logout", post(logout))
+        .route("/me", get(get_me))
 }
 
 pub fn router() -> Router<AppState> {

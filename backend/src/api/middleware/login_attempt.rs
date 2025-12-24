@@ -28,10 +28,6 @@ impl LoginAttemptStore {
         }
     }
 
-    pub fn default() -> Self {
-        Self::new(5, 60)
-    }
-
     pub fn make_key(ip: &str, username: &str) -> String {
         format!("{}|{}", ip, username)
     }
@@ -82,5 +78,11 @@ impl LoginAttemptStore {
         let before = attempts.len();
         attempts.retain(|_, record| record.expires_at_ms > now);
         before - attempts.len()
+    }
+}
+
+impl Default for LoginAttemptStore {
+    fn default() -> Self {
+        Self::new(5, 60)
     }
 }

@@ -104,7 +104,10 @@ async fn main() -> anyhow::Result<()> {
 
             let removed_login_attempts = login_attempt_store_for_cleanup.cleanup_expired().await;
             if removed_login_attempts > 0 {
-                tracing::info!(removed_count = removed_login_attempts, "已清理过期登录尝试记录");
+                tracing::info!(
+                    removed_count = removed_login_attempts,
+                    "已清理过期登录尝试记录"
+                );
             }
         }
     });
@@ -130,19 +133,19 @@ async fn main() -> anyhow::Result<()> {
 
     // 构建路由
     // 受保护的路由（需要 auth_middleware 鉴权）
-    let protected_routes = auth::protected_router()
-        .layer(middleware::from_fn_with_state(
-            session_store_for_middleware.clone(),
-            auth_middleware,
-        ));
+    let protected_routes = auth::protected_router().layer(middleware::from_fn_with_state(
+        session_store_for_middleware.clone(),
+        auth_middleware,
+    ));
 
-    let protected_user_auth_routes = user_auth::protected_router()
-        .layer(middleware::from_fn_with_state(session_store_for_middleware, auth_middleware));
+    let protected_user_auth_routes = user_auth::protected_router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+    );
 
     let app = Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
-        .nest("/api/v1/auth", auth::public_router())  // 公开路由：连接测试
-        .nest("/api/v1/auth", protected_routes)        // 受保护路由：配置管理
+        .nest("/api/v1/auth", auth::public_router()) // 公开路由：连接测试
+        .nest("/api/v1/auth", protected_routes) // 受保护路由：配置管理
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .with_state(state)
@@ -173,7 +176,11 @@ async fn main() -> anyhow::Result<()> {
 
     info!("✅ Prompt Faster 已启动: http://{}", addr);
 
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

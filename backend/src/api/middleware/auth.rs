@@ -96,7 +96,10 @@ pub mod extractor {
     {
         type Rejection = Response;
 
-        async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        async fn from_request_parts(
+            parts: &mut Parts,
+            _state: &S,
+        ) -> Result<Self, Self::Rejection> {
             parts
                 .extensions
                 .get::<CurrentUser>()

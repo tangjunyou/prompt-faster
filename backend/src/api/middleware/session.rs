@@ -22,7 +22,7 @@ pub struct SessionData {
 
 /// 解锁上下文
 /// 用于存放可再派生材料（用户密码的内存副本）
-/// 
+///
 /// Code Review Fix (Story 1.6):
 /// - 使用 zeroize 进行内存清零
 /// - Drop 时自动清除密码内存
@@ -79,11 +79,6 @@ impl SessionStore {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             session_ttl_ms: (session_ttl_hours * 60 * 60 * 1000) as i64,
         }
-    }
-
-    /// 使用默认配置创建会话存储（24 小时过期）
-    pub fn default() -> Self {
-        Self::new(24)
     }
 
     /// 创建新会话
@@ -165,6 +160,12 @@ impl SessionStore {
     }
 }
 
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new(24)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,9 +174,7 @@ mod tests {
     async fn test_create_and_validate_session() {
         let store = SessionStore::new(1); // 1 小时过期
 
-        let token = store
-            .create_session("user123".to_string(), None)
-            .await;
+        let token = store.create_session("user123".to_string(), None).await;
 
         let session = store.validate_session(&token).await;
         assert!(session.is_some());
@@ -194,9 +193,7 @@ mod tests {
     async fn test_remove_session() {
         let store = SessionStore::default();
 
-        let token = store
-            .create_session("user123".to_string(), None)
-            .await;
+        let token = store.create_session("user123".to_string(), None).await;
 
         assert!(store.validate_session(&token).await.is_some());
 
@@ -217,6 +214,9 @@ mod tests {
 
         let session = store.validate_session(&token).await.unwrap();
         assert!(session.unlock_context.is_some());
-        assert_eq!(session.unlock_context.unwrap().password_str(), Some("user_password"));
+        assert_eq!(
+            session.unlock_context.unwrap().password_str(),
+            Some("user_password")
+        );
     }
 }

@@ -1,8 +1,8 @@
+use axum::Router;
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use axum::middleware;
-use axum::Router;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::net::SocketAddr;
@@ -50,10 +50,9 @@ async fn setup_test_app() -> Router {
         auth_middleware,
     ));
 
-    let protected_user_auth_routes = user_auth::protected_router().layer(middleware::from_fn_with_state(
-        session_store_for_middleware,
-        auth_middleware,
-    ));
+    let protected_user_auth_routes = user_auth::protected_router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+    );
 
     Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
@@ -80,7 +79,9 @@ fn build_json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
         .method(method)
         .uri(uri)
         .header("content-type", "application/json")
-        .body(Body::from(serde_json::to_vec(&body).expect("序列化 JSON 失败")))
+        .body(Body::from(
+            serde_json::to_vec(&body).expect("序列化 JSON 失败"),
+        ))
         .expect("构建请求失败")
 }
 
@@ -90,8 +91,10 @@ fn with_connect_info(mut req: Request<Body>, addr: SocketAddr) -> Request<Body> 
 }
 
 fn with_bearer(mut req: Request<Body>, token: &str) -> Request<Body> {
-    req.headers_mut()
-        .insert("Authorization", format!("Bearer {}", token).parse().unwrap());
+    req.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {}", token).parse().unwrap(),
+    );
     req
 }
 
@@ -205,11 +208,23 @@ async fn test_wrong_username_and_wrong_password_return_same_generic_error() {
     assert_eq!(wrong_password_resp.status(), StatusCode::UNAUTHORIZED);
     let wrong_password_json = read_json_body(wrong_password_resp).await;
 
-    assert_eq!(wrong_username_json["error"]["code"].as_str(), Some("AUTH_FAILED"));
-    assert_eq!(wrong_username_json["error"]["message"].as_str(), Some("用户名或密码错误"));
+    assert_eq!(
+        wrong_username_json["error"]["code"].as_str(),
+        Some("AUTH_FAILED")
+    );
+    assert_eq!(
+        wrong_username_json["error"]["message"].as_str(),
+        Some("用户名或密码错误")
+    );
 
-    assert_eq!(wrong_password_json["error"]["code"].as_str(), Some("AUTH_FAILED"));
-    assert_eq!(wrong_password_json["error"]["message"].as_str(), Some("用户名或密码错误"));
+    assert_eq!(
+        wrong_password_json["error"]["code"].as_str(),
+        Some("AUTH_FAILED")
+    );
+    assert_eq!(
+        wrong_password_json["error"]["message"].as_str(),
+        Some("用户名或密码错误")
+    );
 }
 
 #[tokio::test]
@@ -310,5 +325,8 @@ async fn test_login_attempt_protection_returns_generic_error() {
 
     let blocked_json = read_json_body(blocked_resp).await;
     assert_eq!(blocked_json["error"]["code"].as_str(), Some("AUTH_FAILED"));
-    assert_eq!(blocked_json["error"]["message"].as_str(), Some("用户名或密码错误"));
+    assert_eq!(
+        blocked_json["error"]["message"].as_str(),
+        Some("用户名或密码错误")
+    );
 }
