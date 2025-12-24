@@ -1,12 +1,39 @@
 /**
  * API 客户端配置
  * 统一的 API 调用入口
+ * 
+ * Code Review Fix (Story 1.6):
+ * - 添加 UnauthorizedError 用于 401 识别
+ * - 添加 apiRequestWithAuth 统一鉴权注入点
+ * - 支持 onUnauthorized 回调处理会话过期
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
 
 /** 默认请求超时时间（毫秒）- Code Review Fix: 添加超时配置 */
 const DEFAULT_TIMEOUT_MS = 30000
+
+/**
+ * 未授权错误（401）
+ * 用于 TanStack Query retry 判断，避免对 401 进行重试
+ */
+export class UnauthorizedError extends Error {
+  constructor(message: string = '未授权，请重新登录') {
+    super(message)
+    this.name = 'UnauthorizedError'
+  }
+}
+
+/** 全局 401 处理回调（由 useAuthStore 注册） */
+let globalUnauthorizedHandler: (() => void) | null = null
+
+/**
+ * 注册全局 401 处理器
+ * 应在应用启动时由 useAuthStore 调用
+ */
+export function registerUnauthorizedHandler(handler: () => void): void {
+  globalUnauthorizedHandler = handler
+}
 
 /**
  * API 成功响应
@@ -154,4 +181,67 @@ export function put<T>(endpoint: string, body: unknown): Promise<ApiResponse<T>>
  */
 export function del<T>(endpoint: string): Promise<ApiResponse<T>> {
   return apiRequest<T>(endpoint, { method: 'DELETE' })
+}
+
+/**
+ * 带鉴权的 API 请求（统一鉴权注入点）
+ * 
+ * Story 1.6 Code Review Fix:
+ * - 所有需要鉴权的请求必须通过此函数发送
+ * - 统一注入 Authorization: Bearer <token> header
+ * - 处理 401 响应，触发全局 unauthorized 处理器
+ * 
+ * @param endpoint - API 端点路径
+ * @param options - fetch 请求选项
+ * @param token - 会话令牌
+ * @param timeoutMs - 请求超时时间（毫秒）
+ */
+export async function apiRequestWithAuth<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  token: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+): Promise<ApiResponse<T>> {
+  const response = await apiRequest<T>(
+    endpoint,
+    {
+      ...options,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    timeoutMs
+  )
+
+  // 检查 401 未授权响应
+  if (isApiError(response) && response.error.code === 'UNAUTHORIZED') {
+    // 触发全局 401 处理器（清空 auth 状态 + 跳转登录页）
+    if (globalUnauthorizedHandler) {
+      globalUnauthorizedHandler()
+    }
+  }
+
+  return response
+}
+
+/**
+ * 带鉴权的 GET 请求
+ */
+export function getWithAuth<T>(endpoint: string, token: string): Promise<ApiResponse<T>> {
+  return apiRequestWithAuth<T>(endpoint, { method: 'GET' }, token)
+}
+
+/**
+ * 带鉴权的 POST 请求
+ */
+export function postWithAuth<T>(endpoint: string, body: unknown, token: string): Promise<ApiResponse<T>> {
+  return apiRequestWithAuth<T>(
+    endpoint,
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+    token
+  )
 }

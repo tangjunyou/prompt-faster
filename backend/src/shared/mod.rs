@@ -3,6 +3,7 @@
 pub mod config;
 pub mod error;
 pub mod log_sanitizer;
+pub mod password;
 pub mod time;
 pub mod tracing_setup;
 pub mod url_validator;

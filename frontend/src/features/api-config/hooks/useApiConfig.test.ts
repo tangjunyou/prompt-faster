@@ -10,6 +10,7 @@ import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { useLoadApiConfig, useSaveApiConfig, buildSaveConfigRequest } from './useApiConfig';
 import { useCredentialStore } from '@/stores/useCredentialStore';
+import { useAuthStore } from '@/stores/useAuthStore';
 import type { ApiConfigResponse } from '@/types/credentials';
 import React from 'react';
 
@@ -77,11 +78,25 @@ describe('useApiConfig hooks', () => {
       isHydrated: false,
       isDirty: false,
     });
+
+    // 重置认证状态
+    useAuthStore.setState({
+      authStatus: 'unauthenticated',
+      sessionToken: null,
+      currentUser: null,
+      requiresRegistration: null,
+    });
   });
   afterAll(() => server.close());
 
   describe('useLoadApiConfig', () => {
     it('应该成功加载配置并填充 Store', async () => {
+      // 注入登录态 token（configService 现在需要鉴权）
+      useAuthStore.setState({
+        authStatus: 'authenticated',
+        sessionToken: 'test-token',
+      });
+
       const { result } = renderHook(() => useLoadApiConfig(), {
         wrapper: createWrapper(),
       });
@@ -98,6 +113,12 @@ describe('useApiConfig hooks', () => {
     });
 
     it('应该在加载失败时返回错误状态', async () => {
+      // 注入登录态 token（configService 现在需要鉴权）
+      useAuthStore.setState({
+        authStatus: 'authenticated',
+        sessionToken: 'test-token',
+      });
+
       server.use(
         http.get('http://localhost:3000/api/v1/auth/config', () => {
           return HttpResponse.json(
@@ -129,6 +150,12 @@ describe('useApiConfig hooks', () => {
 
   describe('useSaveApiConfig', () => {
     it('应该成功保存配置并标记为干净状态', async () => {
+      // 注入登录态 token（configService 现在需要鉴权）
+      useAuthStore.setState({
+        authStatus: 'authenticated',
+        sessionToken: 'test-token',
+      });
+
       // 先设置 Store 为脏状态
       useCredentialStore.setState({ isDirty: true });
 

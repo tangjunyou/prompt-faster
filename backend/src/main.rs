@@ -12,7 +12,8 @@ use tracing::info;
 use prompt_faster::api::middleware::correlation_id::{
     CORRELATION_ID_HEADER, correlation_id_middleware,
 };
-use prompt_faster::api::routes::{auth, health};
+use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
+use prompt_faster::api::routes::{auth, health, user_auth};
 use prompt_faster::api::state::AppState;
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
@@ -45,7 +46,14 @@ async fn main() -> anyhow::Result<()> {
     info!("HTTP 客户端初始化成功");
 
     // 初始化 API Key 管理器
-    // TODO(Story-1.6): 替换为用户登录密码派生，当前使用临时主密码
+    //
+    // Story 1.6 决策记录:
+    // - 当前 MVP 阶段使用全局 MASTER_PASSWORD，适用于单用户场景
+    // - UnlockContext 已在 SessionStore 中实现，存放用户密码的内存副本
+    // - 后续 Story 1.7+ 迁移到用户密码派生：
+    //   1. ApiKeyManager 改为工具类，接收密码参数
+    //   2. 每次加解密从 CurrentUser.unlock_context 获取密码
+    //   3. 历史数据需要使用 LEGACY_DEFAULT_USER_ID 迁移
     //
     // 安全约束 (Story 1.5 Task 2.2):
     // - 非开发模式下必须设置 MASTER_PASSWORD 环境变量
@@ -72,11 +80,42 @@ async fn main() -> anyhow::Result<()> {
     let api_key_manager = Arc::new(ApiKeyManager::new(master_password));
     info!("API Key 管理器初始化成功");
 
+    // 初始化会话存储（24 小时过期）
+    let session_store = SessionStore::new(24);
+    info!("会话存储初始化成功");
+
+    let login_attempt_store = LoginAttemptStore::default();
+
+    // 克隆 session_store 用于 auth_middleware 和后台清理任务（在移动到 AppState 之前）
+    let session_store_for_middleware = session_store.clone();
+    let session_store_for_cleanup = session_store.clone();
+    let login_attempt_store_for_cleanup = login_attempt_store.clone();
+
+    // 启动会话过期清理后台任务（Code Review Fix: Issue #5）
+    // 每 5 分钟清理一次过期会话，避免内存泄漏
+    tokio::spawn(async move {
+        let cleanup_interval = std::time::Duration::from_secs(5 * 60); // 5 分钟
+        loop {
+            tokio::time::sleep(cleanup_interval).await;
+            let removed = session_store_for_cleanup.cleanup_expired_sessions().await;
+            if removed > 0 {
+                tracing::info!(removed_count = removed, "已清理过期会话");
+            }
+
+            let removed_login_attempts = login_attempt_store_for_cleanup.cleanup_expired().await;
+            if removed_login_attempts > 0 {
+                tracing::info!(removed_count = removed_login_attempts, "已清理过期登录尝试记录");
+            }
+        }
+    });
+
     // 构建应用状态
     let state = AppState {
         db,
         http_client,
         api_key_manager,
+        session_store,
+        login_attempt_store,
     };
 
     // 允许的前端 Origin（从配置读取）
@@ -90,9 +129,22 @@ async fn main() -> anyhow::Result<()> {
     let correlation_id_header: HeaderName = CORRELATION_ID_HEADER.parse().unwrap();
 
     // 构建路由
+    // 受保护的路由（需要 auth_middleware 鉴权）
+    let protected_routes = auth::protected_router()
+        .layer(middleware::from_fn_with_state(
+            session_store_for_middleware.clone(),
+            auth_middleware,
+        ));
+
+    let protected_user_auth_routes = user_auth::protected_router()
+        .layer(middleware::from_fn_with_state(session_store_for_middleware, auth_middleware));
+
     let app = Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
-        .nest("/api/v1/auth", auth::router())
+        .nest("/api/v1/auth", auth::public_router())  // 公开路由：连接测试
+        .nest("/api/v1/auth", protected_routes)        // 受保护路由：配置管理
+        .nest("/api/v1/auth", user_auth::public_router())
+        .nest("/api/v1/auth", protected_user_auth_routes)
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))
         .layer(TraceLayer::new_for_http())
@@ -121,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
 
     info!("✅ Prompt Faster 已启动: http://{}", addr);
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }

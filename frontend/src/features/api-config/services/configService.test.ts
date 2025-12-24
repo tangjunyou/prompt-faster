@@ -66,7 +66,7 @@ describe('configService', () => {
 
   describe('getConfig', () => {
     it('应该成功获取配置', async () => {
-      const config = await getConfig();
+      const config = await getConfig('test-token');
 
       expect(config).toEqual(mockConfigResponse);
       expect(config.has_dify_key).toBe(true);
@@ -89,7 +89,7 @@ describe('configService', () => {
         })
       );
 
-      await expect(getConfig()).rejects.toThrow('数据库连接失败');
+      await expect(getConfig('test-token')).rejects.toThrow('数据库连接失败');
     });
   });
 
@@ -112,7 +112,7 @@ describe('configService', () => {
         },
       };
 
-      const result = await saveConfig(request);
+      const result = await saveConfig(request, 'test-token');
 
       expect(result.message).toBe('配置保存成功');
     });
@@ -132,7 +132,7 @@ describe('configService', () => {
         },
       } as SaveConfigRequest;
 
-      await expect(saveConfig(request)).rejects.toThrow();
+      await expect(saveConfig(request, 'test-token')).rejects.toThrow();
     });
 
     it('应该在缺少通用大模型凭证时抛出验证错误', async () => {
@@ -149,7 +149,7 @@ describe('configService', () => {
         },
       } as SaveConfigRequest;
 
-      await expect(saveConfig(request)).rejects.toThrow();
+      await expect(saveConfig(request, 'test-token')).rejects.toThrow();
     });
 
     it('应该在 teacher_settings 参数超出范围时抛出验证错误', async () => {
@@ -184,7 +184,9 @@ describe('configService', () => {
         },
       };
 
-      await expect(saveConfig(request)).rejects.toThrow('temperature 必须在 0.0 ~ 2.0 之间');
+      await expect(saveConfig(request, 'test-token')).rejects.toThrow(
+        'temperature 必须在 0.0 ~ 2.0 之间'
+      );
     });
   });
 });

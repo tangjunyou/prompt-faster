@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getConfig, saveConfig } from '../services/configService';
+import { useAuthStore } from '@/stores/useAuthStore';
 import { useCredentialStore } from '@/stores/useCredentialStore';
 import type { SaveConfigRequest } from '@/types/credentials';
 
@@ -18,16 +19,21 @@ const CONFIG_QUERY_KEY = ['api-config'] as const;
  */
 export function useLoadApiConfig() {
   const hydrateFromServer = useCredentialStore((state) => state.hydrateFromServer);
+  const sessionToken = useAuthStore((state) => state.sessionToken);
+  const authStatus = useAuthStore((state) => state.authStatus);
 
   return useQuery({
     queryKey: CONFIG_QUERY_KEY,
     queryFn: async () => {
-      const config = await getConfig();
+      if (authStatus !== 'authenticated' || !sessionToken) {
+        throw new Error('未登录');
+      }
+
+      const config = await getConfig(sessionToken);
       hydrateFromServer(config);
       return config;
     },
     staleTime: 5 * 60 * 1000, // 5 分钟
-    retry: 1,
   });
 }
 
@@ -39,10 +45,16 @@ export function useLoadApiConfig() {
 export function useSaveApiConfig() {
   const queryClient = useQueryClient();
   const markClean = useCredentialStore((state) => state.markClean);
+  const sessionToken = useAuthStore((state) => state.sessionToken);
+  const authStatus = useAuthStore((state) => state.authStatus);
 
   return useMutation({
     mutationFn: async (config: SaveConfigRequest) => {
-      return saveConfig(config);
+      if (authStatus !== 'authenticated' || !sessionToken) {
+        throw new Error('未登录');
+      }
+
+      return saveConfig(config, sessionToken);
     },
     onSuccess: () => {
       // 保存成功后标记为干净状态

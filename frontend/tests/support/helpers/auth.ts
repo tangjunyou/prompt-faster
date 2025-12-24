@@ -17,14 +17,13 @@ export async function login(
   await page.click('[data-testid="login-button"]');
   
   // 等待登录完成
-  await page.waitForURL(/\/(dashboard|workspace)/);
+  await page.waitForURL('/');
 }
 
 /**
  * 执行登出操作
  */
 export async function logout(page: Page): Promise<void> {
-  await page.click('[data-testid="user-menu"]');
   await page.click('[data-testid="logout-button"]');
   
   // 等待登出完成

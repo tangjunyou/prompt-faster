@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
+use crate::api::middleware::CurrentUser;
 use crate::api::response::ApiResponse;
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{
@@ -251,9 +252,10 @@ fn map_llm_connection_error(error: LlmConnectionError) -> ApiResponse<TestConnec
 // 凭证配置管理 API
 // ============================================================================
 
-/// MVP 阶段默认用户 ID
-/// TODO(Story-1.6): 替换为真实用户 ID
-const DEFAULT_USER_ID: &str = "default_user";
+/// 历史数据中的默认用户 ID（用于迁移）
+/// TODO(Story-1.7): 用于将 default_user 的历史数据迁移到首个注册用户
+#[allow(dead_code)]
+const LEGACY_DEFAULT_USER_ID: &str = "default_user";
 
 /// 保存配置请求
 #[derive(Debug, Deserialize)]
@@ -356,13 +358,18 @@ fn validate_teacher_settings(settings: &TeacherSettingsInput) -> Result<(), Stri
 /// - Dify credential（base_url, api_key）
 /// - Generic LLM credential（provider, base_url, api_key）
 /// - teacher model settings（temperature, top_p, max_tokens）
+///
+/// # 鉴权
+/// 此接口需要登录，使用 CurrentUser.user_id 替代 DEFAULT_USER_ID
 async fn save_config(
     State(state): State<AppState>,
     headers: HeaderMap,
+    current_user: CurrentUser,
     Json(req): Json<SaveConfigRequest>,
 ) -> ApiResponse<SaveConfigResponse> {
     let correlation_id = extract_correlation_id(&headers);
-    info!(correlation_id = %correlation_id, "保存配置");
+    let user_id = &current_user.user_id;
+    info!(correlation_id = %correlation_id, user_id = %user_id, "保存配置");
 
     // 强制校验：必须同时包含 Dify 和 Generic LLM 凭证 (Story 1.5 Task 3.3)
     if req.dify.is_none() {
@@ -432,7 +439,7 @@ async fn save_config(
         if let Err(e) = CredentialRepo::upsert(
             &state.db,
             UpsertCredentialInput {
-                user_id: DEFAULT_USER_ID.to_string(),
+                user_id: user_id.clone(),
                 credential_type: CredentialType::Dify,
                 provider: None,
                 base_url: dify.base_url.clone(),
@@ -502,7 +509,7 @@ async fn save_config(
         if let Err(e) = CredentialRepo::upsert(
             &state.db,
             UpsertCredentialInput {
-                user_id: DEFAULT_USER_ID.to_string(),
+                user_id: user_id.clone(),
                 credential_type: CredentialType::GenericLlm,
                 provider: Some(generic_llm.provider.clone()),
                 base_url: generic_llm.base_url.clone(),
@@ -527,7 +534,7 @@ async fn save_config(
     if let Err(e) = TeacherSettingsRepo::upsert(
         &state.db,
         UpsertTeacherSettingsInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: user_id.clone(),
             temperature: req.teacher_settings.temperature,
             top_p: req.teacher_settings.top_p,
             max_tokens: req.teacher_settings.max_tokens,
@@ -552,34 +559,39 @@ async fn save_config(
 /// 获取配置
 ///
 /// GET /api/v1/auth/config
+///
+/// # 鉴权
+/// 此接口需要登录，使用 CurrentUser.user_id 替代 DEFAULT_USER_ID
 async fn get_config(
     State(state): State<AppState>,
     headers: HeaderMap,
+    current_user: CurrentUser,
 ) -> ApiResponse<ConfigResponse> {
     let correlation_id = extract_correlation_id(&headers);
-    info!(correlation_id = %correlation_id, "获取配置");
+    let user_id = &current_user.user_id;
+    info!(correlation_id = %correlation_id, user_id = %user_id, "获取配置");
 
     // 查询 Dify 凭证
     let dify_credential =
-        CredentialRepo::find_by_user_and_type(&state.db, DEFAULT_USER_ID, CredentialType::Dify)
+        CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::Dify)
             .await
             .ok();
 
     // 查询通用大模型凭证
     let generic_llm_credential = CredentialRepo::find_by_user_and_type(
         &state.db,
-        DEFAULT_USER_ID,
+        user_id,
         CredentialType::GenericLlm,
     )
     .await
     .ok();
 
     // 查询老师模型参数（不存在时返回默认值）
-    let teacher_settings = TeacherSettingsRepo::get_or_default(&state.db, DEFAULT_USER_ID)
+    let teacher_settings = TeacherSettingsRepo::get_or_default(&state.db, user_id)
         .await
         .unwrap_or_else(|_| crate::infra::db::repositories::TeacherSettingsRecord {
             id: String::new(),
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: user_id.clone(),
             temperature: 0.7,
             top_p: 0.9,
             max_tokens: 2048,
@@ -651,7 +663,26 @@ fn decrypt_and_mask(
     }
 }
 
-/// 创建认证路由
+/// 创建公开认证路由（无需鉴权）
+pub fn public_router() -> Router<AppState> {
+    Router::new()
+        .route("/test-connection/dify", post(test_dify_connection))
+        .route(
+            "/test-connection/generic-llm",
+            post(test_generic_llm_connection),
+        )
+}
+
+/// 创建受保护的认证路由（需要鉴权，由 auth_middleware 保护）
+pub fn protected_router() -> Router<AppState> {
+    Router::new()
+        .route("/config", post(save_config))
+        .route("/config", get(get_config))
+}
+
+/// 创建认证路由（向后兼容，包含所有路由）
+/// ⚠️ 已废弃：请使用 public_router() + protected_router() 分别挂载
+#[deprecated(note = "Use public_router() and protected_router() instead")]
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/test-connection/dify", post(test_dify_connection))
