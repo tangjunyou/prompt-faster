@@ -125,7 +125,7 @@ export async function apiRequest<T>(
   } catch (err) {
     // 清理超时定时器
     clearTimeout(timeoutId)
-    
+
     // 处理超时错误
     if (err instanceof Error && err.name === 'AbortError') {
       return {
@@ -135,7 +135,7 @@ export async function apiRequest<T>(
         },
       }
     }
-    
+
     // 网络错误或 JSON 解析失败，构造符合 ApiError 的兜底结构
     const message = err instanceof Error ? err.message : '网络请求失败'
     return {
@@ -244,4 +244,15 @@ export function postWithAuth<T>(endpoint: string, body: unknown, token: string):
     },
     token
   )
+}
+
+/**
+ * 带鉴权的 DELETE 请求
+ *
+ * @param endpoint - API 端点路径（如 '/workspaces/123'）
+ * @param token - 会话令牌
+ * @returns Promise<ApiResponse<T>>
+ */
+export function delWithAuth<T>(endpoint: string, token: string): Promise<ApiResponse<T>> {
+  return apiRequestWithAuth<T>(endpoint, { method: 'DELETE' }, token)
 }

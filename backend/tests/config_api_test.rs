@@ -24,8 +24,8 @@ use sqlx::SqlitePool;
 /// 测试用主密码
 const TEST_MASTER_PASSWORD: &str = "test_master_password_for_integration";
 
-/// 测试用默认用户 ID（与 auth.rs 中的 DEFAULT_USER_ID 一致）
-const DEFAULT_USER_ID: &str = "default_user";
+/// 测试用用户 ID（仅用于测试 Repository 层逻辑）
+const TEST_USER_ID: &str = "test_user";
 
 /// 创建测试数据库（内存数据库 + 运行 migrations）
 async fn setup_test_db() -> SqlitePool {
@@ -123,7 +123,7 @@ async fn test_credential_storage_is_encrypted() {
     let saved = CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: TEST_USER_ID.to_string(),
             credential_type: CredentialType::Dify,
             provider: None,
             base_url: "https://api.dify.ai".to_string(),
@@ -144,7 +144,7 @@ async fn test_credential_storage_is_encrypted() {
 
     // 验证可以从数据库读取并解密
     let loaded =
-        CredentialRepo::find_by_user_and_type(&pool, DEFAULT_USER_ID, CredentialType::Dify)
+        CredentialRepo::find_by_user_and_type(&pool, TEST_USER_ID, CredentialType::Dify)
             .await
             .expect("读取凭证失败");
 
@@ -169,7 +169,7 @@ async fn test_teacher_settings_storage() {
     let saved = TeacherSettingsRepo::upsert(
         &pool,
         UpsertTeacherSettingsInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: TEST_USER_ID.to_string(),
             temperature: 0.8,
             top_p: 0.95,
             max_tokens: 4096,
@@ -183,7 +183,7 @@ async fn test_teacher_settings_storage() {
     assert_eq!(saved.max_tokens, 4096);
 
     // 读取老师模型参数
-    let loaded = TeacherSettingsRepo::find_by_user(&pool, DEFAULT_USER_ID)
+    let loaded = TeacherSettingsRepo::find_by_user(&pool, TEST_USER_ID)
         .await
         .expect("读取老师模型参数失败");
 
@@ -219,7 +219,7 @@ async fn test_credential_upsert_updates_existing() {
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: TEST_USER_ID.to_string(),
             credential_type: CredentialType::Dify,
             provider: None,
             base_url: "https://api.dify.ai/v1".to_string(),
@@ -236,7 +236,7 @@ async fn test_credential_upsert_updates_existing() {
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: TEST_USER_ID.to_string(),
             credential_type: CredentialType::Dify,
             provider: None,
             base_url: "https://api.dify.ai/v2".to_string(),
@@ -249,7 +249,7 @@ async fn test_credential_upsert_updates_existing() {
     .expect("第二次保存失败");
 
     // 验证只有一条记录，且是更新后的
-    let all_credentials = CredentialRepo::find_all_by_user(&pool, DEFAULT_USER_ID)
+    let all_credentials = CredentialRepo::find_all_by_user(&pool, TEST_USER_ID)
         .await
         .expect("读取所有凭证失败");
 
@@ -287,7 +287,7 @@ async fn test_different_credential_types_stored_separately() {
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: TEST_USER_ID.to_string(),
             credential_type: CredentialType::Dify,
             provider: None,
             base_url: "https://api.dify.ai".to_string(),
@@ -304,7 +304,7 @@ async fn test_different_credential_types_stored_separately() {
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
-            user_id: DEFAULT_USER_ID.to_string(),
+            user_id: TEST_USER_ID.to_string(),
             credential_type: CredentialType::GenericLlm,
             provider: Some("siliconflow".to_string()),
             base_url: "https://api.siliconflow.cn".to_string(),
@@ -317,12 +317,12 @@ async fn test_different_credential_types_stored_separately() {
     .expect("保存 GenericLlm 凭证失败");
 
     // 验证两种类型都能独立读取
-    let dify = CredentialRepo::find_by_user_and_type(&pool, DEFAULT_USER_ID, CredentialType::Dify)
+    let dify = CredentialRepo::find_by_user_and_type(&pool, TEST_USER_ID, CredentialType::Dify)
         .await
         .expect("读取 Dify 凭证失败");
 
     let llm =
-        CredentialRepo::find_by_user_and_type(&pool, DEFAULT_USER_ID, CredentialType::GenericLlm)
+        CredentialRepo::find_by_user_and_type(&pool, TEST_USER_ID, CredentialType::GenericLlm)
             .await
             .expect("读取 GenericLlm 凭证失败");
 

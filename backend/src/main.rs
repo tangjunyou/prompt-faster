@@ -13,7 +13,7 @@ use prompt_faster::api::middleware::correlation_id::{
     CORRELATION_ID_HEADER, correlation_id_middleware,
 };
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
-use prompt_faster::api::routes::{auth, health, user_auth};
+use prompt_faster::api::routes::{auth, health, user_auth, workspaces};
 use prompt_faster::api::state::AppState;
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
@@ -50,10 +50,8 @@ async fn main() -> anyhow::Result<()> {
     // Story 1.6 决策记录:
     // - 当前 MVP 阶段使用全局 MASTER_PASSWORD，适用于单用户场景
     // - UnlockContext 已在 SessionStore 中实现，存放用户密码的内存副本
-    // - 后续 Story 1.7+ 迁移到用户密码派生：
-    //   1. ApiKeyManager 改为工具类，接收密码参数
-    //   2. 每次加解密从 CurrentUser.unlock_context 获取密码
-    //   3. 历史数据需要使用 LEGACY_DEFAULT_USER_ID 迁移
+    // - Story 1.7 已完成历史数据迁移（default_user → 首个注册用户）
+    // - 后续可迁移到用户密码派生加密
     //
     // 安全约束 (Story 1.5 Task 2.2):
     // - 非开发模式下必须设置 MASTER_PASSWORD 环境变量
@@ -139,8 +137,13 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let protected_user_auth_routes = user_auth::protected_router().layer(
-        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+        middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
     );
+
+    let protected_workspaces_routes = workspaces::router().layer(middleware::from_fn_with_state(
+        session_store_for_middleware,
+        auth_middleware,
+    ));
 
     let app = Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
@@ -148,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v1/auth", protected_routes) // 受保护路由：配置管理
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
+        .nest("/api/v1/workspaces", protected_workspaces_routes)
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))
         .layer(TraceLayer::new_for_http())

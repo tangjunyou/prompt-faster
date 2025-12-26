@@ -164,98 +164,190 @@ async fn test_generic_llm_connection(
     }
 }
 
-/// 映射 Dify 连接错误到 API 响应
-fn map_connection_error(error: ConnectionError) -> ApiResponse<TestConnectionResult> {
-    match error {
-        ConnectionError::InvalidCredentials => ApiResponse::err(
+// ============================================================================
+// 连接错误映射（统一 trait 处理，消除代码重复）
+// ============================================================================
+
+/// 连接错误类型的统一抽象
+/// 用于消除 ConnectionError 和 LlmConnectionError 的重复映射代码
+trait ConnectionErrorMapping {
+    fn is_invalid_credentials(&self) -> bool;
+    fn is_forbidden(&self) -> bool;
+    fn is_timeout(&self) -> bool;
+    fn upstream_error_msg(&self) -> Option<String>;
+    fn request_failed_msg(&self) -> Option<String>;
+    fn parse_error_msg(&self) -> Option<String>;
+    fn validation_error_msg(&self) -> Option<String>;
+    fn client_error_msg(&self) -> Option<String>;
+}
+
+impl ConnectionErrorMapping for ConnectionError {
+    fn is_invalid_credentials(&self) -> bool {
+        matches!(self, ConnectionError::InvalidCredentials)
+    }
+    fn is_forbidden(&self) -> bool {
+        matches!(self, ConnectionError::Forbidden)
+    }
+    fn is_timeout(&self) -> bool {
+        matches!(self, ConnectionError::Timeout)
+    }
+    fn upstream_error_msg(&self) -> Option<String> {
+        if let ConnectionError::UpstreamError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+    fn request_failed_msg(&self) -> Option<String> {
+        if let ConnectionError::RequestFailed(e) = self {
+            Some(e.to_string())
+        } else {
+            None
+        }
+    }
+    fn parse_error_msg(&self) -> Option<String> {
+        if let ConnectionError::ParseError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+    fn validation_error_msg(&self) -> Option<String> {
+        if let ConnectionError::ValidationError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+    fn client_error_msg(&self) -> Option<String> {
+        if let ConnectionError::ClientError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+}
+
+impl ConnectionErrorMapping for LlmConnectionError {
+    fn is_invalid_credentials(&self) -> bool {
+        matches!(self, LlmConnectionError::InvalidCredentials)
+    }
+    fn is_forbidden(&self) -> bool {
+        matches!(self, LlmConnectionError::Forbidden)
+    }
+    fn is_timeout(&self) -> bool {
+        matches!(self, LlmConnectionError::Timeout)
+    }
+    fn upstream_error_msg(&self) -> Option<String> {
+        if let LlmConnectionError::UpstreamError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+    fn request_failed_msg(&self) -> Option<String> {
+        if let LlmConnectionError::RequestFailed(e) = self {
+            Some(e.to_string())
+        } else {
+            None
+        }
+    }
+    fn parse_error_msg(&self) -> Option<String> {
+        if let LlmConnectionError::ParseError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+    fn validation_error_msg(&self) -> Option<String> {
+        if let LlmConnectionError::ValidationError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+    fn client_error_msg(&self) -> Option<String> {
+        if let LlmConnectionError::ClientError(msg) = self {
+            Some(msg.clone())
+        } else {
+            None
+        }
+    }
+}
+
+/// 统一的连接错误映射函数
+fn map_connection_error_impl<E: ConnectionErrorMapping>(
+    error: E,
+) -> ApiResponse<TestConnectionResult> {
+    if error.is_invalid_credentials() {
+        return ApiResponse::err(
             StatusCode::UNAUTHORIZED,
             "AUTH_INVALID_CREDENTIALS",
             "无效的 API Key",
-        ),
-        ConnectionError::Forbidden => {
-            ApiResponse::err(StatusCode::FORBIDDEN, "AUTH_FORBIDDEN", "访问被拒绝")
-        }
-        ConnectionError::Timeout => ApiResponse::err(
+        );
+    }
+    if error.is_forbidden() {
+        return ApiResponse::err(StatusCode::FORBIDDEN, "AUTH_FORBIDDEN", "访问被拒绝");
+    }
+    if error.is_timeout() {
+        return ApiResponse::err(
             StatusCode::REQUEST_TIMEOUT,
             "AUTH_CONNECTION_TIMEOUT",
             "连接超时",
-        ),
-        ConnectionError::UpstreamError(msg) => ApiResponse::err(
+        );
+    }
+    if let Some(msg) = error.upstream_error_msg() {
+        return ApiResponse::err(
             StatusCode::BAD_GATEWAY,
             "AUTH_UPSTREAM_ERROR",
             format!("上游服务不可用: {}", msg),
-        ),
-        ConnectionError::RequestFailed(e) => ApiResponse::err(
+        );
+    }
+    if let Some(msg) = error.request_failed_msg() {
+        return ApiResponse::err(
             StatusCode::BAD_GATEWAY,
             "AUTH_UPSTREAM_ERROR",
-            format!("请求失败: {}", e),
-        ),
-        ConnectionError::ParseError(msg) => ApiResponse::err(
+            format!("请求失败: {}", msg),
+        );
+    }
+    if let Some(msg) = error.parse_error_msg() {
+        return ApiResponse::err(
             StatusCode::INTERNAL_SERVER_ERROR,
             "AUTH_INTERNAL_ERROR",
             format!("响应解析失败: {}", msg),
-        ),
-        ConnectionError::ValidationError(msg) => {
-            ApiResponse::err(StatusCode::BAD_REQUEST, "AUTH_VALIDATION_ERROR", msg)
-        }
-        ConnectionError::ClientError(msg) => ApiResponse::err(
+        );
+    }
+    if let Some(msg) = error.validation_error_msg() {
+        return ApiResponse::err(StatusCode::BAD_REQUEST, "AUTH_VALIDATION_ERROR", msg);
+    }
+    if let Some(msg) = error.client_error_msg() {
+        return ApiResponse::err(
             StatusCode::INTERNAL_SERVER_ERROR,
             "AUTH_INTERNAL_ERROR",
             format!("HTTP 客户端错误: {}", msg),
-        ),
+        );
     }
+    // 兜底：不应该执行到这里
+    ApiResponse::err(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "AUTH_INTERNAL_ERROR",
+        "未知错误",
+    )
+}
+
+/// 映射 Dify 连接错误到 API 响应
+fn map_connection_error(error: ConnectionError) -> ApiResponse<TestConnectionResult> {
+    map_connection_error_impl(error)
 }
 
 /// 映射 LLM 连接错误到 API 响应
 fn map_llm_connection_error(error: LlmConnectionError) -> ApiResponse<TestConnectionResult> {
-    match error {
-        LlmConnectionError::InvalidCredentials => ApiResponse::err(
-            StatusCode::UNAUTHORIZED,
-            "AUTH_INVALID_CREDENTIALS",
-            "无效的 API Key",
-        ),
-        LlmConnectionError::Forbidden => {
-            ApiResponse::err(StatusCode::FORBIDDEN, "AUTH_FORBIDDEN", "访问被拒绝")
-        }
-        LlmConnectionError::Timeout => ApiResponse::err(
-            StatusCode::REQUEST_TIMEOUT,
-            "AUTH_CONNECTION_TIMEOUT",
-            "连接超时",
-        ),
-        LlmConnectionError::UpstreamError(msg) => ApiResponse::err(
-            StatusCode::BAD_GATEWAY,
-            "AUTH_UPSTREAM_ERROR",
-            format!("上游服务不可用: {}", msg),
-        ),
-        LlmConnectionError::RequestFailed(e) => ApiResponse::err(
-            StatusCode::BAD_GATEWAY,
-            "AUTH_UPSTREAM_ERROR",
-            format!("请求失败: {}", e),
-        ),
-        LlmConnectionError::ParseError(msg) => ApiResponse::err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "AUTH_INTERNAL_ERROR",
-            format!("响应解析失败: {}", msg),
-        ),
-        LlmConnectionError::ValidationError(msg) => {
-            ApiResponse::err(StatusCode::BAD_REQUEST, "AUTH_VALIDATION_ERROR", msg)
-        }
-        LlmConnectionError::ClientError(msg) => ApiResponse::err(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "AUTH_INTERNAL_ERROR",
-            format!("HTTP 客户端错误: {}", msg),
-        ),
-    }
+    map_connection_error_impl(error)
 }
 
 // ============================================================================
 // 凭证配置管理 API
 // ============================================================================
-
-/// 历史数据中的默认用户 ID（用于迁移）
-/// TODO(Story-1.7): 用于将 default_user 的历史数据迁移到首个注册用户
-#[allow(dead_code)]
-const LEGACY_DEFAULT_USER_ID: &str = "default_user";
 
 /// 保存配置请求
 #[derive(Debug, Deserialize)]

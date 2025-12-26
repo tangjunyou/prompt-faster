@@ -18,7 +18,7 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::middleware::session::UnlockContext;
 use crate::api::response::ApiResponse;
 use crate::api::state::AppState;
-use crate::infra::db::repositories::{UserRepo, UserRepoError};
+use crate::infra::db::repositories::{MigrationRepo, UserRepo, UserRepoError};
 use crate::shared::password::{PasswordError, PasswordService};
 
 /// 注册请求
@@ -160,6 +160,18 @@ async fn register(
         }
     };
 
+    let was_empty = match UserRepo::has_any_user(&state.db).await {
+        Ok(has_any) => !has_any,
+        Err(e) => {
+            warn!(error = %e, "检查用户状态失败");
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "DATABASE_ERROR",
+                "注册失败，请稍后重试",
+            );
+        }
+    };
+
     // 创建用户
     let user = match UserRepo::create_user(&state.db, &req.username, &password_hash).await {
         Ok(user) => user,
@@ -175,6 +187,29 @@ async fn register(
             );
         }
     };
+
+    if was_empty {
+        match UserRepo::get_first_user(&state.db).await {
+            Ok(Some(first_user)) if first_user.id == user.id => {
+                match MigrationRepo::migrate_legacy_default_user_data(&state.db, &user.id).await {
+                    Ok(result) => {
+                        info!(
+                            migrated_api_credentials = result.migrated_api_credentials,
+                            migrated_teacher_settings = result.migrated_teacher_settings,
+                            "历史数据迁移完成"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "历史数据迁移失败");
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!(error = %e, "获取首个用户失败，跳过历史数据迁移");
+            }
+        }
+    }
 
     // 创建会话（包含解锁上下文）
     let unlock_context = UnlockContext::new(req.password);
