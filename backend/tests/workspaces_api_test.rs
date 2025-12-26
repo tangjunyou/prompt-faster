@@ -203,10 +203,13 @@ async fn test_user_a_workspace_list_does_not_include_user_b_data() {
     let list_json_a = read_json_body(list_resp_a).await;
     let list = list_json_a["data"].as_array().expect("data 应为数组");
 
-    assert!(list
-        .iter()
-        .any(|w| w["id"].as_str() == Some(workspace_id_a.as_str())));
-    assert!(!list
-        .iter()
-        .any(|w| w["id"].as_str() == Some(workspace_id_b.as_str())));
+    assert!(
+        list.iter()
+            .any(|w| w["id"].as_str() == Some(workspace_id_a.as_str()))
+    );
+    assert!(
+        !list
+            .iter()
+            .any(|w| w["id"].as_str() == Some(workspace_id_b.as_str()))
+    );
 }

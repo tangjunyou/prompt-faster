@@ -98,14 +98,16 @@ impl WorkspaceRepo {
 
         Ok(rows
             .into_iter()
-            .map(|(id, user_id, name, description, created_at, updated_at)| Workspace {
-                id,
-                user_id,
-                name,
-                description,
-                created_at,
-                updated_at,
-            })
+            .map(
+                |(id, user_id, name, description, created_at, updated_at)| Workspace {
+                    id,
+                    user_id,
+                    name,
+                    description,
+                    created_at,
+                    updated_at,
+                },
+            )
             .collect())
     }
 

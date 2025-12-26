@@ -143,10 +143,9 @@ async fn test_credential_storage_is_encrypted() {
     );
 
     // 验证可以从数据库读取并解密
-    let loaded =
-        CredentialRepo::find_by_user_and_type(&pool, TEST_USER_ID, CredentialType::Dify)
-            .await
-            .expect("读取凭证失败");
+    let loaded = CredentialRepo::find_by_user_and_type(&pool, TEST_USER_ID, CredentialType::Dify)
+        .await
+        .expect("读取凭证失败");
 
     let loaded_encrypted = prompt_faster::infra::external::api_key_manager::EncryptedApiKey {
         ciphertext: loaded.encrypted_api_key,

@@ -5,10 +5,10 @@ use axum::http::{Request, StatusCode};
 use axum::middleware;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower::ServiceExt;
-use sqlx::SqlitePool;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
