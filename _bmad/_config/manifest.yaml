@@ -1,10 +1,15 @@
 installation:
   version: 6.0.0-alpha.20
-  installDate: 2025-12-23T18:05:19.310Z
-  lastUpdated: 2025-12-23T18:05:19.310Z
+  installDate: 2025-12-26T03:12:00.326Z
+  lastUpdated: 2025-12-26T03:12:00.326Z
 modules:
   - core
   - bmm
   - cis
 ides:
   - windsurf
+  - claude-code
+  - codex
+  - cursor
+  - antigravity
+  - opencode
