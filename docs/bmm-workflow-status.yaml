@@ -5,7 +5,7 @@ project_level: 2
 project_type: "Medium Project"
 selected_track: "method"
 field_type: "greenfield"
-workflow_path: ".bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
+workflow_path: "_bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
 workflow_status:
   brainstorm-project: docs/analysis/brainstorming-session-2025-12-12.md
   research: docs/analysis/research/technical-algorithm-specification-research-2025-12-14.md

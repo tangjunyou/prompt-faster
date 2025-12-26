@@ -52,7 +52,7 @@ development_status:
   1-5-credential-persistence-and-teacher-model-params: done
   1-6-local-user-authentication-and-login-flow: done  # Code Review completed 2024-12-25
   1-7-user-data-isolation-and-access-control: done
-  1-8-unified-error-response-and-openapi-docs: backlog
+  1-8-unified-error-response-and-openapi-docs: ready-for-dev
   1-9-frontend-architecture-and-type-safe-api-client: backlog
   1-10-ci-pipeline-and-test-gates: backlog
   epic-1-retrospective: optional

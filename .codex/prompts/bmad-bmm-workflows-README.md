@@ -23,7 +23,7 @@
 - Collaborative architectural decision facilitation for AI-agent consistency. Replaces template-driven architecture with intelligent, adaptive conversation that produces a decision-focused architecture document optimized for preventing agent conflicts.
 
 **create-epics-stories**
-- Path: `.bmad/bmm/workflows/3-solutioning/create-epics-and-stories/workflow.md`
+- Path: `_bmad/bmm/workflows/3-solutioning/create-epics-and-stories/workflow.md`
 - Transform PRD requirements and Architecture decisions into comprehensive stories organized by user value. This workflow requires completed PRD + Architecture documents (UX recommended if UI exists) and breaks down requirements into implementation-ready epics and user stories that incorporate all available technical and design context. Creates detailed, actionable stories with complete acceptance criteria for development teams.
 
 **check-implementation-readiness**

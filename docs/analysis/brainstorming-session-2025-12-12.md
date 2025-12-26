@@ -6,7 +6,7 @@ session_goals: '设计一个能够自动优化 Dify 工作流 prompt 的 Web 应
 selected_approach: 'AI-Recommended Techniques'
 techniques_used: ['需求挖掘', '风险分析', '架构设计', '状态管理设计', '用户体验设计', '成熟方案对标']
 ideas_generated: ['分层优化架构', '三层状态管理', 'Checkpoint机制', '动态工作记忆', '工作区概念', '老师模型分阶段Prompt架构', '双模式人机协作']
-context_file: '.bmad/bmm/data/project-context-template.md'
+context_file: '_bmad/bmm/data/project-context-template.md'
 ---
 
 # 头脑风暴会话报告
