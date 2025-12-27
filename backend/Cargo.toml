@@ -42,7 +42,7 @@ zeroize = { version = "1", features = ["derive"] }  # Code Review Fix: 用于安
 
 # API 文档
 utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "8", features = ["axum"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
 
 # 时间处理
 time = { version = "0.3", features = ["serde"] }

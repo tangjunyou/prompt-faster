@@ -10,11 +10,11 @@ workflow_status:
   brainstorm-project: docs/analysis/brainstorming-session-2025-12-12.md
   research: docs/analysis/research/technical-algorithm-specification-research-2025-12-14.md
   product-brief: optional
-  prd: docs/prd.md
-  create-ux-design: docs/ux-design-specification.md
-  create-architecture: docs/architecture.md
-  create-epics-and-stories: docs/epics.md
-  test-design: docs/test-design-system.md
+  prd: docs/implementation-artifacts/prd.md
+  create-ux-design: docs/implementation-artifacts/ux-design-specification.md
+  create-architecture: docs/implementation-artifacts/architecture.md
+  create-epics-and-stories: docs/implementation-artifacts/epics.md
+  test-design: docs/implementation-artifacts/test-design-system.md
   validate-architecture: optional
   implementation-readiness: completed
   sprint-planning: completed

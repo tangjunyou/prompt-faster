@@ -6,20 +6,22 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
+use utoipa::ToSchema;
 
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
-use crate::api::response::ApiResponse;
+use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{WorkspaceRepo, WorkspaceRepoError};
+use crate::shared::error_codes;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateWorkspaceRequest {
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct WorkspaceResponse {
     pub id: String,
     pub name: String,
@@ -28,7 +30,7 @@ pub struct WorkspaceResponse {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DeleteWorkspaceResponse {
     pub message: String,
 }
@@ -42,10 +44,26 @@ fn extract_correlation_id(headers: &HeaderMap) -> String {
 }
 
 fn workspace_not_found<T: Serialize>() -> ApiResponse<T> {
-    ApiResponse::err(StatusCode::NOT_FOUND, "WORKSPACE_NOT_FOUND", "工作区不存在")
+    ApiResponse::err(
+        StatusCode::NOT_FOUND,
+        error_codes::WORKSPACE_NOT_FOUND,
+        "工作区不存在",
+    )
 }
 
-async fn create_workspace(
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces",
+    request_body = CreateWorkspaceRequest,
+    responses(
+        (status = 200, description = "创建成功", body = ApiSuccess<WorkspaceResponse>),
+        (status = 400, description = "参数错误", body = ApiError),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "workspaces"
+)]
+pub(crate) async fn create_workspace(
     State(state): State<AppState>,
     headers: HeaderMap,
     current_user: CurrentUser,
@@ -57,7 +75,7 @@ async fn create_workspace(
     if req.name.trim().is_empty() {
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
-            "VALIDATION_ERROR",
+            error_codes::VALIDATION_ERROR,
             "工作区名称不能为空",
         );
     }
@@ -65,7 +83,7 @@ async fn create_workspace(
     if req.name.len() > 128 {
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
-            "VALIDATION_ERROR",
+            error_codes::VALIDATION_ERROR,
             "工作区名称不能超过 128 个字符",
         );
     }
@@ -85,7 +103,7 @@ async fn create_workspace(
             warn!(error = %e, "创建工作区失败");
             return ApiResponse::err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 "创建工作区失败",
             );
         }
@@ -100,7 +118,17 @@ async fn create_workspace(
     })
 }
 
-async fn list_workspaces(
+#[utoipa::path(
+    get,
+    path = "/api/v1/workspaces",
+    responses(
+        (status = 200, description = "获取成功", body = ApiSuccess<Vec<WorkspaceResponse>>),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "workspaces"
+)]
+pub(crate) async fn list_workspaces(
     State(state): State<AppState>,
     headers: HeaderMap,
     current_user: CurrentUser,
@@ -116,7 +144,7 @@ async fn list_workspaces(
             warn!(error = %e, "查询工作区列表失败");
             return ApiResponse::err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 "查询工作区列表失败",
             );
         }
@@ -136,7 +164,21 @@ async fn list_workspaces(
     )
 }
 
-async fn get_workspace(
+#[utoipa::path(
+    get,
+    path = "/api/v1/workspaces/{id}",
+    params(
+        ("id" = String, Path, description = "工作区 ID")
+    ),
+    responses(
+        (status = 200, description = "获取成功", body = ApiSuccess<WorkspaceResponse>),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 404, description = "工作区不存在", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "workspaces"
+)]
+pub(crate) async fn get_workspace(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(workspace_id): Path<String>,
@@ -154,7 +196,7 @@ async fn get_workspace(
             warn!(error = %e, "查询工作区失败");
             return ApiResponse::err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 "查询工作区失败",
             );
         }
@@ -169,7 +211,21 @@ async fn get_workspace(
     })
 }
 
-async fn delete_workspace(
+#[utoipa::path(
+    delete,
+    path = "/api/v1/workspaces/{id}",
+    params(
+        ("id" = String, Path, description = "工作区 ID")
+    ),
+    responses(
+        (status = 200, description = "删除成功", body = ApiSuccess<DeleteWorkspaceResponse>),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 404, description = "工作区不存在", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "workspaces"
+)]
+pub(crate) async fn delete_workspace(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(workspace_id): Path<String>,
@@ -189,7 +245,7 @@ async fn delete_workspace(
             warn!(error = %e, "删除工作区失败");
             ApiResponse::err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 "删除工作区失败",
             )
         }

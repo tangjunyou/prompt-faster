@@ -2,12 +2,13 @@
 
 use axum::{Router, routing::get};
 use serde::Serialize;
+use utoipa::ToSchema;
 
-use crate::api::response::ApiResponse;
+use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::shared::time::now_millis;
 
 /// 健康检查响应
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
@@ -17,7 +18,15 @@ pub struct HealthResponse {
 
 /// 健康检查处理器
 /// 必须使用 ApiResponse<HealthResponse> 返回（Task 5.4）
-async fn health_check() -> ApiResponse<HealthResponse> {
+#[utoipa::path(
+    get,
+    path = "/api/v1/health",
+    tag = "health",
+    responses(
+        (status = 200, description = "服务正常", body = ApiSuccess<HealthResponse>)
+    )
+)]
+pub(crate) async fn health_check() -> ApiResponse<HealthResponse> {
     ApiResponse::ok(HealthResponse {
         status: "ok".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),

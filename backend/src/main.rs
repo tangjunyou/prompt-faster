@@ -13,7 +13,7 @@ use prompt_faster::api::middleware::correlation_id::{
     CORRELATION_ID_HEADER, correlation_id_middleware,
 };
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
-use prompt_faster::api::routes::{auth, health, user_auth, workspaces};
+use prompt_faster::api::routes::{auth, docs, health, user_auth, workspaces};
 use prompt_faster::api::state::AppState;
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
@@ -146,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let app = Router::<AppState>::new()
+        .merge(docs::router::<AppState>()) // Swagger UI at /swagger (root path, no /api/v1 prefix)
         .nest("/api/v1", health::router::<AppState>())
         .nest("/api/v1/auth", auth::public_router()) // 公开路由：连接测试
         .nest("/api/v1/auth", protected_routes) // 受保护路由：配置管理

@@ -91,7 +91,7 @@ so that 下次启动系统时无需重新配置，且可以调整模型行为。
   - [x] 4.4 **配置单例约束（必须）**：每个 user_id 只能有一条配置记录
     - 数据库层：`UNIQUE(user_id, credential_type)` 约束
     - Repo 层：使用 `INSERT OR REPLACE` / `ON CONFLICT DO UPDATE` 实现 upsert
-  - [x] 4.3 保持"Repository 是唯一数据库访问点"的边界（参考 `docs/architecture.md#数据边界`）
+  - [x] 4.3 保持"Repository 是唯一数据库访问点"的边界（参考 `docs/implementation-artifacts/architecture.md#数据边界`）
 
 - [x] **Task 5: 后端测试补齐（覆盖加密、落库、读回）** (AC: #1, #2)
   - [x] 5.1 单元测试：api_key_manager 的加解密可逆性（相同 password+salt+nonce 下可解密；错误 password 必须失败）— 已在模块内实现
@@ -126,7 +126,7 @@ so that 下次启动系统时无需重新配置，且可以调整模型行为。
   - [x] 8.2 在 `frontend/src/features/api-config/hooks/` 新增：
     - `useLoadApiConfig()`（GET /auth/config）
     - `useSaveApiConfig()`（POST /auth/config）
-  - [x] 8.3 仍遵循架构约束：`services/*` 只导出纯函数；hooks 封装 TanStack Query（参考 `docs/architecture.md#TanStack Query 使用约束`）
+  - [x] 8.3 仍遵循架构约束：`services/*` 只导出纯函数；hooks 封装 TanStack Query（参考 `docs/implementation-artifacts/architecture.md#TanStack Query 使用约束`）
 
 - [x] **Task 9: 保存按钮的交互与约束（必须先测试通过再允许保存）** (AC: #1)
   - [x] 9.1 保存按钮应满足：
@@ -145,7 +145,7 @@ so that 下次启动系统时无需重新配置，且可以调整模型行为。
 
 ### ⚠️ Guardrails（必须遵循）
 
-- **安全与加密约束**：API Key 必须 AES-GCM 加密存储 (NFR9)，且密钥仅存于内存，不得持久化（见 `docs/architecture.md#Authentication & Security`）
+- **安全与加密约束**：API Key 必须 AES-GCM 加密存储 (NFR9)，且密钥仅存于内存，不得持久化（见 `docs/implementation-artifacts/architecture.md#Authentication & Security`）
 - **数据边界**：
   - DB 仅允许通过 Repository 访问（`infra/db/repositories/*`）
   - 敏感加解密仅允许通过 `infra/external/api_key_manager.rs`
@@ -163,10 +163,10 @@ so that 下次启动系统时无需重新配置，且可以调整模型行为。
 
 ### References
 
-- [Source: docs/epics.md#Story-1.5] - 验收标准原文
+- [Source: docs/implementation-artifacts/epics.md#Story-1.5] - 验收标准原文
 - [Source: docs/sprint-status.yaml#development_status] - story_key 与状态流转
-- [Source: docs/architecture.md#Authentication-&-Security] - AES-GCM + Argon2 + 密钥仅内存
-- [Source: docs/architecture.md#数据边界] - API Key Manager/Repository 唯一访问点
+- [Source: docs/implementation-artifacts/architecture.md#Authentication-&-Security] - AES-GCM + Argon2 + 密钥仅内存
+- [Source: docs/implementation-artifacts/architecture.md#数据边界] - API Key Manager/Repository 唯一访问点
 - [Source: backend/Cargo.toml] - 已锁定依赖：`aes-gcm = "0.10"`, `argon2 = "0.5"`
 - [Source: backend/src/api/routes/auth.rs] - 现有 auth 路由风格、correlationId、SSRF 验证
 - [Source: frontend/src/stores/useCredentialStore.ts] - 现有凭证状态机（valid/invalid）

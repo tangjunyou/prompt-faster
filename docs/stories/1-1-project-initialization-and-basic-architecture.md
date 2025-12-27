@@ -122,7 +122,7 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 utoipa = { version = "5", features = ["axum_extras"] }
-utoipa-swagger-ui = { version = "8", features = ["axum"] }  # 注意：版本 8
+utoipa-swagger-ui = { version = "9", features = ["axum"] }  # 注意：版本 9（与 axum 0.8 匹配）
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 dotenvy = "0.15"
@@ -342,11 +342,11 @@ VITE_API_URL=http://localhost:3000/api/v1
 
 ### References
 
-- [Source: docs/architecture.md#Core-Architectural-Decisions] - 技术栈选型
-- [Source: docs/architecture.md#Implementation-Patterns] - 命名规范
-- [Source: docs/architecture.md#Project-Structure] - 目录结构
-- [Source: docs/epics.md#Story-1.1] - 验收标准
-- [Source: docs/prd.md#7.5] - SQLite 配置
+- [Source: docs/implementation-artifacts/architecture.md#Core-Architectural-Decisions] - 技术栈选型
+- [Source: docs/implementation-artifacts/architecture.md#Implementation-Patterns] - 命名规范
+- [Source: docs/implementation-artifacts/architecture.md#Project-Structure] - 目录结构
+- [Source: docs/implementation-artifacts/epics.md#Story-1.1] - 验收标准
+- [Source: docs/implementation-artifacts/prd.md#7.5] - SQLite 配置
 
 ## Dev Agent Record
 

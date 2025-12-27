@@ -10,6 +10,8 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 
+use super::error_codes;
+
 /// 应用错误类型
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -53,24 +55,32 @@ impl IntoResponse for AppError {
         let (status, code, message) = match &self {
             AppError::Database(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 format!("数据库操作失败: {}", e),
             ),
-            AppError::Validation(msg) => (StatusCode::BAD_REQUEST, "VALIDATION_ERROR", msg.clone()),
+            AppError::Validation(msg) => (
+                StatusCode::BAD_REQUEST,
+                error_codes::VALIDATION_ERROR,
+                msg.clone(),
+            ),
             AppError::NotFound(resource) => (
                 StatusCode::NOT_FOUND,
-                "NOT_FOUND",
+                error_codes::NOT_FOUND,
                 format!("资源不存在: {}", resource),
             ),
             AppError::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
-                "UNAUTHORIZED",
+                error_codes::UNAUTHORIZED,
                 "请先登录".to_string(),
             ),
-            AppError::Forbidden => (StatusCode::FORBIDDEN, "FORBIDDEN", "无权访问".to_string()),
+            AppError::Forbidden => (
+                StatusCode::FORBIDDEN,
+                error_codes::FORBIDDEN,
+                "无权访问".to_string(),
+            ),
             AppError::Internal(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "INTERNAL_ERROR",
+                error_codes::INTERNAL_ERROR,
                 format!("内部错误: {}", e),
             ),
         };

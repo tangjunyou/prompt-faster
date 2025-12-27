@@ -441,10 +441,10 @@ export function useTestDifyConnection() {
 
 ### References
 
-- [Source: docs/epics.md#Story-1.4] - 验收标准原文
+- [Source: docs/implementation-artifacts/epics.md#Story-1.4] - 验收标准原文
 - [Source: docs/stories/1-3-generic-llm-api-credential-configuration.md] - 前置实现模式
-- [Source: docs/architecture.md#API-Communication-Patterns] - API 响应格式规范
-- [Source: docs/architecture.md#Error-Handling] - 错误处理层级规范
+- [Source: docs/implementation-artifacts/architecture.md#API-Communication-Patterns] - API 响应格式规范
+- [Source: docs/implementation-artifacts/architecture.md#Error-Handling] - 错误处理层级规范
 - [Source: Dify API 文档] - Dify 工作流 API 格式
 - [Source: reqwest 文档] - Rust HTTP 客户端配置
 

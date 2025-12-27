@@ -9,10 +9,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
+use utoipa::ToSchema;
 
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
-use crate::api::response::ApiResponse;
+use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{
     CredentialRepo, CredentialType, TeacherSettingsRepo, UpsertCredentialInput,
@@ -21,18 +22,19 @@ use crate::infra::db::repositories::{
 use crate::infra::external::api_key_manager::EncryptedApiKey;
 use crate::infra::external::dify_client::{self, ConnectionError, TestConnectionResult};
 use crate::infra::external::llm_client::{self, LlmConnectionError};
+use crate::shared::error_codes;
 use crate::shared::log_sanitizer::sanitize_api_key;
 use crate::shared::url_validator::{validate_api_key, validate_base_url};
 
 /// Dify 连接测试请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TestDifyConnectionRequest {
     pub base_url: String,
     pub api_key: String,
 }
 
 /// 通用大模型连接测试请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TestGenericLlmConnectionRequest {
     pub base_url: String,
     pub api_key: String,
@@ -51,7 +53,20 @@ fn extract_correlation_id(headers: &HeaderMap) -> String {
 /// 测试 Dify API 连接
 ///
 /// POST /api/v1/auth/test-connection/dify
-async fn test_dify_connection(
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/test-connection/dify",
+    request_body = TestDifyConnectionRequest,
+    responses(
+        (status = 200, description = "连接成功", body = ApiSuccess<TestConnectionResult>),
+        (status = 400, description = "请求参数错误", body = ApiError),
+        (status = 401, description = "无效凭证", body = ApiError),
+        (status = 403, description = "访问被拒绝", body = ApiError),
+        (status = 502, description = "上游错误", body = ApiError)
+    ),
+    tag = "auth"
+)]
+pub(crate) async fn test_dify_connection(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<TestDifyConnectionRequest>,
@@ -75,7 +90,7 @@ async fn test_dify_connection(
         warn!(error = %e, "URL 验证失败");
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
-            "AUTH_VALIDATION_ERROR",
+            error_codes::AUTH_VALIDATION_ERROR,
             e.to_string(),
         );
     }
@@ -83,7 +98,11 @@ async fn test_dify_connection(
     // 输入验证：API Key 非空
     if let Err(e) = validate_api_key(&req.api_key) {
         warn!(error = %e, "API Key 验证失败");
-        return ApiResponse::err(StatusCode::BAD_REQUEST, "AUTH_VALIDATION_ERROR", e);
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::AUTH_VALIDATION_ERROR,
+            e,
+        );
     }
 
     match dify_client::test_connection(
@@ -108,7 +127,20 @@ async fn test_dify_connection(
 /// 测试通用大模型 API 连接
 ///
 /// POST /api/v1/auth/test-connection/generic-llm
-async fn test_generic_llm_connection(
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/test-connection/generic-llm",
+    request_body = TestGenericLlmConnectionRequest,
+    responses(
+        (status = 200, description = "连接成功", body = ApiSuccess<TestConnectionResult>),
+        (status = 400, description = "请求参数错误", body = ApiError),
+        (status = 401, description = "无效凭证", body = ApiError),
+        (status = 403, description = "访问被拒绝", body = ApiError),
+        (status = 502, description = "上游错误", body = ApiError)
+    ),
+    tag = "auth"
+)]
+pub(crate) async fn test_generic_llm_connection(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<TestGenericLlmConnectionRequest>,
@@ -133,7 +165,7 @@ async fn test_generic_llm_connection(
         warn!(error = %e, "URL 验证失败");
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
-            "AUTH_VALIDATION_ERROR",
+            error_codes::AUTH_VALIDATION_ERROR,
             e.to_string(),
         );
     }
@@ -141,7 +173,11 @@ async fn test_generic_llm_connection(
     // 输入验证：API Key 非空
     if let Err(e) = validate_api_key(&req.api_key) {
         warn!(error = %e, "API Key 验证失败");
-        return ApiResponse::err(StatusCode::BAD_REQUEST, "AUTH_VALIDATION_ERROR", e);
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::AUTH_VALIDATION_ERROR,
+            e,
+        );
     }
 
     match llm_client::test_connection(
@@ -282,55 +318,63 @@ fn map_connection_error_impl<E: ConnectionErrorMapping>(
     if error.is_invalid_credentials() {
         return ApiResponse::err(
             StatusCode::UNAUTHORIZED,
-            "AUTH_INVALID_CREDENTIALS",
+            error_codes::AUTH_INVALID_CREDENTIALS,
             "无效的 API Key",
         );
     }
     if error.is_forbidden() {
-        return ApiResponse::err(StatusCode::FORBIDDEN, "AUTH_FORBIDDEN", "访问被拒绝");
+        return ApiResponse::err(
+            StatusCode::FORBIDDEN,
+            error_codes::AUTH_FORBIDDEN,
+            "访问被拒绝",
+        );
     }
     if error.is_timeout() {
         return ApiResponse::err(
             StatusCode::REQUEST_TIMEOUT,
-            "AUTH_CONNECTION_TIMEOUT",
+            error_codes::AUTH_CONNECTION_TIMEOUT,
             "连接超时",
         );
     }
     if let Some(msg) = error.upstream_error_msg() {
         return ApiResponse::err(
             StatusCode::BAD_GATEWAY,
-            "AUTH_UPSTREAM_ERROR",
+            error_codes::AUTH_UPSTREAM_ERROR,
             format!("上游服务不可用: {}", msg),
         );
     }
     if let Some(msg) = error.request_failed_msg() {
         return ApiResponse::err(
             StatusCode::BAD_GATEWAY,
-            "AUTH_UPSTREAM_ERROR",
+            error_codes::AUTH_UPSTREAM_ERROR,
             format!("请求失败: {}", msg),
         );
     }
     if let Some(msg) = error.parse_error_msg() {
         return ApiResponse::err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "AUTH_INTERNAL_ERROR",
+            error_codes::AUTH_INTERNAL_ERROR,
             format!("响应解析失败: {}", msg),
         );
     }
     if let Some(msg) = error.validation_error_msg() {
-        return ApiResponse::err(StatusCode::BAD_REQUEST, "AUTH_VALIDATION_ERROR", msg);
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::AUTH_VALIDATION_ERROR,
+            msg,
+        );
     }
     if let Some(msg) = error.client_error_msg() {
         return ApiResponse::err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "AUTH_INTERNAL_ERROR",
+            error_codes::AUTH_INTERNAL_ERROR,
             format!("HTTP 客户端错误: {}", msg),
         );
     }
     // 兜底：不应该执行到这里
     ApiResponse::err(
         StatusCode::INTERNAL_SERVER_ERROR,
-        "AUTH_INTERNAL_ERROR",
+        error_codes::AUTH_INTERNAL_ERROR,
         "未知错误",
     )
 }
@@ -350,7 +394,7 @@ fn map_llm_connection_error(error: LlmConnectionError) -> ApiResponse<TestConnec
 // ============================================================================
 
 /// 保存配置请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveConfigRequest {
     /// Dify 凭证
     pub dify: Option<CredentialInput>,
@@ -361,14 +405,14 @@ pub struct SaveConfigRequest {
 }
 
 /// 凭证输入（Dify）
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CredentialInput {
     pub base_url: String,
     pub api_key: String,
 }
 
 /// 凭证输入（通用大模型）
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct GenericLlmCredentialInput {
     pub provider: String,
     pub base_url: String,
@@ -376,7 +420,7 @@ pub struct GenericLlmCredentialInput {
 }
 
 /// 老师模型参数输入
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TeacherSettingsInput {
     pub temperature: f64,
     pub top_p: f64,
@@ -384,7 +428,7 @@ pub struct TeacherSettingsInput {
 }
 
 /// 配置响应
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ConfigResponse {
     /// 是否已配置 Dify API Key
     pub has_dify_key: bool,
@@ -405,7 +449,7 @@ pub struct ConfigResponse {
 }
 
 /// 老师模型参数响应
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TeacherSettingsResponse {
     pub temperature: f64,
     pub top_p: f64,
@@ -413,7 +457,7 @@ pub struct TeacherSettingsResponse {
 }
 
 /// 保存成功响应
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SaveConfigResponse {
     pub message: String,
 }
@@ -453,7 +497,19 @@ fn validate_teacher_settings(settings: &TeacherSettingsInput) -> Result<(), Stri
 ///
 /// # 鉴权
 /// 此接口需要登录，使用 CurrentUser.user_id 替代 DEFAULT_USER_ID
-async fn save_config(
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/config",
+    request_body = SaveConfigRequest,
+    responses(
+        (status = 200, description = "保存成功", body = ApiSuccess<SaveConfigResponse>),
+        (status = 400, description = "参数错误", body = ApiError),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "auth"
+)]
+pub(crate) async fn save_config(
     State(state): State<AppState>,
     headers: HeaderMap,
     current_user: CurrentUser,
@@ -468,7 +524,7 @@ async fn save_config(
         warn!("缺少 Dify 凭证配置");
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
-            "VALIDATION_ERROR",
+            error_codes::VALIDATION_ERROR,
             "请求体必须包含 Dify 凭证配置 (dify)",
         );
     }
@@ -476,7 +532,7 @@ async fn save_config(
         warn!("缺少通用大模型凭证配置");
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
-            "VALIDATION_ERROR",
+            error_codes::VALIDATION_ERROR,
             "请求体必须包含通用大模型凭证配置 (generic_llm)",
         );
     }
@@ -484,7 +540,7 @@ async fn save_config(
     // 验证老师模型参数
     if let Err(e) = validate_teacher_settings(&req.teacher_settings) {
         warn!(error = %e, "老师模型参数验证失败");
-        return ApiResponse::err(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", e);
+        return ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, e);
     }
 
     // 开发环境允许 HTTP
@@ -500,7 +556,7 @@ async fn save_config(
             warn!(error = %e, "Dify URL 验证失败");
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
-                "VALIDATION_ERROR",
+                error_codes::VALIDATION_ERROR,
                 format!("Dify Base URL 无效: {}", e),
             );
         }
@@ -509,7 +565,7 @@ async fn save_config(
             warn!(error = %e, "Dify API Key 验证失败");
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
-                "VALIDATION_ERROR",
+                error_codes::VALIDATION_ERROR,
                 format!("Dify API Key 无效: {}", e),
             );
         }
@@ -521,7 +577,7 @@ async fn save_config(
                 warn!(error = %e, "API Key 加密失败");
                 return ApiResponse::err(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "ENCRYPTION_ERROR",
+                    error_codes::ENCRYPTION_ERROR,
                     "API Key 加密失败",
                 );
             }
@@ -545,7 +601,7 @@ async fn save_config(
             warn!(error = %e, "保存 Dify 凭证失败");
             return ApiResponse::err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 "保存 Dify 凭证失败",
             );
         }
@@ -558,7 +614,7 @@ async fn save_config(
         if generic_llm.provider != "siliconflow" && generic_llm.provider != "modelscope" {
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
-                "VALIDATION_ERROR",
+                error_codes::VALIDATION_ERROR,
                 format!(
                     "无效的 provider: {}，支持 siliconflow 或 modelscope",
                     generic_llm.provider
@@ -570,7 +626,7 @@ async fn save_config(
             warn!(error = %e, "通用大模型 URL 验证失败");
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
-                "VALIDATION_ERROR",
+                error_codes::VALIDATION_ERROR,
                 format!("通用大模型 Base URL 无效: {}", e),
             );
         }
@@ -579,7 +635,7 @@ async fn save_config(
             warn!(error = %e, "通用大模型 API Key 验证失败");
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
-                "VALIDATION_ERROR",
+                error_codes::VALIDATION_ERROR,
                 format!("通用大模型 API Key 无效: {}", e),
             );
         }
@@ -591,7 +647,7 @@ async fn save_config(
                 warn!(error = %e, "API Key 加密失败");
                 return ApiResponse::err(
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "ENCRYPTION_ERROR",
+                    error_codes::ENCRYPTION_ERROR,
                     "API Key 加密失败",
                 );
             }
@@ -615,7 +671,7 @@ async fn save_config(
             warn!(error = %e, "保存通用大模型凭证失败");
             return ApiResponse::err(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "DATABASE_ERROR",
+                error_codes::DATABASE_ERROR,
                 "保存通用大模型凭证失败",
             );
         }
@@ -637,7 +693,7 @@ async fn save_config(
         warn!(error = %e, "保存老师模型参数失败");
         return ApiResponse::err(
             StatusCode::INTERNAL_SERVER_ERROR,
-            "DATABASE_ERROR",
+            error_codes::DATABASE_ERROR,
             "保存老师模型参数失败",
         );
     }
@@ -654,7 +710,17 @@ async fn save_config(
 ///
 /// # 鉴权
 /// 此接口需要登录，使用 CurrentUser.user_id 替代 DEFAULT_USER_ID
-async fn get_config(
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/config",
+    responses(
+        (status = 200, description = "获取成功", body = ApiSuccess<ConfigResponse>),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "auth"
+)]
+pub(crate) async fn get_config(
     State(state): State<AppState>,
     headers: HeaderMap,
     current_user: CurrentUser,

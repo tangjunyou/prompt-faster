@@ -195,9 +195,9 @@ updateGenericLlmCredentialFromForm: (baseUrl, apiKey) =>
 ### References
 
 - [Source: docs/sprint-status.yaml#development_status] - 目标 Story Key
-- [Source: docs/epics.md#Story-1.3] - 验收标准原文
+- [Source: docs/implementation-artifacts/epics.md#Story-1.3] - 验收标准原文
 - [Source: docs/stories/1-2-dify-api-credential-configuration.md] - 既有实现模式与 Guardrails
-- [Source: docs/architecture.md#Frontend-Architecture] - 前端目录与边界规范
+- [Source: docs/implementation-artifacts/architecture.md#Frontend-Architecture] - 前端目录与边界规范
 
 ## Dev Agent Record
 

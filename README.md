@@ -87,11 +87,11 @@ prompt-faster/
 
 ## 📖 文档
 
-- [产品需求文档](docs/prd.md)
-- [架构设计](docs/architecture.md)
-- [UX 设计规范](docs/ux-design-specification.md)
-- [Epic 与 Story 分解](docs/epics.md)
-- [测试设计](docs/test-design-system.md)
+- [产品需求文档](docs/implementation-artifacts/prd.md)
+- [架构设计](docs/implementation-artifacts/architecture.md)
+- [UX 设计规范](docs/implementation-artifacts/ux-design-specification.md)
+- [Epic 与 Story 分解](docs/implementation-artifacts/epics.md)
+- [测试设计](docs/implementation-artifacts/test-design-system.md)
 
 ## 🧪 测试
 

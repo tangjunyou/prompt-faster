@@ -2,6 +2,7 @@
 
 pub mod config;
 pub mod error;
+pub mod error_codes;
 pub mod log_sanitizer;
 pub mod password;
 pub mod time;

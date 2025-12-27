@@ -248,19 +248,19 @@ so that 我的工作区和优化任务不会被未授权用户访问。
 ### Project Structure Notes
 
 - 当前后端已存在 `users` 表，但 `domain/models/` 尚无 `user.rs`，`repositories/` 也尚未提供 `user_repo.rs`。
-- `docs/architecture.md` 的规划结构中包含 `domain/models/user.rs`，但当前代码库尚未落地，实现时需以仓库现状为准创建文件，避免误判“已存在”。
+- `docs/implementation-artifacts/architecture.md` 的规划结构中包含 `domain/models/user.rs`，但当前代码库尚未落地，实现时需以仓库现状为准创建文件，避免误判“已存在”。
 - 当前后端 `auth.rs` 同时承担“连接测试 + 凭证配置管理”，并存在 `DEFAULT_USER_ID = "default_user"` 占位；本 Story 需要开始切换为真实 user_id（至少在需要鉴权的接口中）。
 - 现有 migrations 中配置相关表的 `user_id` 可能带默认值 `default_user`；本 Story 需要明确代码层面禁止依赖默认值，并给出历史数据迁移策略。
 - 当前前端仅有 `HomePage` 与 `ApiConfigPage`，尚无登录页与 `useAuthStore`。
 
 ### References
 
-- [Source: docs/epics.md#Story-1.6] - 验收标准原文
+- [Source: docs/implementation-artifacts/epics.md#Story-1.6] - 验收标准原文
 - [Source: docs/sprint-status.yaml#development_status] - story_key 与状态流转
 - [Source: backend/migrations/001_initial_schema.sql#users] - users 表结构
 - [Source: backend/src/api/routes/auth.rs] - 现有 auth 路由与 DEFAULT_USER_ID 占位
 - [Source: backend/src/main.rs] - ApiKeyManager 目前使用 MASTER_PASSWORD，并标记 TODO(Story-1.6)
-- [Source: docs/architecture.md#Authentication-&-Security] - Argon2 + AES-GCM + 密钥仅存内存
+- [Source: docs/implementation-artifacts/architecture.md#Authentication-&-Security] - Argon2 + AES-GCM + 密钥仅存内存
 - [Source: https://docs.rs/argon2/latest/argon2/] - Argon2 官方文档（PasswordHasher/PasswordVerifier、PHC 字符串）
 - [Source: frontend/src/lib/api.ts] - 前端 API 调用入口（需注入 Authorization 头）
 
