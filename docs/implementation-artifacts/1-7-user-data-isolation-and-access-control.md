@@ -264,14 +264,14 @@ async fn handler(
 
 ### References
 
-- [Source: docs/implementation-artifacts/epics.md#Story-1.7] - 验收标准原文
-- [Source: docs/stories/1-6-local-user-authentication-and-login-flow.md] - 前序故事实现细节
+- [Source: docs/project-planning-artifacts/epics.md#Story-1.7] - 验收标准原文
+- [Source: docs/implementation-artifacts/1-6-local-user-authentication-and-login-flow.md] - 前序故事实现细节
 - [Source: backend/migrations/001_initial_schema.sql] - workspaces 表结构
 - [Source: backend/migrations/002_api_credentials_and_teacher_settings.sql] - 凭证表结构（含 DEFAULT 'default_user'）
 - [Source: backend/src/api/routes/auth.rs#L256-258] - LEGACY_DEFAULT_USER_ID 定义
 - [Source: backend/src/infra/db/repositories/user_repo.rs#L151-155] - get_first_user 方法
 - [Source: backend/src/infra/db/repositories/credential_repo.rs] - 现有凭证 Repository 实现参考
-- [Source: docs/implementation-artifacts/architecture.md#Authentication-&-Security] - 数据隔离架构要求
+- [Source: docs/project-planning-artifacts/architecture.md#Authentication-&-Security] - 数据隔离架构要求
 
 ### Git 历史参考
 
@@ -314,5 +314,5 @@ Cascade
 - frontend/src/features/workspace/hooks/useWorkspaces.ts
 - frontend/src/features/workspace/services/workspaceService.test.ts
 - frontend/tests/e2e/workspaces.spec.ts
-- docs/sprint-status.yaml
+- docs/implementation-artifacts/sprint-status.yaml
 

@@ -49,7 +49,7 @@ So that 系统可以调用我的 Dify 工作流进行优化测试。
 
 - [x] **Task 4: 对齐架构的 api-config Feature 对外接口** (AC: #1, #2)
   - [x] 4.1 创建 `frontend/src/features/api-config/index.ts` 导出文件
-  - [x] 4.2 创建 `frontend/src/features/api-config/ApiConfigPanel.tsx`（作为该 feature 的对外入口，对齐 `docs/implementation-artifacts/architecture.md` 规划）
+  - [x] 4.2 创建 `frontend/src/features/api-config/ApiConfigPanel.tsx`（作为该 feature 的对外入口，对齐 `docs/project-planning-artifacts/architecture.md` 规划）
   - [x] 4.3 在 `ApiConfigPanel.tsx` 内部组合 `DifyCredentialForm`（可作为内部子组件）
 
 - [x] **Task 5: 创建 Dify 凭证表单组件** (AC: #1, #2, #3)
@@ -80,7 +80,7 @@ So that 系统可以调用我的 Dify 工作流进行优化测试。
 > **以下文件为唯一事实来源，不得引入冲突实现：**
 > - 前端依赖版本：以 `frontend/package.json` 为准
 > - 状态管理：使用 Zustand，命名约定 `use{Domain}Store`
-> - 目录结构：遵循 `features/api-config/` 模式，并对齐 `docs/implementation-artifacts/architecture.md` 的对外入口命名（`ApiConfigPanel.tsx`）
+> - 目录结构：遵循 `features/api-config/` 模式，并对齐 `docs/project-planning-artifacts/architecture.md` 的对外入口命名（`ApiConfigPanel.tsx`）
 > - **禁止**：引入第二套状态管理库、第二套表单库
 > - **边界**：本 Story 仅负责前端表单和临时状态，不涉及后端 API 调用
 > - **禁止**：在任何日志/错误信息中输出或拼接完整 `apiKey`（包括 `console.log`）
@@ -224,11 +224,11 @@ frontend/src/
 
 ### References
 
-- [Source: docs/implementation-artifacts/architecture.md#Frontend-Architecture] - 前端架构设计
-- [Source: docs/implementation-artifacts/architecture.md#State-Management] - 状态管理策略
-- [Source: docs/implementation-artifacts/epics.md#Story-1.2] - 验收标准原文
-- [Source: docs/implementation-artifacts/prd.md#7.3] - 前端架构要求
-- [Source: docs/stories/1-1-project-initialization-and-basic-architecture.md] - 前置 Story 实现参考
+- [Source: docs/project-planning-artifacts/architecture.md#Frontend-Architecture] - 前端架构设计
+- [Source: docs/project-planning-artifacts/architecture.md#State-Management] - 状态管理策略
+- [Source: docs/project-planning-artifacts/epics.md#Story-1.2] - 验收标准原文
+- [Source: docs/project-planning-artifacts/prd.md#7.3] - 前端架构要求
+- [Source: docs/implementation-artifacts/1-1-project-initialization-and-basic-architecture.md] - 前置 Story 实现参考
 
 ## Dev Agent Record
 

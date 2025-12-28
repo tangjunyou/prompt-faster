@@ -32,7 +32,7 @@ This workflow performs a comprehensive assessment of non-functional requirements
 
 **Recommended:**
 
-- NFR requirements defined in tech-spec.md, PRD.md, or story
+- NFR requirements defined in tech-spec.md, prd.md, or story
 - Test results from performance, security, reliability tests
 - Application metrics (response times, error rates, throughput)
 - CI/CD pipeline results for burn-in validation
@@ -64,7 +64,7 @@ This workflow performs a comprehensive assessment of non-functional requirements
 
 3. Read related BMad artifacts (if available):
    - `tech-spec.md` - Technical NFR requirements and targets
-   - `PRD.md` - Product-level NFR context (user expectations)
+   - `prd.md` - Product-level NFR context (user expectations)
    - `test-design.md` - NFR test plan and priorities
 
 **Output:** Complete understanding of NFR targets, evidence sources, and validation criteria
@@ -85,7 +85,7 @@ This workflow performs a comprehensive assessment of non-functional requirements
 
 3. Gather thresholds for each NFR:
    - From tech-spec.md (primary source)
-   - From PRD.md (product-level SLAs)
+   - From prd.md (product-level SLAs)
    - From story file (feature-specific requirements)
    - From workflow variables (default thresholds)
    - Mark thresholds as UNKNOWN if not defined
@@ -462,7 +462,7 @@ Recommendation: BLOCKER - optimize performance before release
 - Reference test priorities (P0/P1/P2/P3) for severity classification
 - Align assessment with planned NFR validation
 
-### With PRD.md
+### With prd.md
 
 - Understand product-level NFR expectations
 - Verify NFRs align with user experience goals
@@ -687,7 +687,7 @@ Before completing this workflow, verify:
 
 ### "NFR thresholds not defined"
 - Check tech-spec.md for NFR requirements
-- Check PRD.md for product-level SLAs
+- Check prd.md for product-level SLAs
 - Check story file for feature-specific requirements
 - If thresholds truly unknown, mark as CONCERNS and recommend defining them
 

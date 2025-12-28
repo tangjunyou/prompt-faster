@@ -342,11 +342,11 @@ VITE_API_URL=http://localhost:3000/api/v1
 
 ### References
 
-- [Source: docs/implementation-artifacts/architecture.md#Core-Architectural-Decisions] - 技术栈选型
-- [Source: docs/implementation-artifacts/architecture.md#Implementation-Patterns] - 命名规范
-- [Source: docs/implementation-artifacts/architecture.md#Project-Structure] - 目录结构
-- [Source: docs/implementation-artifacts/epics.md#Story-1.1] - 验收标准
-- [Source: docs/implementation-artifacts/prd.md#7.5] - SQLite 配置
+- [Source: docs/project-planning-artifacts/architecture.md#Core-Architectural-Decisions] - 技术栈选型
+- [Source: docs/project-planning-artifacts/architecture.md#Implementation-Patterns] - 命名规范
+- [Source: docs/project-planning-artifacts/architecture.md#Project-Structure] - 目录结构
+- [Source: docs/project-planning-artifacts/epics.md#Story-1.1] - 验收标准
+- [Source: docs/project-planning-artifacts/prd.md#7.5] - SQLite 配置
 
 ## Dev Agent Record
 

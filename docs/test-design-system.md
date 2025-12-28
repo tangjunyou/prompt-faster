@@ -598,10 +598,10 @@ tests/
 
 ### Related Documents
 
-- PRD: `docs/implementation-artifacts/prd.md`
-- Architecture: `docs/implementation-artifacts/architecture.md`
-- Epics: `docs/implementation-artifacts/epics.md`
-- UX Design: `docs/implementation-artifacts/ux-design-specification.md`
+- PRD: `docs/project-planning-artifacts/prd.md`
+- Architecture: `docs/project-planning-artifacts/architecture.md`
+- Epics: `docs/project-planning-artifacts/epics.md`
+- UX Design: `docs/project-planning-artifacts/ux-design-specification.md`
 
 ---
 

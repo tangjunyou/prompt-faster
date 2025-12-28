@@ -57,7 +57,7 @@ Quick workflows like status checks can reuse chats safely.
 
 ### Q: How do I know if I'm in Phase 1, 2, 3, or 4?
 
-**A:** Check your `bmm-workflow-status.md` file (created by workflow-init). It shows your current phase and progress. If you don't have this file, you can also tell by what you're working on:
+**A:** Check your `bmm-workflow-status.yaml` file (created by workflow-init). It shows your current phase and progress. If you don't have this file, you can also tell by what you're working on:
 
 - **Phase 1** - Brainstorming, research, product brief (optional)
 - **Phase 2** - Creating either a PRD or tech-spec (always required)

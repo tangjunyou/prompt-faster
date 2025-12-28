@@ -60,7 +60,7 @@ Expands test automation coverage by generating comprehensive test suites at appr
    - Extract acceptance criteria and technical requirements
    - Load tech-spec.md if `{use_tech_spec}` is true
    - Load test-design.md if `{use_test_design}` is true
-   - Load PRD.md if `{use_prd}` is true
+   - Load prd.md if `{use_prd}` is true
    - Note: These are **optional enhancements**, not hard requirements
 
    **Standalone Mode:**

@@ -2,7 +2,7 @@
 stepsCompleted: [1, 2, 3, 4, 5, 6]
 inputDocuments:
   - docs/analysis/brainstorming-session-2025-12-12.md
-  - docs/implementation-artifacts/prd.md
+  - docs/project-planning-artifacts/prd.md
 workflowType: 'research'
 lastStep: 6
 research_type: 'technical'
@@ -2229,7 +2229,7 @@ optimization:
 
 > **新增** — 2025-12-16
 > 
-> 本节说明 PRD（`docs/implementation-artifacts/prd.md` Section 7.4.1）定义的接口与本技术规格 Trait 体系的映射关系，帮助开发者理解设计演进。
+> 本节说明 PRD（`docs/project-planning-artifacts/prd.md` Section 7.4.1）定义的接口与本技术规格 Trait 体系的映射关系，帮助开发者理解设计演进。
 
 #### 4.7.1 PRD 与技术规格的抽象层级差异
 

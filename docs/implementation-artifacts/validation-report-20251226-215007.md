@@ -1,6 +1,6 @@
 # Validation Report
 
-**Document:** /Users/jingshun/Desktop/prompt 自动优化（规范开发）/docs/stories/1-8-unified-error-response-and-openapi-docs.md
+**Document:** /Users/jingshun/Desktop/prompt 自动优化（规范开发）/docs/implementation-artifacts/1-8-unified-error-response-and-openapi-docs.md
 **Checklist:** /Users/jingshun/Desktop/prompt 自动优化（规范开发）/_bmad/bmm/workflows/4-implementation/create-story/checklist.md
 **Date:** 2025-12-26 22:30:00
 

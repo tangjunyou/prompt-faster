@@ -13,4 +13,4 @@
 
 - Backend: `backend/src/api/routes/*.rs`, `backend/src/api/response.rs`, `backend/src/shared/error_codes.rs`, `backend/src/api/routes/docs.rs`
 - Tests: `backend/tests/error_handling_test.rs`
-- Docs: `docs/stories/1-8-unified-error-response-and-openapi-docs.md`
+- Docs: `docs/implementation-artifacts/1-8-unified-error-response-and-openapi-docs.md`

@@ -6,11 +6,11 @@
 
 ### 核心文档
 
-- **PRD** (`prd.md`) - 产品需求文档，描述项目功能需求和用户故事
-- **架构文档** (`architecture.md`) - 系统架构设计，包括技术栈、组件设计和部署方案
-- **Epic 文档** (`epics.md`) - Epic 和 User Stories 详细定义
-- **UX 设计规范** (`ux-design-specification.md`) - 用户体验设计规范和界面设计
-- **测试设计系统** (`test-design-system.md`) - 测试策略和测试用例设计
+- **PRD** (`docs/project-planning-artifacts/prd.md`) - 产品需求文档，描述项目功能需求和用户故事
+- **架构文档** (`docs/project-planning-artifacts/architecture.md`) - 系统架构设计，包括技术栈、组件设计和部署方案
+- **Epic 文档** (`docs/project-planning-artifacts/epics.md`) - Epic 和 User Stories 详细定义
+- **UX 设计规范** (`docs/project-planning-artifacts/ux-design-specification.md`) - 用户体验设计规范和界面设计
+- **测试设计系统** (`docs/test-design-system.md`) - 测试策略和测试用例设计
 
 ### 实现状态
 

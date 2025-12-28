@@ -81,7 +81,7 @@ This phase focuses on mapping requirements to tests, analyzing coverage, and ide
 3. Read related BMad artifacts (if available):
    - `test-design.md` - Risk assessment and test priorities
    - `tech-spec.md` - Technical implementation details
-   - `PRD.md` - Product requirements context
+   - `prd.md` - Product requirements context
 
 **Output:** Complete understanding of requirements, priorities, and existing context
 
@@ -292,7 +292,7 @@ This phase uses traceability results to make a quality gate decision (PASS/CONCE
 4. **Load supporting artifacts**:
    - `test-design.md` → Risk priorities, DoD checklist
    - `story-*.md` or `Epics.md` → Requirements context
-   - `bmm-workflow-status.md` → Workflow completion status (if `check_all_workflows_complete: true`)
+   - `bmm-workflow-status.yaml` → Workflow completion status (if `check_all_workflows_complete: true`)
 
 5. **Validate evidence freshness** (if `validate_evidence_freshness: true`):
    - Check timestamps of test-design, traceability, NFR assessments
@@ -507,7 +507,7 @@ This phase uses traceability results to make a quality gate decision (PASS/CONCE
 **Actions:**
 
 1. **Update workflow status** (if `append_to_history: true`):
-   - Append gate decision to `bmm-workflow-status.md` under "Gate History" section
+   - Append gate decision to `bmm-workflow-status.yaml` under "Gate History" section
    - Format:
 
      ```markdown
@@ -783,7 +783,7 @@ Use selective testing principles from `selective-testing.md`:
 - Map criteria to specific code modules
 - Verify tests cover technical edge cases
 
-### With PRD.md
+### With prd.md
 
 - Understand full product context
 - Verify acceptance criteria align with product goals
@@ -968,7 +968,7 @@ Before completing this workflow, verify:
 - ✅ Decision rules applied consistently (PASS/CONCERNS/FAIL/WAIVED)
 - ✅ Gate decision document created with evidence
 - ✅ Waiver documented if decision is WAIVED (approver, justification, mitigation)
-- ✅ Workflow status updated (bmm-workflow-status.md)
+- ✅ Workflow status updated (bmm-workflow-status.yaml)
 - ✅ Stakeholders notified (if enabled)
 
 ---

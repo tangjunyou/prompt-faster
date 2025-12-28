@@ -20,7 +20,7 @@ Note: `nfr-assess` evaluates existing evidence; it does not run tests or CI work
 ## Context Loading
 
 - [ ] Tech-spec.md loaded successfully (if available)
-- [ ] PRD.md loaded (if available)
+- [ ] prd.md loaded (if available)
 - [ ] Story file loaded (if applicable)
 - [ ] Relevant knowledge fragments loaded from `tea-index.csv`:
   - [ ] `nfr-criteria.md`
@@ -309,7 +309,7 @@ Note: `nfr-assess` evaluates existing evidence; it does not run tests or CI work
 - [ ] Test priorities referenced (P0/P1/P2/P3)
 - [ ] Assessment aligned with planned NFR validation
 
-### With PRD.md
+### With prd.md
 
 - [ ] PRD loaded for product-level NFR context
 - [ ] User experience goals considered

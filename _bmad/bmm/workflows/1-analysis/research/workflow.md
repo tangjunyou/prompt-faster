@@ -48,7 +48,7 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
 
 - `installed_path` = `{project-root}/_bmad/bmm/workflows/1-analysis/research`
 - `template_path` = `{installed_path}/research.template.md`
-- `default_output_file` = `{planning_artifacts}/research/{{research_type}}-{{topic}}-research-{{date}}.md` (dynamic based on research type)
+- `default_output_file` = `{output_folder}/analysis/research/{{research_type}}-{{topic}}-research-{{date}}.md` (dynamic based on research type)
 
 ## PREREQUISITE
 
@@ -151,21 +151,21 @@ After understanding the research topic and goals, identify the most appropriate 
 
 - Set `research_type = "market"`
 - Set `research_topic = [discovered topic from discussion]`
-- Create the starter output file: `{planning_artifacts}/research/market-{{research_topic}}-research-{{date}}.md` with exact copy of the ./research.template.md contents
+- Create the starter output file: `{output_folder}/analysis/research/market-{{research_topic}}-research-{{date}}.md` with exact copy of the ./research.template.md contents
 - Load: `./market-steps/step-01-init.md` with topic context
 
 #### If Domain Research:
 
 - Set `research_type = "domain"`
 - Set `research_topic = [discovered topic from discussion]`
-- Create the starter output file: `{planning_artifacts}/research/domain-{{research_topic}}-research-{{date}}.md` with exact copy of the ./research.template.md contents
+- Create the starter output file: `{output_folder}/analysis/research/domain-{{research_topic}}-research-{{date}}.md` with exact copy of the ./research.template.md contents
 - Load: `./domain-steps/step-01-init.md` with topic context
 
 #### If Technical Research:
 
 - Set `research_type = "technical"`
 - Set `research_topic = [discovered topic from discussion]`
-- Create the starter output file: `{planning_artifacts}/research/technical-{{research_topic}}-research-{{date}}.md` with exact copy of the ./research.template.md contents
+- Create the starter output file: `{output_folder}/analysis/research/technical-{{research_topic}}-research-{{date}}.md` with exact copy of the ./research.template.md contents
 - Load: `./technical-steps/step-01-init.md` with topic context
 
 **Important**: The discovered topic from the collaborative discussion should be passed to the research initialization steps, so they don't need to ask "What do you want to research?" again - they can focus on refining the scope for their specific research type.

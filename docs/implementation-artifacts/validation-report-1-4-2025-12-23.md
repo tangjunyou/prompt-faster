@@ -1,6 +1,6 @@
 # Validation Report
 
-**Document:** docs/stories/1-4-api-connection-test.md
+**Document:** docs/implementation-artifacts/1-4-api-connection-test.md
 **Checklist:** _bmad/bmm/workflows/4-implementation/create-story/checklist.md
 **Date:** 2025-12-23
 

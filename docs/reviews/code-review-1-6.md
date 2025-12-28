@@ -127,7 +127,7 @@
 - `frontend/src/features/auth/services/authService.ts` - 使用统一鉴权注入点
 
 ### Documentation
-- `docs/stories/1-6-local-user-authentication-and-login-flow.md` - 更新任务标记状态
+- `docs/implementation-artifacts/1-6-local-user-authentication-and-login-flow.md` - 更新任务标记状态
 
 ---
 

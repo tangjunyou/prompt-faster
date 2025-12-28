@@ -257,7 +257,7 @@ test('should do something', async ({ {fixtureName} }) => {
 
 - Check off tasks as you complete them
 - Share progress in daily standup
-- Mark story as IN PROGRESS in `bmm-workflow-status.md`
+- Mark story as IN PROGRESS in `bmm-workflow-status.yaml`
 
 ---
 
@@ -356,8 +356,8 @@ See `tea-index.csv` for complete knowledge fragment mapping.
 
 - Ask in team standup
 - Tag @{tea_agent_username} in Slack/Discord
-- Refer to `./bmm/docs/tea-README.md` for workflow documentation
-- Consult `./bmm/testarch/knowledge` for testing best practices
+- Refer to `_bmad/bmm/docs/test-architecture.md` for workflow documentation
+- Consult `_bmad/bmm/testarch/knowledge/` for testing best practices
 
 ---
 

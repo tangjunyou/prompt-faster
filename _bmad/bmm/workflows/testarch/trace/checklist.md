@@ -30,7 +30,7 @@ This checklist covers **two sequential phases**:
 - [ ] Story ID identified (e.g., 1.3)
 - [ ] `test-design.md` loaded (if available)
 - [ ] `tech-spec.md` loaded (if available)
-- [ ] `PRD.md` loaded (if available)
+- [ ] `prd.md` loaded (if available)
 - [ ] Relevant knowledge fragments loaded from `tea-index.csv`
 
 ---
@@ -377,7 +377,7 @@ Knowledge fragments referenced:
 
 **Status File Updated:**
 
-- [ ] Gate decision appended to bmm-workflow-status.md (if append_to_history: true)
+- [ ] Gate decision appended to bmm-workflow-status.yaml (if append_to_history: true)
 - [ ] Format correct: `[DATE] Gate Decision: DECISION - Target {ID} - {rationale}`
 - [ ] Status file committed or staged for commit
 
@@ -482,7 +482,7 @@ Knowledge fragments referenced:
 
 ### BMad Workflow Status
 
-- [ ] Gate decision added to `bmm-workflow-status.md`
+- [ ] Gate decision added to `bmm-workflow-status.yaml`
 - [ ] Format matches existing gate history entries
 - [ ] Timestamp is accurate
 - [ ] Decision summary is concise (<80 chars)

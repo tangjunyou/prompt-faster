@@ -179,7 +179,7 @@ The workflow uses a single comprehensive CSV file:
 
 **documentation-requirements.csv** - Complete project analysis guide
 
-- Location: `/_bmad/bmm/workflows/document-project/documentation-requirements.csv`
+- Location: `_bmad/bmm/workflows/document-project/documentation-requirements.csv`
 - 12 project types (web, mobile, backend, cli, library, desktop, game, data, extension, infra, embedded)
 - 24 columns combining:
   - **Detection columns**: `project_type_id`, `key_file_patterns` (identifies project type from codebase)
@@ -236,7 +236,7 @@ Create-Epics-and-Stories Workflow: Breaks down into epics and stories
 
 ### Default Output Location
 
-Files are saved to: `{output_folder}` (from config.yaml)
+Files are saved to: `{project_knowledge}` (from config.yaml)
 
 Default: `/docs/` folder in project root
 

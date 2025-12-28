@@ -101,10 +101,10 @@ agent cis/brainstorming-coach
 
 ## Configuration
 
-Edit `/_bmad/cis/config.yaml`:
+Edit `_bmad/cis/config.yaml`:
 
 ```yaml
-output_folder: ./creative-outputs
+output_folder: "{project-root}/docs"
 user_name: Your Name
 communication_language: english
 ```
@@ -142,7 +142,7 @@ CIS workflows integrate with:
 
 ## Related Documentation
 
-- **[BMM Documentation](../../bmm/docs/index.md)** - Core BMad Method documentation
+- **BMM Documentation:** `_bmad/bmm/docs/index.md` - Core BMad Method documentation
 
 ---
 

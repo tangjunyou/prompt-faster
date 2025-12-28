@@ -42,7 +42,7 @@ Barry owns the entire BMAD Quick Flow path, providing a streamlined 3-step devel
 
 ### 2. **quick-dev**
 
-- **Workflow:** `_bmad/bmm/workflows/bmad-quick-flow/quick-dev/workflow.yaml`
+- **Workflow:** `_bmad/bmm/workflows/bmad-quick-flow/quick-dev/workflow.md`
 - **Description:** Ship features from spec or direct instructions - no handoffs
 - **Use when:** You're ready to ship code based on a spec or clear instructions
 
@@ -54,7 +54,7 @@ Barry owns the entire BMAD Quick Flow path, providing a streamlined 3-step devel
 
 ### 4. **party-mode**
 
-- **Workflow:** `_bmad/core/workflows/party-mode/workflow.yaml`
+- **Workflow:** `_bmad/core/workflows/party-mode/workflow.md`
 - **Description:** Bring in other experts when I need specialized backup
 - **Use when:** You need collaborative problem-solving or specialized expertise
 
@@ -119,7 +119,7 @@ flowchart LR
    - Technical decisions and dependencies
 4. **Review and Finalize** - Validate spec captures user intent
 
-**Output:** `tech-spec-{slug}.md` saved to sprint artifacts
+**Output:** `docs/implementation-artifacts/tech-spec-{slug}.md`
 
 **Best Practices:**
 

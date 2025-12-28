@@ -169,15 +169,15 @@ domain-research → research (compliance/regulatory) → product-brief → Phase
 
 Analysis outputs feed directly into Planning:
 
-| Analysis Output             | Planning Input             |
-| --------------------------- | -------------------------- |
-| product-brief.md            | **prd** workflow           |
-| market-research.md          | **prd** context            |
-| domain-research.md          | **prd** context            |
-| technical-research.md       | **architecture** (Phase 3) |
-| competitive-intelligence.md | **prd** positioning        |
+| Analysis Output                                               | Planning Input             |
+| ------------------------------------------------------------- | -------------------------- |
+| `docs/analysis/product-brief-<project>-<date>.md`             | **prd** workflow           |
+| `docs/analysis/research/market-*-research-<date>.md`          | **prd** context            |
+| `docs/analysis/research/domain-*-research-<date>.md`          | **prd** context            |
+| `docs/analysis/research/technical-*-research-<date>.md`       | **architecture** (Phase 3) |
+| `docs/analysis/research/competitive-*-research-<date>.md`     | **prd** positioning        |
 
-Planning workflows automatically load these documents if they exist in the output folder.
+Planning workflows automatically load these documents if they exist under `docs/analysis/`.
 
 ---
 

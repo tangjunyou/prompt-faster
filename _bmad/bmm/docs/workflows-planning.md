@@ -85,7 +85,7 @@ BMM uses three distinct planning tracks that adapt to project complexity:
 
 **Story Count:** Typically 10-50+ (guidance)
 
-**Documents:** PRD.md (FRs/NFRs) + architecture.md + epics.md + epic files
+**Documents:** prd.md (FRs/NFRs) + architecture.md + epics.md + epic files
 
 **Greenfield:** Product Brief (optional) → PRD (FRs/NFRs) → UX (optional) → Architecture → Epics+Stories → Implementation
 
@@ -109,7 +109,7 @@ BMM uses three distinct planning tracks that adapt to project complexity:
 
 **Story Count:** Typically 30+ (but defined by enterprise needs)
 
-**Documents Phase 2:** PRD.md (FRs/NFRs)
+**Documents Phase 2:** prd.md (FRs/NFRs)
 
 **Documents Phase 3:** architecture.md + epics.md + epic files + security-architecture.md (optional) + devops-strategy.md (optional) + secops-strategy.md (optional)
 
@@ -201,7 +201,7 @@ The system guides but never forces. You can override recommendations.
 
 **Key Outputs:**
 
-- PRD.md (complete requirements with FRs and NFRs)
+- prd.md (complete requirements with FRs and NFRs)
 
 **Note:** V6 improvement - PRD focuses on WHAT to build (requirements). Epic+Stories are created AFTER architecture via `create-epics-and-stories` workflow for better quality.
 
@@ -293,7 +293,7 @@ Planning outputs feed into Solutioning:
 | Planning Output | Solutioning Input                  | Track Decision               |
 | --------------- | ---------------------------------- | ---------------------------- |
 | tech-spec.md    | Skip Phase 3 → Phase 4 directly    | Quick Flow (no architecture) |
-| PRD.md          | **architecture** (Level 3-4)       | BMad Method (recommended)    |
+| prd.md          | **architecture** (Level 3-4)       | BMad Method (recommended)    |
 | ux-spec.md      | **architecture** (frontend design) | BMad Method                  |
 | Enterprise docs | **architecture** + security/ops    | Enterprise Method (required) |
 

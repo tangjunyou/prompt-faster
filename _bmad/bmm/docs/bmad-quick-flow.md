@@ -79,7 +79,7 @@ The `create-tech-spec` workflow transforms requirements into implementation-read
 4. **Review and Finalize**
    - Present spec for validation
    - Make adjustments as needed
-   - Save to sprint artifacts
+   - Save to implementation artifacts
 
 **Output:** `{implementation_artifacts}/tech-spec-{slug}.md`
 
@@ -302,7 +302,7 @@ The `code-review` workflow provides senior developer review of implemented code.
 
 ```bash
 # From tech spec
-quick-dev sprint-artifacts/tech-spec-user-auth.md
+quick-dev docs/implementation-artifacts/tech-spec-user-auth.md
 
 # Direct development
 quick-dev "Add CORS middleware to API endpoints"

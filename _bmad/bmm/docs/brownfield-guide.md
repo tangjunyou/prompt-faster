@@ -77,7 +77,7 @@ When you run `workflow-init`, it handles brownfield intelligently:
 **Example: Old Complex PRD, New Simple Work**
 
 ```
-System: "Found PRD.md (BMad Method track, 30 stories, 6 months old)"
+System: "Found prd.md (BMad Method track, 30 stories, 6 months old)"
 System: "Is this work in progress or previous effort?"
 You: "Previous effort - I'm just fixing a bug now"
 System: "Tell me about your current work"
@@ -291,7 +291,7 @@ See the [Workflows section in BMM README](../README.md) for details.
 
 **BMad Method/Enterprise:** Use `prd` workflow
 
-- Creates PRD.md with FRs/NFRs only
+- Creates prd.md with FRs/NFRs only
 - References existing architecture
 - Plans integration points
 - Epics+Stories created AFTER architecture phase
@@ -656,8 +656,8 @@ correct-course               # If issues
 
 **Phase 2 Planning:**
 
-- `docs/tech-spec.md` (Quick Flow track)
-- `docs/PRD.md` (BMad Method/Enterprise tracks - FRs/NFRs only)
+- `docs/implementation-artifacts/tech-spec-*.md` (Quick Flow track)
+- `docs/project-planning-artifacts/prd.md` (BMad Method/Enterprise tracks - FRs/NFRs only)
 
 **Phase 3 Solutioning:**
 
@@ -665,15 +665,15 @@ correct-course               # If issues
 
 **Phase 3 Architecture:**
 
-- `docs/architecture.md` (BMad Method/Enterprise tracks)
-- `docs/epics.md` + epic folders (from create-epics-and-stories)
+- `docs/project-planning-artifacts/architecture.md` (BMad Method/Enterprise tracks)
+- `docs/project-planning-artifacts/epics.md` + epic folders (from create-epics-and-stories)
 
 **Phase 4 Implementation:**
 
-- `docs/sprint-status.yaml` - **Single source of truth**
-- `docs/epic-{n}-context.md`
-- `docs/stories/{epic}-{story}-{title}.md`
-- `docs/stories/{epic}-{story}-{title}-context.md`
+- `docs/implementation-artifacts/sprint-status.yaml` - **Single source of truth**
+- `docs/implementation-artifacts/epic-{n}-context.md`
+- `docs/implementation-artifacts/{epic}-{story}-{title}.md`
+- `docs/implementation-artifacts/{epic}-{story}-{title}-context.md`
 
 ### Decision Flowchart
 

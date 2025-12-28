@@ -1,7 +1,7 @@
 # Workflow Init - Project Setup Instructions
 
 <critical>The workflow execution engine is governed by: {project-root}/_bmad/core/tasks/workflow.xml</critical>
-<critical>You MUST have already loaded and processed: workflow-init/workflow.yaml</critical>
+<critical>You MUST have already loaded and processed: {project-root}/_bmad/bmm/workflows/workflow-status/init/workflow.yaml</critical>
 <critical>Communicate in {communication_language} with {user_name}</critical>
 <critical>This workflow handles BOTH new projects AND legacy projects following the BMad Method</critical>
 

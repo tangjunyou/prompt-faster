@@ -153,12 +153,12 @@ so that 我可以稳定解析错误并快速理解接口。
 
 ### ⚠️ Guardrails（必须遵循）
 
-- **ApiResponse 规范**：以 `backend/src/api/response.rs` 中的 **enum 结构**为准，所有 API 必须返回 `ApiResponse<T>`，`Success/Error` 互斥 [Source: backend/src/api/response.rs] [Source: docs/implementation-artifacts/architecture.md#API-响应格式]
+- **ApiResponse 规范**：以 `backend/src/api/response.rs` 中的 **enum 结构**为准，所有 API 必须返回 `ApiResponse<T>`，`Success/Error` 互斥 [Source: backend/src/api/response.rs] [Source: docs/project-planning-artifacts/architecture.md#API-响应格式]
 - **错误码管理**：统一使用 `shared/error_codes.rs` 常量，避免硬编码；通用错误码 + 业务错误码混合策略（见下方清单）
-- **thiserror + anyhow**：库层使用 `thiserror` 定义类型安全错误，应用层使用 `anyhow` 包装错误 [Source: docs/implementation-artifacts/architecture.md#错误处理约定]
-- **API 版本化**：所有公开 API 必须在 `/api/v1` 前缀下 [Source: docs/implementation-artifacts/architecture.md#API-边界]
-- **OpenAPI 文档**：使用 utoipa 生成文档，Swagger UI 在 **根路径 `/swagger`** 公开访问 [Source: docs/implementation-artifacts/architecture.md#API-文档]
-- **前后端类型对齐**：使用 `#[serde(rename_all = "camelCase")]` 确保前后端字段命名一致 [Source: docs/implementation-artifacts/architecture.md#Code-Naming-Conventions]
+- **thiserror + anyhow**：库层使用 `thiserror` 定义类型安全错误，应用层使用 `anyhow` 包装错误 [Source: docs/project-planning-artifacts/architecture.md#错误处理约定]
+- **API 版本化**：所有公开 API 必须在 `/api/v1` 前缀下 [Source: docs/project-planning-artifacts/architecture.md#API-边界]
+- **OpenAPI 文档**：使用 utoipa 生成文档，Swagger UI 在 **根路径 `/swagger`** 公开访问 [Source: docs/project-planning-artifacts/architecture.md#API-文档]
+- **前后端类型对齐**：使用 `#[serde(rename_all = "camelCase")]` 确保前后端字段命名一致 [Source: docs/project-planning-artifacts/architecture.md#Code-Naming-Conventions]
 - **错误响应不泄露敏感信息**：`details` 仅在开发环境返回（建议 `#[cfg(debug_assertions)]` 或配置开关）
 
 #### 禁止事项
@@ -190,7 +190,7 @@ so that 我可以稳定解析错误并快速理解接口。
 
 ### Project Structure Notes
 
-- **API 响应格式**：`ApiResponse<T>` 结构已在 Story 1.1 中定义 [Source: docs/stories/1-1-project-initialization-and-basic-architecture.md]
+- **API 响应格式**：`ApiResponse<T>` 结构已在 Story 1.1 中定义 [Source: docs/implementation-artifacts/1-1-project-initialization-and-basic-architecture.md]
 - **路由架构**：当前已有 `/api/v1/auth`, `/api/v1/workspaces` 路由，需确保无无版本前缀的 API
 - **错误处理现状**：
   - Story 1.1 已定义 `ApiResponse<T>`，但需要验证 `data`/`error` 互斥约束
@@ -266,14 +266,14 @@ let details = None;
 
 ### References
 
-- [Source: docs/implementation-artifacts/epics.md#Story-1.8] - 验收标准原文
-- [Source: docs/implementation-artifacts/architecture.md#API-响应格式] - API 响应结构规范
-- [Source: docs/implementation-artifacts/architecture.md#错误处理约定] - 错误处理约定
-- [Source: docs/implementation-artifacts/architecture.md#API-边界] - API 版本化要求
-- [Source: docs/implementation-artifacts/architecture.md#API-文档] - OpenAPI 文档要求
-- [Source: docs/stories/1-1-project-initialization-and-basic-architecture.md] - ApiResponse 定义
-- [Source: docs/stories/1-6-local-user-authentication-and-login-flow.md] - 认证错误处理参考
-- [Source: docs/stories/1-7-user-data-isolation-and-access-control.md] - Workspace API 错误处理参考
+- [Source: docs/project-planning-artifacts/epics.md#Story-1.8] - 验收标准原文
+- [Source: docs/project-planning-artifacts/architecture.md#API-响应格式] - API 响应结构规范
+- [Source: docs/project-planning-artifacts/architecture.md#错误处理约定] - 错误处理约定
+- [Source: docs/project-planning-artifacts/architecture.md#API-边界] - API 版本化要求
+- [Source: docs/project-planning-artifacts/architecture.md#API-文档] - OpenAPI 文档要求
+- [Source: docs/implementation-artifacts/1-1-project-initialization-and-basic-architecture.md] - ApiResponse 定义
+- [Source: docs/implementation-artifacts/1-6-local-user-authentication-and-login-flow.md] - 认证错误处理参考
+- [Source: docs/implementation-artifacts/1-7-user-data-isolation-and-access-control.md] - Workspace API 错误处理参考
 - [Source: backend/src/api/response.rs] - ApiResponse 实现
 - [Source: backend/Cargo.toml] - utoipa 依赖版本
 - [Source: backend/src/shared/error.rs] - AppError 与 IntoResponse
@@ -313,8 +313,8 @@ Claude 3.5 Sonnet (claude-sonnet-3.5-20241022)
 - `backend/src/shared/error_codes.rs` - 集中管理所有错误码常量
 - `backend/src/api/routes/docs.rs` - OpenAPI 文档与 Swagger UI 路由
 - `backend/tests/error_handling_test.rs` - 错误处理集成测试
-- `docs/stories/1-8-implementation-summary.md` - 实施总结文档
-- `docs/stories/validation-report-20251226-215007.md` - Story 验证报告
+- `docs/implementation-artifacts/1-8-implementation-summary.md` - 实施总结文档
+- `docs/implementation-artifacts/validation-report-20251226-215007.md` - Story 验证报告
 
 **修改文件 (15)**:
 - `backend/src/shared/mod.rs` - 添加 `pub mod error_codes;`
@@ -329,8 +329,8 @@ Claude 3.5 Sonnet (claude-sonnet-3.5-20241022)
 - `backend/src/main.rs` - 添加 `use prompt_faster::api::routes::docs;`，注册 `.merge(docs::router())`
 - `backend/Cargo.toml` - 固定 `utoipa-swagger-ui = "9"` 版本以匹配项目要求（axum 0.8）
 - `backend/Cargo.lock` - 依赖锁文件同步更新
-- `docs/stories/1-1-project-initialization-and-basic-architecture.md` - 同步 Swagger UI 依赖版本说明
+- `docs/implementation-artifacts/1-1-project-initialization-and-basic-architecture.md` - 同步 Swagger UI 依赖版本说明
 - `docs/implementation-artifacts/sprint-status.yaml` - 同步 Story 状态为 done
-- `docs/stories/1-8-unified-error-response-and-openapi-docs.md` - 标记所有任务为完成并更新记录
+- `docs/implementation-artifacts/1-8-unified-error-response-and-openapi-docs.md` - 标记所有任务为完成并更新记录
 
 **总计**: 20 个文件变更（5 新增 + 15 修改）

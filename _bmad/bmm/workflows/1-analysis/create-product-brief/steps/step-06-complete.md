@@ -8,7 +8,7 @@ workflow_path: '{project-root}/_bmad/bmm/workflows/1-analysis/create-product-bri
 # File References
 thisStepFile: '{workflow_path}/steps/step-06-complete.md'
 workflowFile: '{workflow_path}/workflow.md'
-outputFile: '{planning_artifacts}/product-brief-{{project_name}}-{{date}}.md'
+outputFile: '{output_folder}/analysis/product-brief-{{project_name}}-{{date}}.md'
 ---
 
 # Step 6: Product Brief Completion
@@ -82,7 +82,7 @@ This brief serves as the foundation for all subsequent product development activ
 **Status File Management:**
 Update the main workflow status file:
 
-- Check if `{output_folder} or {planning_artifacts}/bmm-workflow-status.yaml` exists
+- Check if `{output_folder}/bmm-workflow-status.yaml` exists
 - If so, update workflow_status["product-brief"] = `{outputFile}`
 - Add completion timestamp and metadata
 - Save file, preserving all comments and structure

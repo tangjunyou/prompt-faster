@@ -11,7 +11,7 @@
 
 ### Step 1: Context Loading
 
-- [ ] PRD.md read and requirements extracted
+- [ ] prd.md read and requirements extracted
 - [ ] Epics.md or specific epic documentation loaded
 - [ ] Story markdown with acceptance criteria analyzed
 - [ ] Architecture documents reviewed (if available)
@@ -145,7 +145,7 @@
 
 ### Status File Integration
 
-- [ ] bmm-workflow-status.md exists
+- [ ] bmm-workflow-status.yaml exists
 - [ ] Test design logged in Quality & Testing Progress
 - [ ] Epic number and scope documented
 - [ ] Completion timestamp recorded

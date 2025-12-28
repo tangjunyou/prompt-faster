@@ -3,8 +3,8 @@ stepsCompleted: [1, 2, 3, 4, 5, 6, 7, 8]
 status: 'complete'
 completedAt: '2025-12-20'
 inputDocuments:
-  - docs/implementation-artifacts/prd.md
-  - docs/implementation-artifacts/ux-design-specification.md
+  - docs/project-planning-artifacts/prd.md
+  - docs/project-planning-artifacts/ux-design-specification.md
   - docs/analysis/research/technical-algorithm-specification-research-2025-12-14.md
 workflowType: 'architecture'
 lastStep: 8
@@ -939,7 +939,7 @@ SQLite / 外部 LLM API
 **架构决策工作流：** COMPLETED ✅  
 **完成步骤总数：** 8  
 **完成日期：** 2025-12-20  
-**文档位置：** `docs/implementation-artifacts/architecture.md`
+**文档位置：** `docs/project-planning-artifacts/architecture.md`
 
 ### 最终架构交付物
 

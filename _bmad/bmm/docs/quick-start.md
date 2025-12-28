@@ -138,7 +138,7 @@ For v4 users or those who prefer to skip workflow-status guidance:
 1. Load the **PM agent** in a new chat
 2. Tell it to run the PRD workflow
 3. Once complete, you'll have:
-   - **PRD.md** - Your Product Requirements Document
+   - **prd.md** - Your Product Requirements Document
 
 **For Quick Flow track:**
 

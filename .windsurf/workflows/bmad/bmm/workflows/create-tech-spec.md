@@ -25,7 +25,7 @@ installed_path: "{project-root}/_bmad/bmm/workflows/bmad-quick-flow/create-tech-
 instructions: "{installed_path}/instructions.md"
 
 # Related workflows
-quick_dev_workflow: "{project-root}/_bmad/bmm/workflows/bmad-quick-flow/quick-dev/workflow.yaml"
+quick_dev_workflow: "{project-root}/_bmad/bmm/workflows/bmad-quick-flow/quick-dev/workflow.md"
 party_mode_exec: "{project-root}/_bmad/core/workflows/party-mode/workflow.md"
 advanced_elicitation: "{project-root}/_bmad/core/tasks/advanced-elicitation.xml"
 

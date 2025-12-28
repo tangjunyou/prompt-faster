@@ -472,20 +472,20 @@ git submodule update --init --recursive
 
 ```bash
 cd /path/to/your-project
-# BMad available at ./_bmad/, load agents normally
+# BMad available at _bmad/, load agents normally
 ```
 
 **Update personal config:**
 
 ```bash
-cd bmad
+cd _bmad
 # Make changes, commit locally, don't push unless sharing
 ```
 
 **Update to latest team config:**
 
 ```bash
-cd bmad
+cd _bmad
 git pull origin main
 ```
 

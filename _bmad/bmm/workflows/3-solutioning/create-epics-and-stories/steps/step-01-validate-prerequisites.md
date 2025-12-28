@@ -67,7 +67,7 @@ Welcome {user_name} to comprehensive epic and story creation!
 
 Verify required documents exist and are complete:
 
-1. **PRD.md** - Contains requirements (FRs and NFRs) and product scope
+1. **prd.md** - Contains requirements (FRs and NFRs) and product scope
 2. **Architecture.md** - Contains technical decisions, API contracts, data models
 3. **UX Design.md** (if UI exists) - Contains interaction patterns, mockups, user flows
 
@@ -94,7 +94,7 @@ Before proceeding, Ask the user if there are any other documents, or if what you
 
 ### 3. Extract Functional Requirements (FRs)
 
-From the PRD document (full or sharded), extract ALL functional requirements:
+From the PRD document (full or sharded), read then entire document and extract ALL functional requirements:
 
 **Extraction Method:**
 

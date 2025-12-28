@@ -25,7 +25,7 @@ The workflow auto-detects which mode to use based on project phase.
 ### Mode Detection
 
 1. **Check for sprint-status.yaml**
-   - If `{output_folder}/bmm-sprint-status.yaml` exists → **Epic-Level Mode** (Phase 4)
+   - If `{implementation_artifacts}/sprint-status.yaml` exists → **Epic-Level Mode** (Phase 4)
    - If NOT exists → Check workflow status
 
 2. **Check workflow-status.yaml**
@@ -60,7 +60,7 @@ The workflow auto-detects which mode to use based on project phase.
 
 1. **Read Architecture Documentation**
    - Load architecture.md or tech-spec (REQUIRED)
-   - Load PRD.md for functional and non-functional requirements
+   - Load prd.md for functional and non-functional requirements
    - Load epics.md for feature scope
    - Identify technology stack decisions (frameworks, databases, deployment targets)
    - Note integration points and external system dependencies
@@ -88,7 +88,7 @@ The workflow auto-detects which mode to use based on project phase.
 ### Epic-Level Mode (Phase 4)
 
 1. **Read Requirements Documentation**
-   - Load PRD.md for high-level product requirements
+   - Load prd.md for high-level product requirements
    - Read epics.md or specific epic for feature scope
    - Read story markdown for detailed acceptance criteria
    - Identify all testable requirements

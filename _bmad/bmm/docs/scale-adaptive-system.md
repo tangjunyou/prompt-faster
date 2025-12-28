@@ -154,7 +154,7 @@ Tech-Spec → Implement
 
 **Planning Docs**:
 
-- PRD.md (functional and non-functional requirements)
+- prd.md (functional and non-functional requirements)
 - Architecture.md (system design)
 - UX Design (if UI components)
 - Epics and Stories (created after architecture)

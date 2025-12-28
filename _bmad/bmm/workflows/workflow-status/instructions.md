@@ -176,7 +176,7 @@ Your choice:</ask>
 
   <check if="update_choice == 1">
     <ask>Which workflow? (Enter workflow ID like 'prd' or 'create-architecture')</ask>
-    <ask>File path created? (e.g., docs/prd.md)</ask>
+    <ask>File path created? (e.g., docs/project-planning-artifacts/prd.md)</ask>
     <critical>ONLY write the file path as the status value - no other text, notes, or metadata</critical>
     <action>Update workflow_status in YAML file: {{workflow_id}}: {{file_path}}</action>
     <action>Save updated YAML file preserving ALL structure and comments</action>

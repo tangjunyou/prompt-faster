@@ -1,9 +1,9 @@
 ---
 stepsCompleted: [1, 2, 3, 4]
 inputDocuments:
-  - docs/implementation-artifacts/prd.md
-  - docs/implementation-artifacts/architecture.md
-  - docs/implementation-artifacts/ux-design-specification.md
+  - docs/project-planning-artifacts/prd.md
+  - docs/project-planning-artifacts/architecture.md
+  - docs/project-planning-artifacts/ux-design-specification.md
 workflowType: 'epics'
 lastStep: 4
 project_name: 'Prompt Faster'

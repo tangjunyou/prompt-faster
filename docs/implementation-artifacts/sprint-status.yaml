@@ -2,7 +2,7 @@
 # project: Prompt Faster
 # project_key: prompt-faster
 # tracking_system: file-system
-# story_location: docs/stories
+# story_location: docs/implementation-artifacts
 
 # STATUS DEFINITIONS:
 # ==================
@@ -37,7 +37,7 @@ generated: 2025-12-22
 project: Prompt Faster
 project_key: prompt-faster
 tracking_system: file-system
-story_location: docs/stories
+story_location: docs/implementation-artifacts
 
 development_status:
   # ============================================

@@ -55,7 +55,7 @@ flowchart TD
 
 ```bash
 # Check if BMM is installed
-ls bmad/
+ls _bmad/
 
 # If not present, run installer
 npx bmad-method@alpha install
@@ -73,7 +73,7 @@ npx bmad-method@alpha install --skip-version-prompt
 
 **Solution:**
 
-1. Ensure you're loading the correct agent file path: `bmad/bmm/agents/[agent-name].md`
+1. Ensure you're loading the correct agent file path: `_bmad/bmm/agents/[agent-name].md`
 2. Wait a few seconds for agent to initialize
 3. Try asking "show menu" or "help"
 4. Check IDE supports Markdown rendering with context
@@ -88,7 +88,7 @@ npx bmad-method@alpha install --skip-version-prompt
 
 **Solution:**
 
-1. Check workflow exists: `ls bmad/bmm/workflows/`
+1. Check workflow exists: `ls _bmad/bmm/workflows/`
 2. Verify agent has access to workflow (check agent's workflow list)
 3. Try using menu number instead of workflow name
 4. Restart chat with agent in fresh session
@@ -180,7 +180,7 @@ workflow-init asks: "Is this work in progress or previous effort?"
    - Phase 3 needs Phase 2 complete
    - Phase 4 needs Phase 3 complete (if Level 3-4)
 3. **Restart workflow** - Load agent in new chat and restart
-4. **Check status file** - Verify `bmm-workflow-status.md` or `sprint-status.yaml` is present and valid
+4. **Check status file** - Verify `bmm-workflow-status.yaml` or `sprint-status.yaml` is present and valid
 
 ### Problem: Agent says "workflow not found"
 
@@ -257,7 +257,7 @@ workflow-init asks: "Is this work in progress or previous effort?"
 **Option 1: Quick fix (2-5min)**
 Run `index-docs` task:
 
-- Located at `bmad/core/tasks/index-docs.xml`
+- Located at `_bmad/core/tasks/index-docs.xml`
 - Scans existing docs and generates index.md
 - Lightweight, just creates navigation
 
@@ -387,18 +387,19 @@ For most brownfield projects, **Deep scan is sufficient**.
 - Documentation scattered
 
 **Solution:**
-Check `bmad/bmm/config.yaml` for configured paths:
+Check `_bmad/bmm/config.yaml` for configured paths:
 
 ```yaml
 output_folder: '{project-root}/docs'
-dev_story_location: '{project-root}/docs/stories'
+planning_artifacts: '{project-root}/docs/project-planning-artifacts'
+implementation_artifacts: '{project-root}/docs/implementation-artifacts'
 ```
 
 Default locations:
 
-- Planning docs (PRD, epics, architecture): `{output_folder}/`
-- Stories: `{dev_story_location}/`
-- Status files: `{output_folder}/bmm-workflow-status.md`, `{output_folder}/sprint-status.yaml`
+- Planning docs (PRD, epics, architecture): `{planning_artifacts}/`
+- Stories: `{implementation_artifacts}/`
+- Status files: `{output_folder}/bmm-workflow-status.yaml`, `{implementation_artifacts}/sprint-status.yaml`
 
 To change locations, edit config.yaml then re-run workflows.
 
@@ -412,15 +413,15 @@ To change locations, edit config.yaml then re-run workflows.
 
 **Solution:**
 
-1. **Check default location**: `docs/bmm-workflow-status.md`
+1. **Check default location**: `docs/bmm-workflow-status.yaml`
 2. **If missing, reinitialize**:
    ```
    Load Analyst agent → run workflow-init
    ```
-3. **For Phase 4**: Look for `sprint-status.yaml` in same folder as PRD
+3. **For Phase 4**: Look for `sprint-status.yaml` in `{implementation_artifacts}/`
 4. **Search for it**:
    ```bash
-   find . -name "bmm-workflow-status.md"
+   find . -name "bmm-workflow-status.yaml"
    find . -name "sprint-status.yaml"
    ```
 
