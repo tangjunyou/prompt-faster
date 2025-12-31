@@ -59,7 +59,7 @@
 - Summarize sprint-status.yaml, surface risks, and route to the right implementation workflow.
 
 **create-tech-spec**
-- Path: `_bmad/bmm/workflows/bmad-quick-flow/create-tech-spec/workflow.yaml`
+- Path: `_bmad/bmm/workflows/bmad-quick-flow/create-tech-spec/workflow.md`
 - Conversational spec engineering - ask questions, investigate code, produce implementation-ready tech-spec.
 
 **quick-dev**
@@ -137,18 +137,11 @@
 
 ## Execution
 
-When running a workflow, the execution method depends on the file type:
-
-For `workflow.yaml`:
+When running any workflow:
 1. LOAD {project-root}/_bmad/core/tasks/workflow.xml
 2. Pass the workflow path as 'workflow-config' parameter
 3. Follow workflow.xml instructions EXACTLY
 4. Save outputs after EACH section
-
-For `workflow.md`:
-1. LOAD the FULL `workflow.md`
-2. READ its entire contents and follow its directions exactly
-3. DO NOT run workflow.xml for markdown-based workflows
 
 ## Modes
 - Normal: Full interaction

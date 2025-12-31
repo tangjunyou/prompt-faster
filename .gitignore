@@ -13,6 +13,9 @@ docs/sprint-artifacts/
 .DS_Store
 Thumbs.db
 
+# Qoder
+.qoder/
+
 # Logs
 *.log
 logs/

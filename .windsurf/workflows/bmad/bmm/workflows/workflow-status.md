@@ -30,6 +30,6 @@ template: "{installed_path}/workflow-status-template.yaml"
 path_files: "{installed_path}/paths/"
 
 # Output configuration - reads existing status
-default_output_file: "{output_folder}/bmm-workflow-status.yaml"
+default_output_file: "{planning_artifacts}/bmm-workflow-status.yaml"
 
 standalone: true

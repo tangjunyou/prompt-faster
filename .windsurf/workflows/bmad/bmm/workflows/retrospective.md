@@ -9,15 +9,14 @@ description: "Run after epic completion to review overall success, extract lesso
 author: "BMad"
 
 config_source: "{project-root}/_bmad/bmm/config.yaml"
-output_folder: "{config_source}:output_folder"
+output_folder: "{config_source}:implementation_artifacts}"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 user_skill_level: "{config_source}:user_skill_level"
 document_output_language: "{config_source}:document_output_language"
 date: system-generated
-implementation_artifacts: "{config_source}:implementation_artifacts"
 planning_artifacts: "{config_source}:planning_artifacts"
-project_knowledge: "{config_source}:project_knowledge"
+implementation_artifacts: "{config_source}:implementation_artifacts"
 
 installed_path: "{project-root}/_bmad/bmm/workflows/4-implementation/retrospective"
 template: false
@@ -52,7 +51,7 @@ input_file_patterns:
     load_strategy: "FULL_LOAD"
   document_project:
     description: "Brownfield project documentation (optional)"
-    sharded: "{project_knowledge}/index.md"
+    sharded: "{planning_artifacts}/*.md"
     load_strategy: "INDEX_GUIDED"
 
 # Required files

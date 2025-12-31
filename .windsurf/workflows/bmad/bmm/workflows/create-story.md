@@ -12,8 +12,8 @@ config_source: "{project-root}/_bmad/bmm/config.yaml"
 user_name: "{config_source}:user_name"
 communication_language: "{config_source}:communication_language"
 date: system-generated
-implementation_artifacts: "{config_source}:implementation_artifacts"
 planning_artifacts: "{config_source}:planning_artifacts"
+implementation_artifacts: "{config_source}:implementation_artifacts"
 output_folder: "{implementation_artifacts}"
 story_dir: "{implementation_artifacts}"
 
@@ -25,11 +25,11 @@ validation: "{installed_path}/checklist.md"
 
 # Variables and inputs
 variables:
-  sprint_status: "{implementation_artifacts}/sprint-status.yaml" # Primary source for story tracking
+  sprint_status: "{implementation_artifacts}/sprint-status.yaml || {output_folder}/sprint-status.yaml" # Primary source for story tracking
   epics_file: "{planning_artifacts}/epics.md" # Enhanced epics+stories with BDD and source hints
   prd_file: "{planning_artifacts}/prd.md" # Fallback for requirements (if not in epics file)
   architecture_file: "{planning_artifacts}/architecture.md" # Fallback for constraints (if not in epics file)
-  ux_file: "{planning_artifacts}/ux-design-specification.md" # Fallback for UX requirements (if not in epics file)
+  ux_file: "{planning_artifacts}/*ux*.md" # Fallback for UX requirements (if not in epics file)
   story_title: "" # Will be elicited if not derivable
 
 # Project context

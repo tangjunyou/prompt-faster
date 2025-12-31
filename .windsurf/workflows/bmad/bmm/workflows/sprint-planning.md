@@ -47,8 +47,8 @@ variables:
 input_file_patterns:
   epics:
     description: "All epics with user stories"
-    whole: "{planning_artifacts}/*epic*.md"
-    sharded: "{planning_artifacts}/*epic*/*.md"
+    whole: "{output_folder}/*epic*.md"
+    sharded: "{output_folder}/*epic*/*.md"
     load_strategy: "FULL_LOAD"
 
 # Output configuration

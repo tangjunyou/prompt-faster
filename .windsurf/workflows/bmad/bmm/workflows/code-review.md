@@ -15,9 +15,8 @@ communication_language: "{config_source}:communication_language"
 user_skill_level: "{config_source}:user_skill_level"
 document_output_language: "{config_source}:document_output_language"
 date: system-generated
-implementation_artifacts: "{config_source}:implementation_artifacts"
 planning_artifacts: "{config_source}:planning_artifacts"
-project_knowledge: "{config_source}:project_knowledge"
+implementation_artifacts: "{config_source}:implementation_artifacts"
 output_folder: "{implementation_artifacts}"
 sprint_status: "{implementation_artifacts}/sprint-status.yaml"
 
@@ -52,9 +51,5 @@ input_file_patterns:
     sharded_index: "{planning_artifacts}/*epic*/index.md"
     sharded_single: "{planning_artifacts}/*epic*/epic-{{epic_num}}.md"
     load_strategy: "SELECTIVE_LOAD"
-  document_project:
-    description: "Brownfield project documentation (optional)"
-    sharded: "{project_knowledge}/index.md"
-    load_strategy: "INDEX_GUIDED"
 
 standalone: true
