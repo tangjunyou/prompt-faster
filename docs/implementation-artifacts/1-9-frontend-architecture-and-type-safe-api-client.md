@@ -385,8 +385,10 @@ GPT-5 (Codex CLI)
 - `npm test -- --run`（前端单测）
 - `npm run lint`（前端 lint）
 - `cargo test`（后端测试）
+- `cargo fmt --check`（后端格式校验）
 - ts-rs 对 `serde(skip_serializing_if = "Option::is_none")` 的解析提示仅为警告，不影响运行
 - `npm test -- --run`（通过；已消除 `--localstorage-file` 警告）
+- `npm run build`（前端构建通过）
 
 ### Implementation Plan
 
@@ -410,6 +412,7 @@ GPT-5 (Codex CLI)
 - ✅ E2E：覆盖视图切换快捷键（Ctrl + 1/2/3）
 - ✅ 核对 React Router 7 文档：Web 端组件/Hook 推荐从 `react-router` 导入（与当前实现一致）
 - ✅ 测试环境注入内存版 localStorage，消除 MSW 触发的 `--localstorage-file` 警告
+- ✅ CI 修复：补齐格式化 + 修复前端类型导出冲突/缺失
 
 ### File List
 
@@ -544,3 +547,4 @@ GPT-5 (Codex CLI)
 - 2026-01-02：修复 useApiConfig 测试的 act(...) 警告
 - 2026-01-02：核对 React Router 7 官方导入方式（react-router）
 - 2026-01-02：测试环境注入内存 localStorage，消除 `--localstorage-file` 警告
+- 2026-01-02：CI 修复（cargo fmt + 前端类型导出冲突修正）

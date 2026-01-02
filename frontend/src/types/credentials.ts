@@ -82,5 +82,7 @@ export type ApiConfigResponse = ConfigResponse;
 
 /**
  * 保存配置请求类型（由 ts-rs 生成）
+ *
+ * 注意：不要从此文件再导出 SaveConfigRequest，避免与 generated/api 的同名导出冲突。
  */
-export type SaveConfigRequest = GeneratedSaveConfigRequest;
+export type ConfigSaveRequest = GeneratedSaveConfigRequest;

@@ -7,7 +7,8 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
 import { getConfig, saveConfig } from './configService';
-import type { ApiConfigResponse, SaveConfigRequest } from '@/types/credentials';
+import type { ApiConfigResponse } from '@/types/credentials';
+import type { SaveConfigRequest } from '@/types/generated/api/SaveConfigRequest';
 
 // Mock 配置响应
 const mockConfigResponse: ApiConfigResponse = {

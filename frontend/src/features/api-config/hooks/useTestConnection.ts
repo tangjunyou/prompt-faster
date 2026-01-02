@@ -10,8 +10,8 @@ import { isApiError } from '@/lib/api';
 import {
   testDifyConnection,
   testGenericLlmConnection,
-  type TestConnectionResult,
 } from '../services/credentialService';
+import type { TestConnectionResult } from '@/types/generated/api/TestConnectionResult';
 
 /**
  * Dify 连接测试 Mutation Hook

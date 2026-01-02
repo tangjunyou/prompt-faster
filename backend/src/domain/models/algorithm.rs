@@ -38,7 +38,9 @@ pub enum DataSplit {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export_to = "models/")]
 pub enum TaskReference {
-    Exact { expected: String },
+    Exact {
+        expected: String,
+    },
     Constrained {
         constraints: Vec<Constraint>,
         quality_dimensions: Vec<QualityDimension>,

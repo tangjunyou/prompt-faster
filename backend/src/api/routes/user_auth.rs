@@ -10,8 +10,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
-use ts_rs::TS;
 use tracing::{info, warn};
+use ts_rs::TS;
 use utoipa::ToSchema;
 
 use crate::api::middleware::CurrentUser;

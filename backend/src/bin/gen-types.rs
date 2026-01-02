@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use prompt_faster::api::response::{ApiError, ApiSuccess, ErrorDetail, PaginationMeta};
 use prompt_faster::api::routes::auth::{
     ConfigResponse, CredentialInput, GenericLlmCredentialInput, SaveConfigRequest,
-    SaveConfigResponse, TeacherSettingsInput, TeacherSettingsResponse,
-    TestDifyConnectionRequest, TestGenericLlmConnectionRequest,
+    SaveConfigResponse, TeacherSettingsInput, TeacherSettingsResponse, TestDifyConnectionRequest,
+    TestGenericLlmConnectionRequest,
 };
 use prompt_faster::api::routes::health::HealthResponse;
 use prompt_faster::api::routes::user_auth::{
@@ -23,8 +23,7 @@ use prompt_faster::infra::external::dify_client::TestConnectionResult;
 use ts_rs::TS;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../frontend/src/types/generated");
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/src/types/generated");
     std::fs::create_dir_all(&out_dir)?;
 
     // API 通用响应

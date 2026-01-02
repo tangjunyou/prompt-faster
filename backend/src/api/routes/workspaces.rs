@@ -5,8 +5,8 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use tracing::{info, warn};
+use ts_rs::TS;
 use utoipa::ToSchema;
 
 use crate::api::middleware::CurrentUser;

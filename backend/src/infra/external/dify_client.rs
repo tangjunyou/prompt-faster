@@ -3,8 +3,8 @@
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 use thiserror::Error;
+use ts_rs::TS;
 use utoipa::ToSchema;
 
 use super::http_client::truncate_error_body;
