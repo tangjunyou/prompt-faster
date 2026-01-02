@@ -59,9 +59,12 @@ test.describe('认证流程', () => {
     // 顶栏显示当前用户（AC #2）
     await expect(page.locator('[data-testid="user-menu"]')).toContainText(username);
 
-    // 访问受保护页面
-    await page.goto('/settings/api');
-    await page.waitForURL('/settings/api');
+    // 访问受保护页面（保持内存态登录，避免刷新导致 Store 丢失）
+    await page.evaluate((targetPath) => {
+      window.history.pushState({}, '', targetPath);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, '/settings/api');
+    await page.waitForURL('**/settings/api');
     await expect(page.getByText('API 配置')).toBeVisible();
 
     // 退出登录（AC #4）
