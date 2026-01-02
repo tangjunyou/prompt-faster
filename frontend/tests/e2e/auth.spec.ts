@@ -53,14 +53,14 @@ test.describe('认证流程', () => {
 
     await page.click('[data-testid="login-button"]');
 
-    // 登录/注册成功后跳转首页
-    await page.waitForURL('/');
+    // 登录/注册成功后跳转默认视图
+    await page.waitForURL('/run');
 
     // 顶栏显示当前用户（AC #2）
     await expect(page.locator('[data-testid="user-menu"]')).toContainText(username);
 
     // 访问受保护页面
-    await page.getByRole('link', { name: /API 配置/ }).click();
+    await page.goto('/settings/api');
     await page.waitForURL('/settings/api');
     await expect(page.getByText('API 配置')).toBeVisible();
 

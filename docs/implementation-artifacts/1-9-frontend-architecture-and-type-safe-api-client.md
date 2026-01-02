@@ -538,6 +538,7 @@ GPT-5 (Codex CLI)
 - `frontend/src/types/credentials.ts`
 - `frontend/src/types/index.ts`
 - `frontend/src/test/setup.ts`
+- `frontend/tests/e2e/auth.spec.ts`
 
 ### Change Log
 
@@ -548,3 +549,4 @@ GPT-5 (Codex CLI)
 - 2026-01-02：核对 React Router 7 官方导入方式（react-router）
 - 2026-01-02：测试环境注入内存 localStorage，消除 `--localstorage-file` 警告
 - 2026-01-02：CI 修复（cargo fmt + 前端类型导出冲突修正）
+- 2026-01-02：修复认证 E2E（直接访问受保护路由，避免依赖不存在的导航链接）
