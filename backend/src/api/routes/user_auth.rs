@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use ts_rs::TS;
 use tracing::{info, warn};
 use utoipa::ToSchema;
 
@@ -24,41 +25,61 @@ use crate::shared::error_codes;
 use crate::shared::password::{PasswordError, PasswordService};
 
 /// 注册请求
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct RegisterRequest {
     pub username: String,
     pub password: String,
 }
 
 /// 登录请求
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
 /// 认证成功响应
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct AuthResponse {
     pub session_token: String,
     pub user: UserInfo,
 }
 
 /// 用户信息
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct UserInfo {
     pub id: String,
     pub username: String,
 }
 
+/// 登录响应类型（前端类型别名）
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export_to = "api/")]
+#[ts(type = "AuthResponse")]
+pub struct LoginResponse;
+
+/// 用户响应类型（前端类型别名）
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export_to = "api/")]
+#[ts(type = "UserInfo")]
+pub struct UserResponse;
+
 /// 登出响应
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct LogoutResponse {
     pub message: String,
 }
 
 /// 系统状态响应（用于判断是否需要注册）
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct SystemStatusResponse {
     pub has_users: bool,
     pub requires_registration: bool,

@@ -2,17 +2,21 @@
 
 use axum::{Router, routing::get};
 use serde::Serialize;
+use ts_rs::TS;
 use utoipa::ToSchema;
 
 use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::shared::time::now_millis;
 
 /// 健康检查响应
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
     #[serde(rename = "timestampMs")]
+    #[ts(rename = "timestampMs")]
+    #[ts(type = "number")]
     pub timestamp_ms: i64,
 }
 

@@ -1,21 +1,7 @@
 import { UnauthorizedError, apiRequestWithAuth, delWithAuth, isApiError } from '@/lib/api'
-
-export interface WorkspaceResponse {
-  id: string
-  name: string
-  description: string | null
-  created_at: number
-  updated_at: number
-}
-
-export interface CreateWorkspaceParams {
-  name: string
-  description?: string
-}
-
-interface DeleteWorkspaceResponse {
-  message: string
-}
+import type { CreateWorkspaceRequest } from '@/types/generated/api/CreateWorkspaceRequest'
+import type { DeleteWorkspaceResponse } from '@/types/generated/api/DeleteWorkspaceResponse'
+import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
 
 export async function listWorkspaces(token: string): Promise<WorkspaceResponse[]> {
   const response = await apiRequestWithAuth<WorkspaceResponse[]>(
@@ -35,7 +21,7 @@ export async function listWorkspaces(token: string): Promise<WorkspaceResponse[]
 }
 
 export async function createWorkspace(
-  params: CreateWorkspaceParams,
+  params: CreateWorkspaceRequest,
   token: string
 ): Promise<WorkspaceResponse> {
   const response = await apiRequestWithAuth<WorkspaceResponse>(

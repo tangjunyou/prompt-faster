@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand'
-import type { ApiResponse } from '@/lib/api'
+import { isApiError, isApiSuccess, type ApiResponse } from '@/lib/api'
 import {
   getMe as getMeRequest,
   login as loginRequest,
@@ -17,15 +17,10 @@ import {
   type LoginParams,
   type RegisterParams,
 } from '@/features/auth/services/authService'
+import type { UserInfo } from '@/types/generated/api/UserInfo'
 
 /** 认证状态 */
 export type AuthStatus = 'unauthenticated' | 'authenticated' | 'loading'
-
-/** 用户信息 */
-export interface UserInfo {
-  id: string
-  username: string
-}
 
 /** 认证 Store 状态 */
 interface AuthState {
@@ -91,7 +86,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
     set({ authStatus: 'loading' })
 
     const response = await loginRequest(params)
-    if ('error' in response) {
+    if (isApiError(response)) {
       set({ authStatus: 'unauthenticated' })
       return response
     }
@@ -109,7 +104,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
     set({ authStatus: 'loading' })
 
     const response = await registerRequest(params)
-    if ('error' in response) {
+    if (isApiError(response)) {
       set({ authStatus: 'unauthenticated' })
       return response
     }
@@ -142,7 +137,7 @@ export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
     }
 
     const response = await getMeRequest(token)
-    if ('data' in response) {
+    if (isApiSuccess(response)) {
       set({ currentUser: response.data })
     }
 

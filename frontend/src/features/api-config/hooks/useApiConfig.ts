@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getConfig, saveConfig } from '../services/configService';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useCredentialStore } from '@/stores/useCredentialStore';
-import type { SaveConfigRequest } from '@/types/credentials';
+import type { SaveConfigRequest } from '@/types/generated/api/SaveConfigRequest';
 
 /** 配置查询 key */
 const CONFIG_QUERY_KEY = ['api-config'] as const;

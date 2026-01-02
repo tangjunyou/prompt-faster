@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use tracing::{info, warn};
 use utoipa::ToSchema;
 
@@ -15,22 +16,41 @@ use crate::api::state::AppState;
 use crate::infra::db::repositories::{WorkspaceRepo, WorkspaceRepoError};
 use crate::shared::error_codes;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct CreateWorkspaceRequest {
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// 创建工作区请求类型（前端类型别名）
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export_to = "api/")]
+#[ts(type = "CreateWorkspaceRequest")]
+pub struct WorkspaceCreateRequest;
+
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct WorkspaceResponse {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    #[ts(type = "number")]
     pub created_at: i64,
+    #[ts(type = "number")]
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+/// 工作区列表响应类型（前端类型别名）
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export_to = "api/")]
+#[ts(type = "Array<WorkspaceResponse>")]
+pub struct WorkspaceListResponse;
+
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct DeleteWorkspaceResponse {
     pub message: String,
 }

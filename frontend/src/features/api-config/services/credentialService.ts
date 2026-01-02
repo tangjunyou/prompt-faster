@@ -5,14 +5,9 @@
  */
 
 import { post, type ApiResponse } from '@/lib/api';
-
-/**
- * 连接测试结果
- */
-export interface TestConnectionResult {
-  message: string;
-  models?: string[];
-}
+import type { TestConnectionResult } from '@/types/generated/api/TestConnectionResult';
+import type { TestDifyConnectionRequest } from '@/types/generated/api/TestDifyConnectionRequest';
+import type { TestGenericLlmConnectionRequest } from '@/types/generated/api/TestGenericLlmConnectionRequest';
 
 /**
  * 测试 Dify API 连接
@@ -22,12 +17,11 @@ export interface TestConnectionResult {
  * @returns API 响应（成功时包含 TestConnectionResult）
  */
 export function testDifyConnection(
-  baseUrl: string,
-  apiKey: string
+  payload: TestDifyConnectionRequest
 ): Promise<ApiResponse<TestConnectionResult>> {
   return post<TestConnectionResult>('/auth/test-connection/dify', {
-    base_url: baseUrl,
-    api_key: apiKey,
+    base_url: payload.base_url,
+    api_key: payload.api_key,
   });
 }
 
@@ -40,13 +34,11 @@ export function testDifyConnection(
  * @returns API 响应（成功时包含 TestConnectionResult 和模型列表）
  */
 export function testGenericLlmConnection(
-  baseUrl: string,
-  apiKey: string,
-  provider: string
+  payload: TestGenericLlmConnectionRequest
 ): Promise<ApiResponse<TestConnectionResult>> {
   return post<TestConnectionResult>('/auth/test-connection/generic-llm', {
-    base_url: baseUrl,
-    api_key: apiKey,
-    provider,
+    base_url: payload.base_url,
+    api_key: payload.api_key,
+    provider: payload.provider,
   });
 }

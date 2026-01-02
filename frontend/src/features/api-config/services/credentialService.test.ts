@@ -25,10 +25,13 @@ describe('credentialService', () => {
 
   describe('testDifyConnection', () => {
     it('应发送正确的请求格式', async () => {
-      const mockResponse = { data: { message: '连接成功' } };
+      const mockResponse = { data: { message: '连接成功', models: null } };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      await testDifyConnection('https://api.dify.ai', 'app-test-key');
+      await testDifyConnection({
+        base_url: 'https://api.dify.ai',
+        api_key: 'app-test-key',
+      });
 
       expect(api.post).toHaveBeenCalledWith('/auth/test-connection/dify', {
         base_url: 'https://api.dify.ai',
@@ -37,10 +40,13 @@ describe('credentialService', () => {
     });
 
     it('成功时应返回包含 data 的响应', async () => {
-      const mockResponse = { data: { message: '连接成功', models: undefined } };
+      const mockResponse = { data: { message: '连接成功', models: null } };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testDifyConnection('https://api.dify.ai', 'app-test-key');
+      const result = await testDifyConnection({
+        base_url: 'https://api.dify.ai',
+        api_key: 'app-test-key',
+      });
 
       expect(result).toEqual(mockResponse);
       expect(api.isApiSuccess(result)).toBe(true);
@@ -52,7 +58,10 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testDifyConnection('https://api.dify.ai', 'invalid-key');
+      const result = await testDifyConnection({
+        base_url: 'https://api.dify.ai',
+        api_key: 'invalid-key',
+      });
 
       expect(result).toEqual(mockResponse);
       expect(api.isApiError(result)).toBe(true);
@@ -64,7 +73,7 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testDifyConnection('', 'test-key');
+      const result = await testDifyConnection({ base_url: '', api_key: 'test-key' });
 
       expect(result).toEqual(mockResponse);
     });
@@ -75,11 +84,11 @@ describe('credentialService', () => {
       const mockResponse = { data: { message: '连接成功', models: ['gpt-4'] } };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      await testGenericLlmConnection(
-        'https://api.siliconflow.cn',
-        'sk-test-key',
-        'siliconflow'
-      );
+      await testGenericLlmConnection({
+        base_url: 'https://api.siliconflow.cn',
+        api_key: 'sk-test-key',
+        provider: 'siliconflow',
+      });
 
       expect(api.post).toHaveBeenCalledWith('/auth/test-connection/generic-llm', {
         base_url: 'https://api.siliconflow.cn',
@@ -97,11 +106,11 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testGenericLlmConnection(
-        'https://api.siliconflow.cn',
-        'sk-test-key',
-        'siliconflow'
-      );
+      const result = await testGenericLlmConnection({
+        base_url: 'https://api.siliconflow.cn',
+        api_key: 'sk-test-key',
+        provider: 'siliconflow',
+      });
 
       expect(result).toEqual(mockResponse);
       if ('data' in result) {
@@ -119,11 +128,11 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testGenericLlmConnection(
-        'https://api.example.com',
-        'test-key',
-        'invalid'
-      );
+      const result = await testGenericLlmConnection({
+        base_url: 'https://api.example.com',
+        api_key: 'test-key',
+        provider: 'invalid',
+      });
 
       expect(result).toEqual(mockResponse);
       expect(api.isApiError(result)).toBe(true);
@@ -138,11 +147,11 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testGenericLlmConnection(
-        'http://localhost:8080',
-        'test-key',
-        'siliconflow'
-      );
+      const result = await testGenericLlmConnection({
+        base_url: 'http://localhost:8080',
+        api_key: 'test-key',
+        provider: 'siliconflow',
+      });
 
       expect(result).toEqual(mockResponse);
       expect(api.isApiError(result)).toBe(true);
@@ -154,11 +163,11 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testGenericLlmConnection(
-        'https://api.siliconflow.cn',
-        'invalid-key',
-        'siliconflow'
-      );
+      const result = await testGenericLlmConnection({
+        base_url: 'https://api.siliconflow.cn',
+        api_key: 'invalid-key',
+        provider: 'siliconflow',
+      });
 
       expect(result).toEqual(mockResponse);
       if ('error' in result) {
@@ -172,11 +181,11 @@ describe('credentialService', () => {
       };
       vi.mocked(api.post).mockResolvedValue(mockResponse);
 
-      const result = await testGenericLlmConnection(
-        'https://slow-api.example.com',
-        'test-key',
-        'siliconflow'
-      );
+      const result = await testGenericLlmConnection({
+        base_url: 'https://slow-api.example.com',
+        api_key: 'test-key',
+        provider: 'siliconflow',
+      });
 
       expect(result).toEqual(mockResponse);
       if ('error' in result) {

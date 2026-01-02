@@ -10,8 +10,8 @@ import {
   deleteWorkspace,
   getWorkspace,
   listWorkspaces,
-  type CreateWorkspaceParams,
 } from '../services/workspaceService'
+import type { CreateWorkspaceRequest } from '@/types/generated/api/CreateWorkspaceRequest'
 
 const WORKSPACES_QUERY_KEY = ['workspaces'] as const
 
@@ -76,7 +76,7 @@ export function useCreateWorkspace() {
   const authStatus = useAuthStore((state) => state.authStatus)
 
   return useMutation({
-    mutationFn: async (params: CreateWorkspaceParams) => {
+    mutationFn: async (params: CreateWorkspaceRequest) => {
       if (authStatus !== 'authenticated' || !sessionToken) {
         throw new Error('未登录')
       }

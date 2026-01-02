@@ -45,7 +45,7 @@ describe('useTestDifyConnection', () => {
 
   it('成功测试连接时应更新状态为 valid', async () => {
     const mockResponse = {
-      data: { message: '连接成功', models: undefined },
+      data: { message: '连接成功', models: null },
     };
     vi.mocked(credentialService.testDifyConnection).mockResolvedValue(mockResponse);
 
@@ -183,7 +183,7 @@ describe('useTestGenericLlmConnection', () => {
       wrapper: createWrapper(),
     });
 
-    let data: { message: string; models?: string[] } | undefined;
+    let data: { message: string; models: string[] | null } | undefined;
     await act(async () => {
       data = await result.current.mutateAsync({
         baseUrl: 'https://api.siliconflow.cn',

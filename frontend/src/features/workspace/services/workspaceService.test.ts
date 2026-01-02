@@ -8,8 +8,9 @@ import {
   deleteWorkspace,
   getWorkspace,
   listWorkspaces,
-  type WorkspaceResponse,
 } from './workspaceService'
+import type { CreateWorkspaceRequest } from '@/types/generated/api/CreateWorkspaceRequest'
+import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
 
 const API_BASE = 'http://localhost:3000/api/v1'
 
@@ -55,7 +56,7 @@ const server = setupServer(
       )
     }
 
-    const body = (await request.json()) as { name: string; description?: string }
+    const body = (await request.json()) as CreateWorkspaceRequest
     const data: WorkspaceResponse = {
       id: 'ws-created',
       name: body.name,

@@ -3,13 +3,15 @@
 
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use thiserror::Error;
 use utoipa::ToSchema;
 
 use super::http_client::truncate_error_body;
 
 /// 连接测试结果
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct TestConnectionResult {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]

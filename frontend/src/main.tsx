@@ -8,7 +8,9 @@ import { queryClient } from './lib/query-client'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    {/* QueryClientProvider 统一管理请求缓存与重试策略 */}
     <QueryClientProvider client={queryClient}>
+      {/* BrowserRouter 提供全局路由上下文 */}
       <BrowserRouter>
         <App />
       </BrowserRouter>

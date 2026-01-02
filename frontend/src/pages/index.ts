@@ -3,3 +3,6 @@
  */
 export { HomePage } from './HomePage';
 export { ApiConfigPage } from './ApiConfigPage';
+export { RunView } from './RunView';
+export { FocusView } from './FocusView';
+export { WorkspaceView } from './WorkspaceView';

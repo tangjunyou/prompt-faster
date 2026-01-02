@@ -4,13 +4,15 @@
  */
 
 import { UnauthorizedError, apiRequestWithAuth, isApiError } from '@/lib/api';
-import type { ApiConfigResponse, SaveConfigRequest } from '@/types/credentials';
+import type { ConfigResponse } from '@/types/generated/api/ConfigResponse';
+import type { SaveConfigRequest } from '@/types/generated/api/SaveConfigRequest';
+import type { SaveConfigResponse } from '@/types/generated/api/SaveConfigResponse';
 
 /**
  * 获取已保存的配置
  */
-export async function getConfig(token: string): Promise<ApiConfigResponse> {
-  const response = await apiRequestWithAuth<ApiConfigResponse>(
+export async function getConfig(token: string): Promise<ConfigResponse> {
+  const response = await apiRequestWithAuth<ConfigResponse>(
     '/auth/config',
     {
       method: 'GET',
@@ -29,20 +31,13 @@ export async function getConfig(token: string): Promise<ApiConfigResponse> {
 }
 
 /**
- * 保存配置响应
- */
-interface SaveConfigResponseData {
-  message: string;
-}
-
-/**
  * 保存配置到后端
  */
 export async function saveConfig(
   config: SaveConfigRequest,
   token: string
-): Promise<SaveConfigResponseData> {
-  const response = await apiRequestWithAuth<SaveConfigResponseData>(
+): Promise<SaveConfigResponse> {
+  const response = await apiRequestWithAuth<SaveConfigResponse>(
     '/auth/config',
     {
       method: 'POST',

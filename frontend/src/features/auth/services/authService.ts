@@ -8,41 +8,17 @@
  */
 
 import { apiRequest, apiRequestWithAuth, type ApiResponse } from '@/lib/api'
+import type { AuthResponse } from '@/types/generated/api/AuthResponse'
+import type { LoginRequest } from '@/types/generated/api/LoginRequest'
+import type { LogoutResponse } from '@/types/generated/api/LogoutResponse'
+import type { RegisterRequest } from '@/types/generated/api/RegisterRequest'
+import type { SystemStatusResponse } from '@/types/generated/api/SystemStatusResponse'
+import type { UserInfo } from '@/types/generated/api/UserInfo'
 
-/** 用户信息 */
-export interface UserInfo {
-  id: string
-  username: string
-}
-
-/** 认证响应 */
-export interface AuthResponse {
-  session_token: string
-  user: UserInfo
-}
-
-/** 登出响应 */
-export interface LogoutResponse {
-  message: string
-}
-
-/** 系统状态响应 */
-export interface SystemStatusResponse {
-  has_users: boolean
-  requires_registration: boolean
-}
-
-/** 注册请求参数 */
-export interface RegisterParams {
-  username: string
-  password: string
-}
-
-/** 登录请求参数 */
-export interface LoginParams {
-  username: string
-  password: string
-}
+/** 注册/登录参数类型（ts-rs 生成） */
+export type RegisterParams = RegisterRequest
+export type LoginParams = LoginRequest
+export type { AuthResponse, LogoutResponse, SystemStatusResponse, UserInfo }
 
 /**
  * 获取系统状态

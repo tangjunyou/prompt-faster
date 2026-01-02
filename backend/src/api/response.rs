@@ -4,32 +4,39 @@
 use crate::shared::error_codes;
 use axum::{Json, http::StatusCode, response::IntoResponse};
 use serde::Serialize;
+use ts_rs::TS;
 use utoipa::ToSchema;
 
 /// API 成功响应
-#[derive(Serialize, ToSchema)]
-pub struct ApiSuccess<T: Serialize> {
+#[derive(Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
+pub struct ApiSuccess<T> {
     pub data: T,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub meta: Option<PaginationMeta>,
 }
 
 /// 分页元信息
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct PaginationMeta {
     pub page: u32,
     pub page_size: u32,
+    #[ts(type = "number")]
     pub total: u64,
 }
 
 /// API 错误响应
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct ApiError {
     pub error: ErrorDetail,
 }
 
 /// 错误详情
-#[derive(Serialize, ToSchema)]
+#[derive(Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct ErrorDetail {
     /// 格式：DOMAIN_ACTION_REASON
     pub code: String,
@@ -37,6 +44,7 @@ pub struct ErrorDetail {
     pub message: String,
     /// 仅开发环境显示
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub details: Option<serde_json::Value>,
 }
 

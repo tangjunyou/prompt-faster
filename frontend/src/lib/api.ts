@@ -8,7 +8,11 @@
  * - 支持 onUnauthorized 回调处理会话过期
  */
 
+import type { ApiError as GeneratedApiError } from '@/types/generated/api/ApiError'
+import type { ApiSuccess as GeneratedApiSuccess } from '@/types/generated/api/ApiSuccess'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1'
+const IS_TEST_ENV = import.meta.env.MODE === 'test'
 
 /** 默认请求超时时间（毫秒）- Code Review Fix: 添加超时配置 */
 const DEFAULT_TIMEOUT_MS = 30000
@@ -35,31 +39,15 @@ export function registerUnauthorizedHandler(handler: () => void): void {
   globalUnauthorizedHandler = handler
 }
 
-/**
- * API 成功响应
- */
-export interface ApiSuccess<T> {
-  data: T
-  meta?: {
-    page?: number
-    pageSize?: number
-    total?: number
-  }
-}
+/** API 成功响应（由 ts-rs 生成） */
+export type ApiSuccess<T> = GeneratedApiSuccess<T>
 
-/**
- * API 错误响应
- */
-export interface ApiError {
-  error: {
-    code: string
-    message: string
-    details?: Record<string, unknown>
-  }
-}
+/** API 错误响应（由 ts-rs 生成） */
+export type ApiError = GeneratedApiError
 
 /**
  * API 响应类型 - data 与 error 互斥
+ * 调用方必须使用 isApiError/isApiSuccess 进行分支判断
  */
 export type ApiResponse<T> = ApiSuccess<T> | ApiError
 
@@ -93,13 +81,14 @@ export async function apiRequest<T>(
   const url = `${API_BASE_URL}${endpoint}`
 
   // Code Review Fix: 添加请求超时控制
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  const shouldUseAbort = !IS_TEST_ENV && typeof AbortController !== 'undefined'
+  const controller = shouldUseAbort ? new AbortController() : null
+  const timeoutId = shouldUseAbort ? setTimeout(() => controller?.abort(), timeoutMs) : null
 
   try {
     const response = await fetch(url, {
       ...options,
-      signal: controller.signal,
+      signal: controller?.signal,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,
@@ -124,7 +113,9 @@ export async function apiRequest<T>(
     return json
   } catch (err) {
     // 清理超时定时器
-    clearTimeout(timeoutId)
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
 
     // 处理超时错误
     if (err instanceof Error && err.name === 'AbortError') {
@@ -145,7 +136,9 @@ export async function apiRequest<T>(
       },
     }
   } finally {
-    clearTimeout(timeoutId)
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
   }
 }
 

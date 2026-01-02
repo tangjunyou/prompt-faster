@@ -29,7 +29,10 @@ export function useTestDifyConnection() {
 
   return useMutation({
     mutationFn: async ({ baseUrl, apiKey }: { baseUrl: string; apiKey: string }) => {
-      const response = await testDifyConnection(baseUrl, apiKey);
+      const response = await testDifyConnection({
+        base_url: baseUrl,
+        api_key: apiKey,
+      });
       if (isApiError(response)) {
         throw new Error(response.error.message);
       }
@@ -71,7 +74,11 @@ export function useTestGenericLlmConnection() {
       apiKey: string;
       provider: string;
     }) => {
-      const response = await testGenericLlmConnection(baseUrl, apiKey, provider);
+      const response = await testGenericLlmConnection({
+        base_url: baseUrl,
+        api_key: apiKey,
+        provider,
+      });
       if (isApiError(response)) {
         throw new Error(response.error.message);
       }

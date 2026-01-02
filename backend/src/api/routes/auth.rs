@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use tracing::{info, warn};
 use utoipa::ToSchema;
 
@@ -27,19 +28,28 @@ use crate::shared::log_sanitizer::sanitize_api_key;
 use crate::shared::url_validator::{validate_api_key, validate_base_url};
 
 /// Dify 连接测试请求
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct TestDifyConnectionRequest {
     pub base_url: String,
     pub api_key: String,
 }
 
 /// 通用大模型连接测试请求
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct TestGenericLlmConnectionRequest {
     pub base_url: String,
     pub api_key: String,
     pub provider: String, // "siliconflow" | "modelscope"
 }
+
+/// 连接测试请求类型（用于前端类型别名）
+#[allow(dead_code)]
+#[derive(TS)]
+#[ts(export_to = "api/")]
+#[ts(type = "TestDifyConnectionRequest | TestGenericLlmConnectionRequest")]
+pub struct TestConnectionRequest;
 
 /// 从请求头提取 correlation_id
 fn extract_correlation_id(headers: &HeaderMap) -> String {
@@ -394,7 +404,8 @@ fn map_llm_connection_error(error: LlmConnectionError) -> ApiResponse<TestConnec
 // ============================================================================
 
 /// 保存配置请求
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct SaveConfigRequest {
     /// Dify 凭证
     pub dify: Option<CredentialInput>,
@@ -405,14 +416,16 @@ pub struct SaveConfigRequest {
 }
 
 /// 凭证输入（Dify）
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct CredentialInput {
     pub base_url: String,
     pub api_key: String,
 }
 
 /// 凭证输入（通用大模型）
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct GenericLlmCredentialInput {
     pub provider: String,
     pub base_url: String,
@@ -420,7 +433,8 @@ pub struct GenericLlmCredentialInput {
 }
 
 /// 老师模型参数输入
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct TeacherSettingsInput {
     pub temperature: f64,
     pub top_p: f64,
@@ -428,7 +442,8 @@ pub struct TeacherSettingsInput {
 }
 
 /// 配置响应
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct ConfigResponse {
     /// 是否已配置 Dify API Key
     pub has_dify_key: bool,
@@ -449,7 +464,8 @@ pub struct ConfigResponse {
 }
 
 /// 老师模型参数响应
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct TeacherSettingsResponse {
     pub temperature: f64,
     pub top_p: f64,
@@ -457,7 +473,8 @@ pub struct TeacherSettingsResponse {
 }
 
 /// 保存成功响应
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
 pub struct SaveConfigResponse {
     pub message: String,
 }

@@ -1,0 +1,99 @@
+use std::path::PathBuf;
+
+use prompt_faster::api::response::{ApiError, ApiSuccess, ErrorDetail, PaginationMeta};
+use prompt_faster::api::routes::auth::{
+    ConfigResponse, CredentialInput, GenericLlmCredentialInput, SaveConfigRequest,
+    SaveConfigResponse, TeacherSettingsInput, TeacherSettingsResponse,
+    TestDifyConnectionRequest, TestGenericLlmConnectionRequest,
+};
+use prompt_faster::api::routes::health::HealthResponse;
+use prompt_faster::api::routes::user_auth::{
+    AuthResponse, LoginRequest, LogoutResponse, RegisterRequest, SystemStatusResponse, UserInfo,
+};
+use prompt_faster::api::routes::workspaces::{
+    CreateWorkspaceRequest, DeleteWorkspaceResponse, WorkspaceResponse,
+};
+use prompt_faster::domain::models::{
+    Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
+    ExecutionResult, FailurePoint, Iteration, IterationState, LineageType, OptimizationTask,
+    OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
+    RuleSystem, RuleTags, Severity, TaskReference, TestCase, TokenUsage, User, Workspace,
+};
+use prompt_faster::infra::external::dify_client::TestConnectionResult;
+use ts_rs::TS;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let out_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../frontend/src/types/generated");
+    std::fs::create_dir_all(&out_dir)?;
+
+    // API 通用响应
+    ApiSuccess::<()>::export_all_to(&out_dir)?;
+    ApiError::export_all_to(&out_dir)?;
+    ErrorDetail::export_all_to(&out_dir)?;
+    PaginationMeta::export_all_to(&out_dir)?;
+
+    // Health
+    HealthResponse::export_all_to(&out_dir)?;
+
+    // 连接测试
+    TestDifyConnectionRequest::export_all_to(&out_dir)?;
+    TestGenericLlmConnectionRequest::export_all_to(&out_dir)?;
+    TestConnectionResult::export_all_to(&out_dir)?;
+
+    // 认证相关
+    RegisterRequest::export_all_to(&out_dir)?;
+    LoginRequest::export_all_to(&out_dir)?;
+    AuthResponse::export_all_to(&out_dir)?;
+    UserInfo::export_all_to(&out_dir)?;
+    LogoutResponse::export_all_to(&out_dir)?;
+    SystemStatusResponse::export_all_to(&out_dir)?;
+
+    // 配置管理
+    SaveConfigRequest::export_all_to(&out_dir)?;
+    CredentialInput::export_all_to(&out_dir)?;
+    GenericLlmCredentialInput::export_all_to(&out_dir)?;
+    TeacherSettingsInput::export_all_to(&out_dir)?;
+    ConfigResponse::export_all_to(&out_dir)?;
+    TeacherSettingsResponse::export_all_to(&out_dir)?;
+    SaveConfigResponse::export_all_to(&out_dir)?;
+
+    // 工作区
+    CreateWorkspaceRequest::export_all_to(&out_dir)?;
+    WorkspaceResponse::export_all_to(&out_dir)?;
+    DeleteWorkspaceResponse::export_all_to(&out_dir)?;
+
+    // 核心模型
+    Workspace::export_all_to(&out_dir)?;
+    User::export_all_to(&out_dir)?;
+    TestCase::export_all_to(&out_dir)?;
+    OptimizationTask::export_all_to(&out_dir)?;
+    Iteration::export_all_to(&out_dir)?;
+    EvaluationResult::export_all_to(&out_dir)?;
+    Checkpoint::export_all_to(&out_dir)?;
+    // 规则与评估相关模型
+    Rule::export_all_to(&out_dir)?;
+    RuleTags::export_all_to(&out_dir)?;
+    RuleIR::export_all_to(&out_dir)?;
+    RuleSystem::export_all_to(&out_dir)?;
+    RuleMergeRecord::export_all_to(&out_dir)?;
+    RuleConflict::export_all_to(&out_dir)?;
+    RuleConflictType::export_all_to(&out_dir)?;
+    ConflictResolutionRecord::export_all_to(&out_dir)?;
+    // 评估/执行相关模型
+    DimensionScore::export_all_to(&out_dir)?;
+    FailurePoint::export_all_to(&out_dir)?;
+    Severity::export_all_to(&out_dir)?;
+    ExecutionResult::export_all_to(&out_dir)?;
+    TokenUsage::export_all_to(&out_dir)?;
+    // 枚举/辅助模型
+    DataSplit::export_all_to(&out_dir)?;
+    TaskReference::export_all_to(&out_dir)?;
+    Constraint::export_all_to(&out_dir)?;
+    QualityDimension::export_all_to(&out_dir)?;
+    OutputLength::export_all_to(&out_dir)?;
+    IterationState::export_all_to(&out_dir)?;
+    LineageType::export_all_to(&out_dir)?;
+
+    Ok(())
+}

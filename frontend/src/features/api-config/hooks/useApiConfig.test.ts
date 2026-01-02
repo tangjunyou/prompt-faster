@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { renderHook, waitFor, act, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -70,6 +70,7 @@ describe('useApiConfig hooks', () => {
   beforeAll(() => server.listen());
   afterEach(() => {
     server.resetHandlers();
+    cleanup();
     // 重置 store 状态
     useCredentialStore.setState({
       dify: { baseUrl: '', apiKey: '', status: 'empty' },
@@ -92,9 +93,11 @@ describe('useApiConfig hooks', () => {
   describe('useLoadApiConfig', () => {
     it('应该成功加载配置并填充 Store', async () => {
       // 注入登录态 token（configService 现在需要鉴权）
-      useAuthStore.setState({
-        authStatus: 'authenticated',
-        sessionToken: 'test-token',
+      act(() => {
+        useAuthStore.setState({
+          authStatus: 'authenticated',
+          sessionToken: 'test-token',
+        });
       });
 
       const { result } = renderHook(() => useLoadApiConfig(), {
@@ -114,9 +117,11 @@ describe('useApiConfig hooks', () => {
 
     it('应该在加载失败时返回错误状态', async () => {
       // 注入登录态 token（configService 现在需要鉴权）
-      useAuthStore.setState({
-        authStatus: 'authenticated',
-        sessionToken: 'test-token',
+      act(() => {
+        useAuthStore.setState({
+          authStatus: 'authenticated',
+          sessionToken: 'test-token',
+        });
       });
 
       server.use(
@@ -151,21 +156,25 @@ describe('useApiConfig hooks', () => {
   describe('useSaveApiConfig', () => {
     it('应该成功保存配置并标记为干净状态', async () => {
       // 注入登录态 token（configService 现在需要鉴权）
-      useAuthStore.setState({
-        authStatus: 'authenticated',
-        sessionToken: 'test-token',
+      act(() => {
+        useAuthStore.setState({
+          authStatus: 'authenticated',
+          sessionToken: 'test-token',
+        });
       });
 
       // 先设置 Store 为脏状态
-      useCredentialStore.setState({ isDirty: true });
+      act(() => {
+        useCredentialStore.setState({ isDirty: true });
+      });
 
       const { result } = renderHook(() => useSaveApiConfig(), {
         wrapper: createWrapper(),
       });
 
       // 执行保存操作
-      act(() => {
-        result.current.mutate({
+      await act(async () => {
+        await result.current.mutateAsync({
           dify: {
             base_url: 'https://api.dify.ai',
             api_key: 'sk-test',
@@ -200,7 +209,8 @@ describe('useApiConfig hooks', () => {
   describe('buildSaveConfigRequest', () => {
     it('应该正确构建包含有效凭证的请求', () => {
       // 设置 Store 状态
-      useCredentialStore.setState({
+      act(() => {
+        useCredentialStore.setState({
         dify: {
           baseUrl: 'https://api.dify.ai',
           apiKey: 'sk-dify-key',
@@ -217,6 +227,7 @@ describe('useApiConfig hooks', () => {
           topP: 0.95,
           maxTokens: 4096,
         },
+        });
       });
 
       const request = buildSaveConfigRequest();
@@ -240,7 +251,8 @@ describe('useApiConfig hooks', () => {
     it('应该在凭证无效或 apiKey 为空时抛出错误（防御性检查）', () => {
       // 设置 Store 状态 - dify 有效但 genericLlm apiKey 为空
       // Code Review Fix: 防御性检查会阻止不完整的请求
-      useCredentialStore.setState({
+      act(() => {
+        useCredentialStore.setState({
         dify: {
           baseUrl: 'https://api.dify.ai',
           apiKey: 'sk-dify-key',
@@ -257,6 +269,7 @@ describe('useApiConfig hooks', () => {
           topP: 0.9,
           maxTokens: 2048,
         },
+        });
       });
 
       // 应该抛出错误，因为凭证不完整
@@ -266,7 +279,8 @@ describe('useApiConfig hooks', () => {
     it('应该在 status 为 saved 时抛出错误（防御性检查）', () => {
       // 设置 Store 状态 - 两个都是 saved 状态
       // Code Review Fix: 防御性检查会阻止不完整的请求
-      useCredentialStore.setState({
+      act(() => {
+        useCredentialStore.setState({
         dify: {
           baseUrl: 'https://api.dify.ai',
           apiKey: '',
@@ -283,6 +297,7 @@ describe('useApiConfig hooks', () => {
           topP: 0.9,
           maxTokens: 2048,
         },
+        });
       });
 
       // 应该抛出错误，因为凭证不完整

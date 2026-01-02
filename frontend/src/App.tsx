@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link, Routes, Route, useLocation, useNavigate } from 'react-router'
+import { Link, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router'
 import './App.css'
-import { HomePage, ApiConfigPage } from './pages'
+import { ApiConfigPage, FocusView, RunView, WorkspaceView } from './pages'
 import { LoginPage } from './features/auth/components/LoginPage'
 import { ProtectedRoute } from './features/auth/components/ProtectedRoute'
 import { registerUnauthorizedHandler } from './lib/api'
 import { useAuthStore } from './stores/useAuthStore'
 import { logout as logoutRequest } from './features/auth/services/authService'
 import { Button } from './components/ui/button'
+import { ViewSwitcher } from './components/common/ViewSwitcher'
 
 function App() {
   const navigate = useNavigate()
@@ -49,9 +50,12 @@ function App() {
       {showHeader && (
         <header className="border-b bg-background">
           <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-            <Link to="/" className="text-sm font-semibold">
+            <div className="flex items-center gap-4">
+              <Link to="/run" className="text-sm font-semibold">
               Prompt Faster
-            </Link>
+              </Link>
+              <ViewSwitcher />
+            </div>
             <div className="flex items-center gap-3" data-testid="user-menu">
               {authStatus === 'authenticated' && currentUser ? (
                 <div className="text-sm text-muted-foreground">
@@ -79,7 +83,10 @@ function App() {
 
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<Navigate to="/run" replace />} />
+        <Route path="/run" element={<RunView />} />
+        <Route path="/focus" element={<FocusView />} />
+        <Route path="/workspace" element={<WorkspaceView />} />
         <Route
           path="/settings/api"
           element={

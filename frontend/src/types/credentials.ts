@@ -1,3 +1,6 @@
+import type { ConfigResponse } from '@/types/generated/api/ConfigResponse';
+import type { SaveConfigRequest as GeneratedSaveConfigRequest } from '@/types/generated/api/SaveConfigRequest';
+
 /**
  * 凭证状态类型
  * - empty: 未配置
@@ -73,46 +76,11 @@ export const teacherSettingsConstraints = {
 } as const;
 
 /**
- * API 配置响应类型（后端返回）
+ * API 配置响应类型（由 ts-rs 生成）
  */
-export interface ApiConfigResponse {
-  has_dify_key: boolean;
-  has_generic_llm_key: boolean;
-  dify_base_url: string | null;
-  generic_llm_base_url: string | null;
-  generic_llm_provider: string | null;
-  masked_dify_key: string | null;
-  masked_generic_llm_key: string | null;
-  teacher_settings: {
-    temperature: number;
-    top_p: number;
-    max_tokens: number;
-  };
-}
+export type ApiConfigResponse = ConfigResponse;
 
 /**
- * 保存配置请求类型
- * 
- * 注意: 后端强制要求 dify 和 generic_llm 必须同时存在
- * 前端在 buildSaveConfigRequest 中有防御性检查确保这一点
- * Code Review Fix: 类型定义更准确地反映后端约束
+ * 保存配置请求类型（由 ts-rs 生成）
  */
-export interface SaveConfigRequest {
-  /** Dify 凭证 - 后端强制要求 */
-  dify: {
-    base_url: string;
-    api_key: string;
-  };
-  /** 通用大模型凭证 - 后端强制要求 */
-  generic_llm: {
-    provider: string;
-    base_url: string;
-    api_key: string;
-  };
-  /** 老师模型参数 */
-  teacher_settings: {
-    temperature: number;
-    top_p: number;
-    max_tokens: number;
-  };
-}
+export type SaveConfigRequest = GeneratedSaveConfigRequest;
