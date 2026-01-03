@@ -146,6 +146,25 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
+      - name: Upload frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Add coverage info to Job Summary
+        run: |
+          {
+            echo "## Frontend Coverage"
+            echo ""
+            echo "已生成并上传前端单测覆盖率报告（artifact：\`frontend-coverage\`）。"
+            echo ""
+            echo "获取方式：Actions Run → Artifacts → \`frontend-coverage\`"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
   frontend-build:
     name: Frontend Build
     runs-on: ubuntu-latest
@@ -245,6 +264,18 @@ jobs:
         env:
           CI: true
         run: npm run test:e2e
+
+      - name: Check core journeys coverage (>= 80%)
+        run: node frontend/tests/e2e/scripts/check-core-journeys-coverage.mjs
+
+      - name: Upload core journeys coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-journeys-coverage
+          path: frontend/test-results/core-journeys-coverage.json
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload E2E artifacts
         if: failure()

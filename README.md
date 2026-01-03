@@ -51,8 +51,20 @@ npm run dev
 
 **Docker Compose:**
 ```bash
-docker compose up
+docker compose up -d
+docker compose ps
+
+# 最小可用检查
+curl -fsS http://localhost:3000/api/v1/health
+curl -fsS http://localhost:5173
 ```
+
+**Docker Compose 环境变量（以 `docker-compose.yml` 为准）：**
+- `APP_ENV`: 后端运行环境（默认 `development`）
+- `SERVER_HOST` / `SERVER_PORT`: 后端监听地址/端口（Compose 默认 `0.0.0.0:3000`）
+- `DATABASE_URL`: SQLite 文件库路径（Compose 默认 `sqlite:data/prompt_faster.db?mode=rwc`，并通过 volume `backend-data` 持久化在容器内的 `/app/data`）
+- `RUST_LOG`: 后端日志级别
+- `VITE_API_URL`: 前端调用后端 API 的 base URL（Compose 默认 `http://localhost:3000/api/v1`）
 
 ### 访问地址
 - 前端: http://localhost:5173

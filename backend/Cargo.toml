@@ -3,6 +3,7 @@ name = "prompt_faster"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
+default-run = "prompt_faster"
 authors = ["耶稣"]
 description = "AI Prompt 自动迭代优化系统"
 

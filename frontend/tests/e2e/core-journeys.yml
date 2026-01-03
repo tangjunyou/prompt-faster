@@ -1,0 +1,20 @@
+journeys:
+  - id: auth
+    title: 用户登录/认证
+    covered_by:
+      - file: frontend/tests/e2e/auth.spec.ts
+
+  - id: workspace-access
+    title: 工作区访问控制
+    covered_by:
+      - file: frontend/tests/e2e/workspaces.spec.ts
+
+  - id: view-switcher
+    title: 三视图切换
+    covered_by:
+      - file: frontend/tests/e2e/view-switcher.spec.ts
+
+  - id: health
+    title: 系统健康检查
+    covered_by:
+      - file: frontend/tests/e2e/health.spec.ts
