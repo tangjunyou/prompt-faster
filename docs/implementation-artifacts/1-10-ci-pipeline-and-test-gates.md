@@ -224,3 +224,4 @@ N/A
 - 2026-01-03：CI 增加覆盖率 artifact + Job Summary；新增核心旅程覆盖门禁（含 JSON 输出 + Summary）；修复 `test:coverage` 在 CI 中可能卡住；补齐 Compose 启动文档
 - 2026-01-03：修复 Docker Compose 后端启动（设置默认运行二进制）；本机验证 compose 启动与健康检查；补齐本机安全审计执行结果
 - 2026-01-03：启用 `main` 分支 required checks；前端 lint 忽略本地测试产物目录
+- 2026-01-03：修复前端 TypeScript build 被测试文件阻塞（为 core journeys 覆盖模块补齐 `.d.ts` 类型声明）

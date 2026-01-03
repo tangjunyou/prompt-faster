@@ -33,7 +33,7 @@ journeys:
     const result = evaluateCoreJourneysCoverage({
       journeys,
       repoRoot: '/repo',
-      fileExists: (absPath) => absPath.endsWith('/frontend/tests/e2e/a.spec.ts'),
+      fileExists: (absPath: string) => absPath.endsWith('/frontend/tests/e2e/a.spec.ts'),
     })
     expect(result.total).toBe(2)
     expect(result.covered).toBe(1)
