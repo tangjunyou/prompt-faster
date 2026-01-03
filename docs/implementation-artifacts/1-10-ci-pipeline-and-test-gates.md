@@ -1,6 +1,6 @@
 # Story 1.10: CI 流水线与测试门禁
 
-状态: review
+状态: done
 
 <!-- 注：校验可选。在 dev-story 之前可运行 validate-create-story 做质量检查。 -->
 
@@ -48,14 +48,14 @@
   - [x] 1.3 明确 required checks（在仓库设置中配置）以阻止未通过测试的合并（NFR20）
     - [x] 在仓库 Settings → Branches → Branch protection rules 中，为 `main`/`develop`（如适用）配置 Required status checks
     - [x] required checks 必须包含（以 GitHub 显示的 check 名称为准；名称/前缀可能随触发事件或 workflow 名称略有变化，建议直接从 PR Checks 列表复制粘贴）：
-      - `CI / Backend Lint`
-      - `CI / Backend Test`
-      - `CI / Backend Build`
-      - `CI / Frontend Lint`
-      - `CI / Frontend Test`
-      - `CI / Frontend Build`
-      - `CI / Frontend E2E`
-      - `CI / Security Audit`（若启用安全门禁）
+      - `Backend Lint`
+      - `Backend Test`
+      - `Backend Build`
+      - `Frontend Lint`
+      - `Frontend Test`
+      - `Frontend Build`
+      - `Frontend E2E`
+      - `Security Audit`（若启用安全门禁）
 - [x] 任务 2：Docker Compose 作为 E2E 基础环境（AC: #2）
   - [x] 2.1 校验根目录 `docker-compose.yml` 能启动后端 + 前端（SQLite 文件库 + volume 持久化）
     - [x] `docker compose up -d`
@@ -178,8 +178,8 @@
 
 ## 故事完成状态
 
-- 状态：review
-- 完成说明：已完成 CI 流水线与测试门禁实现与本地验证，可进入代码评审
+- 状态：done
+- 完成说明：已完成 CI 流水线与测试门禁实现与验证，并已合入 `main`
 
 ## 开发代理记录
 
@@ -201,7 +201,7 @@ N/A
 - 已运行 `cargo audit` 与 `npm audit --audit-level=high`（本次本机执行未触发 high 级别告警，命令返回成功）
 - 已在 `main` 分支启用分支保护并配置 required checks（阻止未通过测试/审计的合并）
 - 已忽略 `coverage/`、`playwright-report/`、`test-results/` 以避免前端 lint 受本地产物影响
-- 已创建 PR 并完成一次全绿 CI 运行（Workflow: `CI`，Artifacts: `frontend-coverage`、`core-journeys-coverage`）
+- 已创建并合并 PR；合并后 `main` 分支 CI 全绿（Workflow: `CI`，Artifacts: `frontend-coverage`、`core-journeys-coverage`）
 
 待处理（需要你在 GitHub 仓库设置中完成或受外部网络影响）：
 - `develop` 分支当前不存在，因此未配置分支保护

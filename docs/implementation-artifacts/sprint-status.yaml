@@ -54,7 +54,7 @@ development_status:
   1-7-user-data-isolation-and-access-control: done
   1-8-unified-error-response-and-openapi-docs: done
   1-9-frontend-architecture-and-type-safe-api-client: done
-  1-10-ci-pipeline-and-test-gates: review
+  1-10-ci-pipeline-and-test-gates: done
   epic-1-retrospective: optional
 
   # ============================================
