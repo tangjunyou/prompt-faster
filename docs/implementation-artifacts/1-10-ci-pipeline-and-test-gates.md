@@ -201,6 +201,7 @@ N/A
 - 已运行 `cargo audit` 与 `npm audit --audit-level=high`（本次本机执行未触发 high 级别告警，命令返回成功）
 - 已在 `main` 分支启用分支保护并配置 required checks（阻止未通过测试/审计的合并）
 - 已忽略 `coverage/`、`playwright-report/`、`test-results/` 以避免前端 lint 受本地产物影响
+- 已创建 PR 并完成一次全绿 CI 运行（Workflow: `CI`，Artifacts: `frontend-coverage`、`core-journeys-coverage`）
 
 待处理（需要你在 GitHub 仓库设置中完成或受外部网络影响）：
 - `develop` 分支当前不存在，因此未配置分支保护
