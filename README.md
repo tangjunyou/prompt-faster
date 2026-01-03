@@ -29,7 +29,7 @@ Prompt Faster 是一个桌面端 AI Prompt 自动迭代优化工具，采用四�
 ## 🚀 快速开始
 
 ### 前置要求
-- Rust 1.83+
+- Rust 1.85+
 - Node.js 22+
 - Docker (可选)
 
@@ -64,6 +64,7 @@ curl -fsS http://localhost:5173
 - `SERVER_HOST` / `SERVER_PORT`: 后端监听地址/端口（Compose 默认 `0.0.0.0:3000`）
 - `DATABASE_URL`: SQLite 文件库路径（Compose 默认 `sqlite:data/prompt_faster.db?mode=rwc`，并通过 volume `backend-data` 持久化在容器内的 `/app/data`）
 - `RUST_LOG`: 后端日志级别
+- `MASTER_PASSWORD`（可选）: 仅用于向后兼容解密旧版本写入的凭证数据；新写入凭证使用“登录密码派生”加密
 - `VITE_API_URL`: 前端调用后端 API 的 base URL（Compose 默认 `http://localhost:3000/api/v1`）
 
 ### 访问地址
@@ -99,11 +100,10 @@ prompt-faster/
 
 ## 📖 文档
 
-- [产品需求文档](docs/implementation-artifacts/prd.md)
-- [架构设计](docs/implementation-artifacts/architecture.md)
-- [UX 设计规范](docs/implementation-artifacts/ux-design-specification.md)
-- [Epic 与 Story 分解](docs/implementation-artifacts/epics.md)
-- [测试设计](docs/implementation-artifacts/test-design-system.md)
+- [产品需求文档](docs/project-planning-artifacts/prd.md)
+- [架构设计](docs/project-planning-artifacts/architecture.md)
+- [UX 设计规范](docs/project-planning-artifacts/ux-design-specification.md)
+- [Epic 与 Story 分解](docs/project-planning-artifacts/epics.md)
 
 ## 🧪 测试
 

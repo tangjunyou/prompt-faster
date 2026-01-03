@@ -149,6 +149,7 @@
       <action>Add/update tests as needed</action>
       <action>Update File List in story if files changed</action>
       <action>Update story Dev Agent Record with fixes applied</action>
+      <action>Update story "Review Notes" section (if exists) with: key findings, decisions made, and any remaining risks</action>
       <action>Set {{fixed_count}} = number of HIGH and MEDIUM issues fixed</action>
       <action>Set {{action_count}} = 0</action>
     </check>
@@ -156,6 +157,7 @@
     <check if="user chooses 2">
       <action>Add "Review Follow-ups (AI)" subsection to Tasks/Subtasks</action>
       <action>For each issue: `- [ ] [AI-Review][Severity] Description [file:line]`</action>
+      <action>Update story "Review Notes" section (create if missing) with: Findings (by severity) + Follow-ups</action>
       <action>Set {{action_count}} = number of action items created</action>
       <action>Set {{fixed_count}} = 0</action>
     </check>
