@@ -32,6 +32,17 @@ impl std::fmt::Display for UrlValidationError {
 
 impl std::error::Error for UrlValidationError {}
 
+/// base_url 验证策略（用于本地/开发模式放宽 SSRF 限制）
+#[derive(Debug, Clone, Copy)]
+pub struct BaseUrlValidationOptions {
+    /// 是否允许 HTTP（仅本地/开发模式建议开启）
+    pub allow_http: bool,
+    /// 是否允许 localhost/127.0.0.1/::1
+    pub allow_localhost: bool,
+    /// 是否允许私有网段 IP（10/172.16-31/192.168/169.254、以及 IPv6 ULA/Link-local）
+    pub allow_private_network: bool,
+}
+
 /// 验证 base_url 是否安全（防 SSRF）
 ///
 /// 规则：
@@ -46,6 +57,21 @@ impl std::error::Error for UrlValidationError {}
 /// * `base_url` - 要验证的 URL
 /// * `allow_http` - 是否允许 HTTP（仅开发环境）
 pub fn validate_base_url(base_url: &str, allow_http: bool) -> Result<(), UrlValidationError> {
+    validate_base_url_with_options(
+        base_url,
+        BaseUrlValidationOptions {
+            allow_http,
+            allow_localhost: false,
+            allow_private_network: false,
+        },
+    )
+}
+
+/// 验证 base_url 是否安全（防 SSRF），支持更细粒度策略控制
+pub fn validate_base_url_with_options(
+    base_url: &str,
+    opts: BaseUrlValidationOptions,
+) -> Result<(), UrlValidationError> {
     let trimmed = base_url.trim();
 
     // 检查空值
@@ -58,7 +84,7 @@ pub fn validate_base_url(base_url: &str, allow_http: bool) -> Result<(), UrlVali
 
     // 检查协议
     let scheme = url.scheme();
-    if scheme != "https" && !(allow_http && scheme == "http") {
+    if scheme != "https" && !(opts.allow_http && scheme == "http") {
         return Err(UrlValidationError::HttpsRequired);
     }
 
@@ -66,12 +92,12 @@ pub fn validate_base_url(base_url: &str, allow_http: bool) -> Result<(), UrlVali
     let host = url.host_str().ok_or(UrlValidationError::InvalidFormat)?;
 
     // 检查 localhost
-    if is_localhost(host) {
+    if !opts.allow_localhost && is_localhost(host) {
         return Err(UrlValidationError::LocalhostForbidden);
     }
 
     // 检查私有网络
-    if is_private_network(host) {
+    if !opts.allow_private_network && is_private_network(host) {
         return Err(UrlValidationError::PrivateNetworkForbidden);
     }
 
@@ -201,6 +227,36 @@ mod tests {
         assert_eq!(
             validate_base_url("not-a-url", false),
             Err(UrlValidationError::InvalidFormat)
+        );
+    }
+
+    #[test]
+    fn test_localhost_allowed_with_options() {
+        assert!(
+            validate_base_url_with_options(
+                "http://localhost:8080/v1",
+                BaseUrlValidationOptions {
+                    allow_http: true,
+                    allow_localhost: true,
+                    allow_private_network: false,
+                }
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn test_private_network_allowed_with_options() {
+        assert!(
+            validate_base_url_with_options(
+                "http://192.168.1.10:8080/v1",
+                BaseUrlValidationOptions {
+                    allow_http: true,
+                    allow_localhost: false,
+                    allow_private_network: true,
+                }
+            )
+            .is_ok()
         );
     }
 

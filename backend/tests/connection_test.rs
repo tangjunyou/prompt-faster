@@ -12,14 +12,11 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 async fn test_dify_connection_success() {
     let mock_server = MockServer::start().await;
 
-    Mock::given(method("POST"))
-        .and(path("/v1/completion-messages"))
+    Mock::given(method("GET"))
+        .and(path("/v1/parameters"))
         .and(header("Authorization", "Bearer test-api-key"))
         .and(header("X-Correlation-Id", "test-correlation-id"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "answer": "test response",
-            "conversation_id": "test-conv-id"
-        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
         .mount(&mock_server)
         .await;
 
@@ -43,8 +40,8 @@ async fn test_dify_connection_success() {
 async fn test_dify_connection_unauthorized() {
     let mock_server = MockServer::start().await;
 
-    Mock::given(method("POST"))
-        .and(path("/v1/completion-messages"))
+    Mock::given(method("GET"))
+        .and(path("/v1/parameters"))
         .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
             "code": "unauthorized",
             "message": "Invalid API key"
@@ -74,8 +71,8 @@ async fn test_dify_connection_unauthorized() {
 async fn test_dify_connection_forbidden() {
     let mock_server = MockServer::start().await;
 
-    Mock::given(method("POST"))
-        .and(path("/v1/completion-messages"))
+    Mock::given(method("GET"))
+        .and(path("/v1/parameters"))
         .respond_with(ResponseTemplate::new(403).set_body_json(serde_json::json!({
             "code": "forbidden",
             "message": "Access denied"
@@ -102,8 +99,8 @@ async fn test_dify_connection_forbidden() {
 async fn test_dify_connection_server_error() {
     let mock_server = MockServer::start().await;
 
-    Mock::given(method("POST"))
-        .and(path("/v1/completion-messages"))
+    Mock::given(method("GET"))
+        .and(path("/v1/parameters"))
         .respond_with(ResponseTemplate::new(500).set_body_string("Internal Server Error"))
         .mount(&mock_server)
         .await;

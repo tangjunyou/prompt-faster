@@ -25,7 +25,9 @@ use crate::infra::external::dify_client::{self, ConnectionError, TestConnectionR
 use crate::infra::external::llm_client::{self, LlmConnectionError};
 use crate::shared::error_codes;
 use crate::shared::log_sanitizer::sanitize_api_key;
-use crate::shared::url_validator::{validate_api_key, validate_base_url};
+use crate::shared::url_validator::{
+    BaseUrlValidationOptions, validate_api_key, validate_base_url_with_options,
+};
 
 /// Dify 连接测试请求
 #[derive(Debug, Deserialize, ToSchema, TS)]
@@ -60,6 +62,30 @@ fn extract_correlation_id(headers: &HeaderMap) -> String {
         .to_string()
 }
 
+fn normalize_base_url_for_docker(base_url: &str, is_docker: bool) -> String {
+    let trimmed = base_url.trim();
+    if !is_docker {
+        return trimmed.to_string();
+    }
+
+    let Ok(mut url) = url::Url::parse(trimmed) else {
+        return trimmed.to_string();
+    };
+    let Some(host) = url.host_str() else {
+        return trimmed.to_string();
+    };
+
+    if matches!(
+        host.to_lowercase().as_str(),
+        "localhost" | "127.0.0.1" | "::1"
+    ) {
+        let _ = url.set_host(Some("host.docker.internal"));
+        return url.to_string();
+    }
+
+    trimmed.to_string()
+}
+
 /// 测试 Dify API 连接
 ///
 /// POST /api/v1/auth/test-connection/dify
@@ -82,21 +108,30 @@ pub(crate) async fn test_dify_connection(
     Json(req): Json<TestDifyConnectionRequest>,
 ) -> ApiResponse<TestConnectionResult> {
     let correlation_id = extract_correlation_id(&headers);
+    let base_url = normalize_base_url_for_docker(&req.base_url, state.config.is_docker);
+    if base_url != req.base_url.trim() {
+        info!(
+            original_base_url = %req.base_url,
+            normalized_base_url = %base_url,
+            "Docker 环境检测到 localhost：已自动重写 base_url"
+        );
+    }
 
     info!(
-        base_url = %req.base_url,
+        base_url = %base_url,
         api_key = %sanitize_api_key(&req.api_key),
         correlation_id = %correlation_id,
         "测试 Dify 连接"
     );
 
-    // 输入验证：SSRF 防护（开发环境允许 HTTP）
-    #[cfg(debug_assertions)]
-    let allow_http = true;
-    #[cfg(not(debug_assertions))]
-    let allow_http = false;
+    // 输入验证：SSRF 防护（基于配置策略）
+    let base_url_opts = BaseUrlValidationOptions {
+        allow_http: state.config.allow_http_base_url,
+        allow_localhost: state.config.allow_localhost_base_url,
+        allow_private_network: state.config.allow_private_network_base_url,
+    };
 
-    if let Err(e) = validate_base_url(&req.base_url, allow_http) {
+    if let Err(e) = validate_base_url_with_options(&base_url, base_url_opts) {
         warn!(error = %e, "URL 验证失败");
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
@@ -115,13 +150,8 @@ pub(crate) async fn test_dify_connection(
         );
     }
 
-    match dify_client::test_connection(
-        &state.http_client,
-        &req.base_url,
-        &req.api_key,
-        &correlation_id,
-    )
-    .await
+    match dify_client::test_connection(&state.http_client, &base_url, &req.api_key, &correlation_id)
+        .await
     {
         Ok(result) => {
             info!("Dify 连接测试成功");
@@ -156,22 +186,31 @@ pub(crate) async fn test_generic_llm_connection(
     Json(req): Json<TestGenericLlmConnectionRequest>,
 ) -> ApiResponse<TestConnectionResult> {
     let correlation_id = extract_correlation_id(&headers);
+    let base_url = normalize_base_url_for_docker(&req.base_url, state.config.is_docker);
+    if base_url != req.base_url.trim() {
+        info!(
+            original_base_url = %req.base_url,
+            normalized_base_url = %base_url,
+            "Docker 环境检测到 localhost：已自动重写 base_url"
+        );
+    }
 
     info!(
-        base_url = %req.base_url,
+        base_url = %base_url,
         api_key = %sanitize_api_key(&req.api_key),
         provider = %req.provider,
         correlation_id = %correlation_id,
         "测试通用大模型连接"
     );
 
-    // 输入验证：SSRF 防护（开发环境允许 HTTP）
-    #[cfg(debug_assertions)]
-    let allow_http = true;
-    #[cfg(not(debug_assertions))]
-    let allow_http = false;
+    // 输入验证：SSRF 防护（基于配置策略）
+    let base_url_opts = BaseUrlValidationOptions {
+        allow_http: state.config.allow_http_base_url,
+        allow_localhost: state.config.allow_localhost_base_url,
+        allow_private_network: state.config.allow_private_network_base_url,
+    };
 
-    if let Err(e) = validate_base_url(&req.base_url, allow_http) {
+    if let Err(e) = validate_base_url_with_options(&base_url, base_url_opts) {
         warn!(error = %e, "URL 验证失败");
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
@@ -192,7 +231,7 @@ pub(crate) async fn test_generic_llm_connection(
 
     match llm_client::test_connection(
         &state.http_client,
-        &req.base_url,
+        &base_url,
         &req.api_key,
         &req.provider,
         &correlation_id,
@@ -536,6 +575,17 @@ pub(crate) async fn save_config(
     let user_id = &current_user.user_id;
     info!(correlation_id = %correlation_id, user_id = %user_id, "保存配置");
 
+    let user_password = match current_user.unlock_context.as_ref() {
+        Some(ctx) => ctx.password_bytes(),
+        None => {
+            return ApiResponse::err(
+                StatusCode::UNAUTHORIZED,
+                error_codes::UNAUTHORIZED,
+                "会话已过期，请重新登录",
+            );
+        }
+    };
+
     // 强制校验：必须同时包含 Dify 和 Generic LLM 凭证 (Story 1.5 Task 3.3)
     if req.dify.is_none() {
         warn!("缺少 Dify 凭证配置");
@@ -560,16 +610,17 @@ pub(crate) async fn save_config(
         return ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, e);
     }
 
-    // 开发环境允许 HTTP
-    #[cfg(debug_assertions)]
-    let allow_http = true;
-    #[cfg(not(debug_assertions))]
-    let allow_http = false;
+    let base_url_opts = BaseUrlValidationOptions {
+        allow_http: state.config.allow_http_base_url,
+        allow_localhost: state.config.allow_localhost_base_url,
+        allow_private_network: state.config.allow_private_network_base_url,
+    };
 
     // 保存 Dify 凭证（已在上面校验过存在性）
     if let Some(dify) = &req.dify {
+        let base_url = normalize_base_url_for_docker(&dify.base_url, state.config.is_docker);
         // 验证 URL
-        if let Err(e) = validate_base_url(&dify.base_url, allow_http) {
+        if let Err(e) = validate_base_url_with_options(&base_url, base_url_opts) {
             warn!(error = %e, "Dify URL 验证失败");
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
@@ -588,7 +639,7 @@ pub(crate) async fn save_config(
         }
 
         // 加密 API Key
-        let encrypted = match state.api_key_manager.encrypt(&dify.api_key) {
+        let encrypted = match state.api_key_manager.encrypt(user_password, &dify.api_key) {
             Ok(e) => e,
             Err(e) => {
                 warn!(error = %e, "API Key 加密失败");
@@ -607,7 +658,7 @@ pub(crate) async fn save_config(
                 user_id: user_id.clone(),
                 credential_type: CredentialType::Dify,
                 provider: None,
-                base_url: dify.base_url.clone(),
+                base_url,
                 encrypted_api_key: encrypted.ciphertext,
                 nonce: encrypted.nonce,
                 salt: encrypted.salt,
@@ -627,6 +678,7 @@ pub(crate) async fn save_config(
 
     // 保存通用大模型凭证
     if let Some(generic_llm) = &req.generic_llm {
+        let base_url = normalize_base_url_for_docker(&generic_llm.base_url, state.config.is_docker);
         // 验证 provider
         if generic_llm.provider != "siliconflow" && generic_llm.provider != "modelscope" {
             return ApiResponse::err(
@@ -639,7 +691,7 @@ pub(crate) async fn save_config(
             );
         }
         // 验证 URL
-        if let Err(e) = validate_base_url(&generic_llm.base_url, allow_http) {
+        if let Err(e) = validate_base_url_with_options(&base_url, base_url_opts) {
             warn!(error = %e, "通用大模型 URL 验证失败");
             return ApiResponse::err(
                 StatusCode::BAD_REQUEST,
@@ -658,7 +710,10 @@ pub(crate) async fn save_config(
         }
 
         // 加密 API Key
-        let encrypted = match state.api_key_manager.encrypt(&generic_llm.api_key) {
+        let encrypted = match state
+            .api_key_manager
+            .encrypt(user_password, &generic_llm.api_key)
+        {
             Ok(e) => e,
             Err(e) => {
                 warn!(error = %e, "API Key 加密失败");
@@ -677,7 +732,7 @@ pub(crate) async fn save_config(
                 user_id: user_id.clone(),
                 credential_type: CredentialType::GenericLlm,
                 provider: Some(generic_llm.provider.clone()),
-                base_url: generic_llm.base_url.clone(),
+                base_url,
                 encrypted_api_key: encrypted.ciphertext,
                 nonce: encrypted.nonce,
                 salt: encrypted.salt,
@@ -746,6 +801,17 @@ pub(crate) async fn get_config(
     let user_id = &current_user.user_id;
     info!(correlation_id = %correlation_id, user_id = %user_id, "获取配置");
 
+    let user_password = match current_user.unlock_context.as_ref() {
+        Some(ctx) => ctx.password_bytes(),
+        None => {
+            return ApiResponse::err(
+                StatusCode::UNAUTHORIZED,
+                error_codes::UNAUTHORIZED,
+                "会话已过期，请重新登录",
+            );
+        }
+    };
+
     // 查询 Dify 凭证
     let dify_credential =
         CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::Dify)
@@ -774,7 +840,13 @@ pub(crate) async fn get_config(
     // 解密并脱敏 Dify API Key
     let (has_dify_key, dify_base_url, masked_dify_key) = match dify_credential {
         Some(cred) => {
-            let masked = decrypt_and_mask(&state, &cred.encrypted_api_key, &cred.nonce, &cred.salt);
+            let masked = decrypt_and_mask(
+                &state,
+                user_password,
+                &cred.encrypted_api_key,
+                &cred.nonce,
+                &cred.salt,
+            );
             (true, Some(cred.base_url), masked)
         }
         None => (false, None, None),
@@ -784,8 +856,13 @@ pub(crate) async fn get_config(
     let (has_generic_llm_key, generic_llm_base_url, generic_llm_provider, masked_generic_llm_key) =
         match generic_llm_credential {
             Some(cred) => {
-                let masked =
-                    decrypt_and_mask(&state, &cred.encrypted_api_key, &cred.nonce, &cred.salt);
+                let masked = decrypt_and_mask(
+                    &state,
+                    user_password,
+                    &cred.encrypted_api_key,
+                    &cred.nonce,
+                    &cred.salt,
+                );
                 (true, Some(cred.base_url), cred.provider, masked)
             }
             None => (false, None, None, None),
@@ -809,13 +886,14 @@ pub(crate) async fn get_config(
 
 /// 解密 API Key 并脱敏
 ///
-/// # TODO(Security): 优化为只解密部分字节用于脱敏
-/// 当前实现会先解密完整 API Key 再脱敏，完整明文短暂存在内存中。
-/// 建议后续优化：
-/// - 方案 A: 在加密时同时存储脱敏后的 masked_key（无需解密）
-/// - 方案 B: 只解密最后 4 字节用于脱敏显示
+/// # 安全说明
+/// AES-GCM 无法“部分解密”以获得末尾字节：必须完整解密并校验 tag 才能得到明文。
+/// 因此这里采取的策略是：
+/// - 解密结果使用 `zeroize::Zeroizing<Vec<u8>>` 承载，尽量缩短明文驻留时间
+/// - 仅返回脱敏后的字符串（masked），避免在业务层传播完整明文
 fn decrypt_and_mask(
     state: &AppState,
+    user_password: &[u8],
     ciphertext: &[u8],
     nonce: &[u8],
     salt: &[u8],
@@ -826,8 +904,13 @@ fn decrypt_and_mask(
         salt: salt.to_vec(),
     };
 
-    match state.api_key_manager.decrypt(&encrypted) {
-        Ok(api_key) => Some(sanitize_api_key(&api_key)),
+    match state
+        .api_key_manager
+        .decrypt_bytes(user_password, &encrypted)
+    {
+        Ok(api_key_bytes) => std::str::from_utf8(api_key_bytes.as_slice())
+            .ok()
+            .map(sanitize_api_key),
         Err(e) => {
             warn!(error = %e, "解密 API Key 失败");
             None

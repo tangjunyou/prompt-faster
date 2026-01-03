@@ -14,6 +14,7 @@ use prompt_faster::api::state::AppState;
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
+use prompt_faster::shared::config::AppConfig;
 
 const TEST_MASTER_PASSWORD: &str = "test_master_password_for_integration";
 
@@ -28,7 +29,19 @@ async fn setup_test_app() -> Router {
         .expect("运行 migrations 失败");
 
     let http_client = create_http_client().expect("创建 HTTP 客户端失败");
-    let api_key_manager = Arc::new(ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string()));
+    let config = Arc::new(AppConfig {
+        database_url: "sqlite::memory:".to_string(),
+        server_host: "127.0.0.1".to_string(),
+        server_port: 0,
+        log_level: "info".to_string(),
+        is_dev: true,
+        cors_origins: vec![],
+        is_docker: false,
+        allow_http_base_url: true,
+        allow_localhost_base_url: true,
+        allow_private_network_base_url: true,
+    });
+    let api_key_manager = Arc::new(ApiKeyManager::new(Some(TEST_MASTER_PASSWORD.to_string())));
 
     let session_store = SessionStore::new(24);
     let login_attempt_store = LoginAttemptStore::default();
@@ -36,6 +49,7 @@ async fn setup_test_app() -> Router {
     let state = AppState {
         db,
         http_client,
+        config,
         api_key_manager,
         session_store,
         login_attempt_store,
