@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from 'react'
-import { Navigate } from 'react-router'
+import { Navigate, useLocation } from 'react-router'
 import { useAuthStore } from '@/stores/useAuthStore'
 
 interface ProtectedRouteProps {
@@ -13,6 +13,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { authStatus } = useAuthStore()
+  const location = useLocation()
 
   // 加载中时显示空白
   if (authStatus === 'loading') {
@@ -21,7 +22,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // 未登录时重定向到登录页
   if (authStatus !== 'authenticated') {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
   return <>{children}</>
