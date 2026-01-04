@@ -112,24 +112,18 @@ pub(crate) async fn create_workspace(
 
     info!(correlation_id = %correlation_id, user_id = %user_id, "创建工作区");
 
-    let workspace = match WorkspaceRepo::create(
-        &state.db,
-        user_id,
-        name,
-        req.description.as_deref(),
-    )
-    .await
-    {
-        Ok(w) => w,
-        Err(e) => {
-            warn!(error = %e, "创建工作区失败");
-            return ApiResponse::err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error_codes::DATABASE_ERROR,
-                "创建工作区失败",
-            );
-        }
-    };
+    let workspace =
+        match WorkspaceRepo::create(&state.db, user_id, name, req.description.as_deref()).await {
+            Ok(w) => w,
+            Err(e) => {
+                warn!(error = %e, "创建工作区失败");
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "创建工作区失败",
+                );
+            }
+        };
 
     ApiResponse::ok(WorkspaceResponse {
         id: workspace.id,
