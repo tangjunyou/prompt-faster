@@ -12,6 +12,7 @@ use utoipa::ToSchema;
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
+use crate::api::routes::test_sets;
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{WorkspaceRepo, WorkspaceRepoError};
 use crate::shared::error_codes;
@@ -92,7 +93,8 @@ pub(crate) async fn create_workspace(
     let correlation_id = extract_correlation_id(&headers);
     let user_id = &current_user.user_id;
 
-    if req.name.trim().is_empty() {
+    let name = req.name.trim();
+    if name.is_empty() {
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
             error_codes::VALIDATION_ERROR,
@@ -100,7 +102,7 @@ pub(crate) async fn create_workspace(
         );
     }
 
-    if req.name.len() > 128 {
+    if name.chars().count() > 128 {
         return ApiResponse::err(
             StatusCode::BAD_REQUEST,
             error_codes::VALIDATION_ERROR,
@@ -113,7 +115,7 @@ pub(crate) async fn create_workspace(
     let workspace = match WorkspaceRepo::create(
         &state.db,
         user_id,
-        &req.name,
+        name,
         req.description.as_deref(),
     )
     .await
@@ -276,4 +278,5 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", post(create_workspace).get(list_workspaces))
         .route("/{id}", get(get_workspace).delete(delete_workspace))
+        .nest("/{workspace_id}/test-sets", test_sets::router())
 }

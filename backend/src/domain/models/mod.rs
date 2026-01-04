@@ -1,6 +1,7 @@
 //! 领域模型定义
 
 pub mod algorithm;
+pub mod test_set;
 pub mod user;
 pub mod workspace;
 
@@ -10,5 +11,6 @@ pub use algorithm::{
     OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
     RuleSystem, RuleTags, Severity, TaskReference, TestCase, TokenUsage,
 };
+pub use test_set::TestSet;
 pub use user::User;
 pub use workspace::Workspace;

@@ -4,6 +4,7 @@
 pub mod credential_repo;
 pub mod migration_repo;
 pub mod teacher_settings_repo;
+pub mod test_set_repo;
 pub mod user_repo;
 pub mod workspace_repo;
 
@@ -15,5 +16,6 @@ pub use teacher_settings_repo::{
     TeacherSettingsRecord, TeacherSettingsRepo, TeacherSettingsRepoError,
     UpsertTeacherSettingsInput,
 };
+pub use test_set_repo::{TestSetRepo, TestSetRepoError};
 pub use user_repo::{UserRepo, UserRepoError};
 pub use workspace_repo::{WorkspaceRepo, WorkspaceRepoError};

@@ -4,9 +4,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 /// 测试用例结构
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export_to = "models/")]
 pub struct TestCase {
     /// 唯一标识
@@ -24,7 +25,7 @@ pub struct TestCase {
 }
 
 /// 数据划分类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "snake_case")]
 #[ts(export_to = "models/")]
 pub enum DataSplit {
@@ -35,7 +36,7 @@ pub enum DataSplit {
 }
 
 /// 任务参考类型
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export_to = "models/")]
 pub enum TaskReference {
     Exact {
@@ -52,7 +53,7 @@ pub enum TaskReference {
 }
 
 /// 约束条件
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export_to = "models/")]
 pub struct Constraint {
     pub name: String,
@@ -61,7 +62,7 @@ pub struct Constraint {
 }
 
 /// 质量维度
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export_to = "models/")]
 pub struct QualityDimension {
     pub name: String,

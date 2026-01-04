@@ -7,6 +7,10 @@ use prompt_faster::api::routes::auth::{
     TestGenericLlmConnectionRequest,
 };
 use prompt_faster::api::routes::health::HealthResponse;
+use prompt_faster::api::routes::test_sets::{
+    CreateTestSetRequest, DeleteTestSetResponse, TestSetListItemResponse, TestSetResponse,
+    UpdateTestSetRequest,
+};
 use prompt_faster::api::routes::user_auth::{
     AuthResponse, LoginRequest, LogoutResponse, RegisterRequest, SystemStatusResponse, UserInfo,
 };
@@ -17,7 +21,7 @@ use prompt_faster::domain::models::{
     Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
     ExecutionResult, FailurePoint, Iteration, IterationState, LineageType, OptimizationTask,
     OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
-    RuleSystem, RuleTags, Severity, TaskReference, TestCase, TokenUsage, User, Workspace,
+    RuleSystem, RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
 use prompt_faster::infra::external::dify_client::TestConnectionResult;
 use ts_rs::TS;
@@ -62,10 +66,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     WorkspaceResponse::export_all_to(&out_dir)?;
     DeleteWorkspaceResponse::export_all_to(&out_dir)?;
 
+    // 测试集
+    CreateTestSetRequest::export_all_to(&out_dir)?;
+    UpdateTestSetRequest::export_all_to(&out_dir)?;
+    TestSetListItemResponse::export_all_to(&out_dir)?;
+    TestSetResponse::export_all_to(&out_dir)?;
+    DeleteTestSetResponse::export_all_to(&out_dir)?;
+
     // 核心模型
     Workspace::export_all_to(&out_dir)?;
     User::export_all_to(&out_dir)?;
     TestCase::export_all_to(&out_dir)?;
+    TestSet::export_all_to(&out_dir)?;
     OptimizationTask::export_all_to(&out_dir)?;
     Iteration::export_all_to(&out_dir)?;
     EvaluationResult::export_all_to(&out_dir)?;

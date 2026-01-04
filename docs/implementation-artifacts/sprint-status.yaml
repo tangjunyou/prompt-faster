@@ -61,8 +61,8 @@ development_status:
   # Epic 2: 测试集管理
   # FRs: FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
   # ============================================
-  epic-2: backlog
-  2-1-test-set-data-model-and-basic-crud: backlog
+  epic-2: in-progress
+  2-1-test-set-data-model-and-basic-crud: done
   2-2-test-set-batch-import: backlog
   2-3-test-set-template-save-and-reuse: backlog
   2-4-dify-variable-parsing-and-prompt-variable-designation: backlog

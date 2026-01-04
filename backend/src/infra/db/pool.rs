@@ -25,6 +25,7 @@ pub async fn create_pool(database_url: &str) -> anyhow::Result<SqlitePool> {
 
     let options = SqliteConnectOptions::from_str(&database_url)?
         .journal_mode(SqliteJournalMode::Wal)
+        .foreign_keys(true)
         .synchronous(SqliteSynchronous::Full)
         .busy_timeout(Duration::from_secs(30))
         .create_if_missing(true);

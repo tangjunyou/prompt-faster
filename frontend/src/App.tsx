@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router'
 import './App.css'
-import { ApiConfigPage, FocusView, RunView, WorkspaceView } from './pages'
+import { ApiConfigPage, FocusView, RunView, TestSetsView, WorkspaceView } from './pages'
 import { LoginPage } from './features/auth/components/LoginPage'
 import { ProtectedRoute } from './features/auth/components/ProtectedRoute'
 import { registerUnauthorizedHandler } from './lib/api'
@@ -87,6 +87,14 @@ function App() {
         <Route path="/run" element={<RunView />} />
         <Route path="/focus" element={<FocusView />} />
         <Route path="/workspace" element={<WorkspaceView />} />
+        <Route
+          path="/workspaces/:id/test-sets"
+          element={
+            <ProtectedRoute>
+              <TestSetsView />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/settings/api"
           element={

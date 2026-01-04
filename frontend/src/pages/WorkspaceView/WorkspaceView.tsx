@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Link } from 'react-router'
 import { useCreateWorkspace, useWorkspaces } from '@/features/workspace/hooks/useWorkspaces'
 import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
 import { Button } from '@/components/ui/button'
@@ -87,9 +88,18 @@ export function WorkspaceView() {
             <ul className="space-y-2 text-sm">
               {workspaces.map((workspace) => (
                 <li key={workspace.id} className="rounded-md border px-3 py-2">
-                  <div className="font-medium">{workspace.name}</div>
-                  <div className="text-muted-foreground">
-                    {workspace.description || '暂无描述'}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium">{workspace.name}</div>
+                      <div className="text-muted-foreground">
+                        {workspace.description || '暂无描述'}
+                      </div>
+                    </div>
+                    <div className="shrink-0">
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/workspaces/${workspace.id}/test-sets`}>管理测试集</Link>
+                      </Button>
+                    </div>
                   </div>
                 </li>
               ))}
