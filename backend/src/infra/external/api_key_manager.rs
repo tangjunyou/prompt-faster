@@ -2,18 +2,14 @@
 //! 使用 AES-GCM + Argon2 派生密钥 (NFR9)
 //!
 //! # 安全说明
-//! - 使用 Argon2id 从主密码派生 256 位密钥
+//! - 使用 Argon2id 从用户登录密码（会话内存副本）派生 256 位密钥
 //! - 使用 AES-256-GCM 加密 API Key
 //! - 每次加密生成随机 12 字节 nonce
 //! - 每条记录使用独立的 salt
 //!
-//! # TODO(Story-1.6): 替换为用户登录密码派生
-//!
-//! # TODO(Security): 使用 zeroize crate 清零敏感内存
-//! - master_password 存储在 String 中，内存未在 Drop 时清零
-//! - 派生的 key 数组在函数返回后未显式清零
-//! - 建议：为 ApiKeyManager 实现 Drop trait，使用 zeroize::Zeroize 清零 master_password
-//! - 建议：将 derive_key 返回的 key 包装为 Zeroizing<[u8; KEY_LENGTH]>
+//! # 向后兼容
+//! - 如设置 `MASTER_PASSWORD`，可用于解密旧数据（旧版本使用全局 master_password 派生）
+//! - 新写入数据始终使用用户登录密码派生（UnlockContext）
 
 use aes_gcm::{
     Aes256Gcm, Key, Nonce,
@@ -22,6 +18,7 @@ use aes_gcm::{
 use argon2::{Argon2, Params, Version};
 use rand::RngCore;
 use thiserror::Error;
+use zeroize::Zeroizing;
 
 use crate::shared::log_sanitizer::sanitize_api_key;
 
@@ -67,31 +64,38 @@ pub struct EncryptedApiKey {
 /// API Key 管理器
 ///
 /// 负责 API Key 的加密和解密操作。
-/// 使用 Argon2id 从主密码派生密钥，AES-256-GCM 加密数据。
+/// 使用 Argon2id 从用户登录密码派生密钥，AES-256-GCM 加密数据。
 pub struct ApiKeyManager {
-    /// 主密码（仅存于内存）
-    master_password: String,
+    /// legacy 主密码（仅用于向后兼容解密旧数据）
+    legacy_master_password: Option<Zeroizing<Vec<u8>>>,
 }
 
 impl ApiKeyManager {
     /// 创建新的 API Key 管理器
     ///
     /// # Arguments
-    /// * `master_password` - 用于派生加密密钥的主密码
-    ///
-    /// # TODO(Story-1.6): 替换为用户登录密码派生
-    pub fn new(master_password: String) -> Self {
-        Self { master_password }
+    /// * `legacy_master_password` - legacy 主密码（可选，仅用于向后兼容解密旧数据）
+    pub fn new(legacy_master_password: Option<String>) -> Self {
+        Self {
+            legacy_master_password: legacy_master_password
+                .filter(|s| !s.is_empty())
+                .map(|s| Zeroizing::new(s.into_bytes())),
+        }
     }
 
     /// 加密 API Key
     ///
     /// # Arguments
+    /// * `user_password` - 用户登录密码（来自 UnlockContext，仅存在内存）
     /// * `api_key` - 明文 API Key
     ///
     /// # Returns
     /// 加密后的数据（密文 + nonce + salt）
-    pub fn encrypt(&self, api_key: &str) -> Result<EncryptedApiKey, ApiKeyError> {
+    pub fn encrypt(
+        &self,
+        user_password: &[u8],
+        api_key: &str,
+    ) -> Result<EncryptedApiKey, ApiKeyError> {
         tracing::debug!(
             api_key = %sanitize_api_key(api_key),
             "加密 API Key"
@@ -104,10 +108,10 @@ impl ApiKeyManager {
         let nonce_bytes = generate_random_bytes(NONCE_LENGTH);
 
         // 派生密钥
-        let key = self.derive_key(&salt)?;
+        let key = derive_key(user_password, &salt)?;
 
         // 创建 AES-GCM 密码器
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
+        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key[..]));
         let nonce = Nonce::from_slice(&nonce_bytes);
 
         // 加密
@@ -125,40 +129,18 @@ impl ApiKeyManager {
     /// 解密 API Key
     ///
     /// # Arguments
+    /// * `user_password` - 用户登录密码（来自 UnlockContext，仅存在内存）
     /// * `encrypted` - 加密后的数据
     ///
     /// # Returns
     /// 解密后的明文 API Key
-    pub fn decrypt(&self, encrypted: &EncryptedApiKey) -> Result<String, ApiKeyError> {
-        // 验证 nonce 长度
-        if encrypted.nonce.len() != NONCE_LENGTH {
-            return Err(ApiKeyError::InvalidNonceLength {
-                expected: NONCE_LENGTH,
-                actual: encrypted.nonce.len(),
-            });
-        }
-
-        // 验证 salt 长度
-        if encrypted.salt.len() != SALT_LENGTH {
-            return Err(ApiKeyError::InvalidSaltLength {
-                expected: SALT_LENGTH,
-                actual: encrypted.salt.len(),
-            });
-        }
-
-        // 派生密钥（使用相同的 salt）
-        let key = self.derive_key(&encrypted.salt)?;
-
-        // 创建 AES-GCM 密码器
-        let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key));
-        let nonce = Nonce::from_slice(&encrypted.nonce);
-
-        // 解密
-        let plaintext = cipher
-            .decrypt(nonce, encrypted.ciphertext.as_ref())
-            .map_err(|e| ApiKeyError::DecryptionFailed(e.to_string()))?;
-
-        let api_key = String::from_utf8(plaintext)
+    pub fn decrypt(
+        &self,
+        user_password: &[u8],
+        encrypted: &EncryptedApiKey,
+    ) -> Result<String, ApiKeyError> {
+        let plaintext = self.decrypt_bytes(user_password, encrypted)?;
+        let api_key = String::from_utf8(plaintext.to_vec())
             .map_err(|e| ApiKeyError::DecryptionFailed(e.to_string()))?;
 
         tracing::debug!(
@@ -169,27 +151,72 @@ impl ApiKeyManager {
         Ok(api_key)
     }
 
-    /// 使用 Argon2id 从主密码派生密钥
-    ///
-    /// # Argon2 参数（必须遵循）
-    /// - 算法: Argon2id
-    /// - 内存: 65536 KB (64MB)
-    /// - 迭代次数: 3
-    /// - 并行度: 4
-    fn derive_key(&self, salt: &[u8]) -> Result<[u8; KEY_LENGTH], ApiKeyError> {
-        // Argon2 参数: m=65536 (64MB), t=3 iterations, p=4 parallelism
-        let params = Params::new(65536, 3, 4, Some(KEY_LENGTH))
-            .map_err(|e| ApiKeyError::KeyDerivationFailed(e.to_string()))?;
+    /// 解密 API Key（字节形式，使用 zeroize 控制明文生命周期）
+    pub fn decrypt_bytes(
+        &self,
+        user_password: &[u8],
+        encrypted: &EncryptedApiKey,
+    ) -> Result<Zeroizing<Vec<u8>>, ApiKeyError> {
+        validate_encrypted(encrypted)?;
 
-        let argon2 = Argon2::new(argon2::Algorithm::Argon2id, Version::V0x13, params);
+        // 主路径：用户登录密码派生
+        if let Ok(key) = derive_key(user_password, &encrypted.salt) {
+            if let Ok(plaintext) = decrypt_with_key(&key[..], encrypted) {
+                return Ok(Zeroizing::new(plaintext));
+            }
+        }
 
-        let mut key = [0u8; KEY_LENGTH];
-        argon2
-            .hash_password_into(self.master_password.as_bytes(), salt, &mut key)
-            .map_err(|e| ApiKeyError::KeyDerivationFailed(e.to_string()))?;
+        // 向后兼容：legacy MASTER_PASSWORD
+        if let Some(legacy_pwd) = &self.legacy_master_password {
+            let key = derive_key(legacy_pwd.as_slice(), &encrypted.salt)?;
+            let plaintext = decrypt_with_key(&key[..], encrypted)
+                .map_err(|e| ApiKeyError::DecryptionFailed(e.to_string()))?;
+            return Ok(Zeroizing::new(plaintext));
+        }
 
-        Ok(key)
+        Err(ApiKeyError::DecryptionFailed(
+            "使用用户密码与 legacy 主密码均解密失败".to_string(),
+        ))
     }
+}
+
+fn validate_encrypted(encrypted: &EncryptedApiKey) -> Result<(), ApiKeyError> {
+    if encrypted.nonce.len() != NONCE_LENGTH {
+        return Err(ApiKeyError::InvalidNonceLength {
+            expected: NONCE_LENGTH,
+            actual: encrypted.nonce.len(),
+        });
+    }
+
+    if encrypted.salt.len() != SALT_LENGTH {
+        return Err(ApiKeyError::InvalidSaltLength {
+            expected: SALT_LENGTH,
+            actual: encrypted.salt.len(),
+        });
+    }
+
+    Ok(())
+}
+
+/// 使用 Argon2id 从指定密码派生密钥（Drop 时自动清零）
+fn derive_key(password: &[u8], salt: &[u8]) -> Result<Zeroizing<[u8; KEY_LENGTH]>, ApiKeyError> {
+    let params = Params::new(65536, 3, 4, Some(KEY_LENGTH))
+        .map_err(|e| ApiKeyError::KeyDerivationFailed(e.to_string()))?;
+
+    let argon2 = Argon2::new(argon2::Algorithm::Argon2id, Version::V0x13, params);
+
+    let mut key = Zeroizing::new([0u8; KEY_LENGTH]);
+    argon2
+        .hash_password_into(password, salt, &mut key[..])
+        .map_err(|e| ApiKeyError::KeyDerivationFailed(e.to_string()))?;
+
+    Ok(key)
+}
+
+fn decrypt_with_key(key: &[u8], encrypted: &EncryptedApiKey) -> Result<Vec<u8>, aes_gcm::Error> {
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let nonce = Nonce::from_slice(&encrypted.nonce);
+    cipher.decrypt(nonce, encrypted.ciphertext.as_ref())
 }
 
 /// 生成指定长度的随机字节
@@ -205,22 +232,24 @@ mod tests {
 
     #[test]
     fn test_encrypt_decrypt_roundtrip() {
-        let manager = ApiKeyManager::new("test_password".to_string());
+        let manager = ApiKeyManager::new(None);
+        let user_password = b"test_password";
         let api_key = "sk-1234567890abcdef";
 
-        let encrypted = manager.encrypt(api_key).unwrap();
-        let decrypted = manager.decrypt(&encrypted).unwrap();
+        let encrypted = manager.encrypt(user_password, api_key).unwrap();
+        let decrypted = manager.decrypt(user_password, &encrypted).unwrap();
 
         assert_eq!(api_key, decrypted);
     }
 
     #[test]
     fn test_different_salt_produces_different_ciphertext() {
-        let manager = ApiKeyManager::new("test_password".to_string());
+        let manager = ApiKeyManager::new(None);
+        let user_password = b"test_password";
         let api_key = "sk-1234567890abcdef";
 
-        let encrypted1 = manager.encrypt(api_key).unwrap();
-        let encrypted2 = manager.encrypt(api_key).unwrap();
+        let encrypted1 = manager.encrypt(user_password, api_key).unwrap();
+        let encrypted2 = manager.encrypt(user_password, api_key).unwrap();
 
         // 不同的 salt 应该产生不同的密文
         assert_ne!(encrypted1.ciphertext, encrypted2.ciphertext);
@@ -230,42 +259,44 @@ mod tests {
 
     #[test]
     fn test_wrong_password_fails_decryption() {
-        let manager1 = ApiKeyManager::new("password1".to_string());
-        let manager2 = ApiKeyManager::new("password2".to_string());
+        let manager1 = ApiKeyManager::new(None);
+        let manager2 = ApiKeyManager::new(None);
+        let password1 = b"password1";
+        let password2 = b"password2";
         let api_key = "sk-1234567890abcdef";
 
-        let encrypted = manager1.encrypt(api_key).unwrap();
-        let result = manager2.decrypt(&encrypted);
+        let encrypted = manager1.encrypt(password1, api_key).unwrap();
+        let result = manager2.decrypt(password2, &encrypted);
 
         assert!(result.is_err());
     }
 
     #[test]
     fn test_nonce_length() {
-        let manager = ApiKeyManager::new("test_password".to_string());
-        let encrypted = manager.encrypt("test_key").unwrap();
+        let manager = ApiKeyManager::new(None);
+        let encrypted = manager.encrypt(b"test_password", "test_key").unwrap();
 
         assert_eq!(encrypted.nonce.len(), NONCE_LENGTH);
     }
 
     #[test]
     fn test_salt_length() {
-        let manager = ApiKeyManager::new("test_password".to_string());
-        let encrypted = manager.encrypt("test_key").unwrap();
+        let manager = ApiKeyManager::new(None);
+        let encrypted = manager.encrypt(b"test_password", "test_key").unwrap();
 
         assert_eq!(encrypted.salt.len(), SALT_LENGTH);
     }
 
     #[test]
     fn test_invalid_nonce_length() {
-        let manager = ApiKeyManager::new("test_password".to_string());
+        let manager = ApiKeyManager::new(None);
         let encrypted = EncryptedApiKey {
             ciphertext: vec![1, 2, 3],
             nonce: vec![1, 2, 3], // 错误的长度
             salt: vec![0u8; SALT_LENGTH],
         };
 
-        let result = manager.decrypt(&encrypted);
+        let result = manager.decrypt(b"test_password", &encrypted);
         assert!(matches!(
             result,
             Err(ApiKeyError::InvalidNonceLength { .. })
@@ -274,23 +305,23 @@ mod tests {
 
     #[test]
     fn test_invalid_salt_length() {
-        let manager = ApiKeyManager::new("test_password".to_string());
+        let manager = ApiKeyManager::new(None);
         let encrypted = EncryptedApiKey {
             ciphertext: vec![1, 2, 3],
             nonce: vec![0u8; NONCE_LENGTH],
             salt: vec![1, 2, 3], // 错误的长度
         };
 
-        let result = manager.decrypt(&encrypted);
+        let result = manager.decrypt(b"test_password", &encrypted);
         assert!(matches!(result, Err(ApiKeyError::InvalidSaltLength { .. })));
     }
 
     #[test]
     fn test_encrypted_data_is_not_plaintext() {
-        let manager = ApiKeyManager::new("test_password".to_string());
+        let manager = ApiKeyManager::new(None);
         let api_key = "sk-1234567890abcdef";
 
-        let encrypted = manager.encrypt(api_key).unwrap();
+        let encrypted = manager.encrypt(b"test_password", api_key).unwrap();
 
         // 密文不应该包含明文
         let ciphertext_str = String::from_utf8_lossy(&encrypted.ciphertext);

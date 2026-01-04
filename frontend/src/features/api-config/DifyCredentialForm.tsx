@@ -109,6 +109,9 @@ export function DifyCredentialForm() {
           aria-describedby={errors.baseUrl ? 'dify-base-url-error' : undefined}
           data-testid="dify-base-url-input"
         />
+        <p className="text-xs text-muted-foreground">
+          只需填写到「域名 + 端口」（不需要 <code>/v1</code>），系统会自动补全。
+        </p>
         {errors.baseUrl && (
           <p id="dify-base-url-error" className="text-sm text-red-500" role="alert">{errors.baseUrl}</p>
         )}

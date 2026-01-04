@@ -4,13 +4,14 @@
  */
 
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate } from 'react-router'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { getSystemStatus } from '../services/authService'
 import { isApiError } from '@/lib/api'
 
 export function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const {
     authStatus,
     login,
@@ -26,6 +27,11 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [checkingStatus, setCheckingStatus] = useState(true)
+
+  const redirectTo =
+    (typeof (location.state as { from?: unknown } | null)?.from === 'string'
+      ? ((location.state as { from: string }).from ?? '')
+      : '') || '/'
 
   // 检查系统状态
   useEffect(() => {
@@ -48,9 +54,9 @@ export function LoginPage() {
   // 已登录则跳转首页
   useEffect(() => {
     if (authStatus === 'authenticated') {
-      navigate('/')
+      navigate(redirectTo, { replace: true })
     }
-  }, [authStatus, navigate])
+  }, [authStatus, navigate, redirectTo])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -84,7 +90,7 @@ export function LoginPage() {
       if (isApiError(response)) {
         setError(response.error.message)
       } else {
-        navigate('/')
+        navigate(redirectTo, { replace: true })
       }
     } catch {
       setError('操作失败，请稍后重试')

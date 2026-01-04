@@ -21,6 +21,12 @@ so that {{benefit}}.
 - [ ] Task 2 (AC: #)
   - [ ] Subtask 2.1
 
+### Review Follow-ups (AI)
+
+> 轻量但强制：把 review 里发现的可执行项落到这里，避免“只记在聊天里/只散落在文档里”。
+
+- [ ] [AI-Review] (placeholder) 将本 Story 的 review 结论沉淀到 `## Review Notes`（含风险/遗留）
+
 ## Dev Notes
 
 - Relevant architecture patterns and constraints
@@ -47,3 +53,23 @@ so that {{benefit}}.
 ### Completion Notes List
 
 ### File List
+
+## Review Notes
+
+> 统一结构（便于后续检索/复用/持续改进）
+
+### Findings
+
+- [ ] (placeholder) 发现的问题/建议（按严重度：CRITICAL/HIGH/MEDIUM/LOW）
+
+### Decisions
+
+- [ ] (placeholder) 本次做了哪些关键取舍？为什么？
+
+### Risks / Tech Debt
+
+- [ ] (placeholder) 风险与遗留（如果暂时不修，写清楚“不修的理由”和“触发条件”）
+
+### Follow-ups
+
+- [ ] (placeholder) 后续行动项（并同步到 `### Review Follow-ups (AI)`）

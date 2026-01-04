@@ -24,7 +24,7 @@ use prompt_faster::shared::tracing_setup::init_tracing;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // 加载配置
-    let config = AppConfig::from_env()?;
+    let config = Arc::new(AppConfig::from_env()?);
 
     // 初始化日志
     init_tracing(&config.log_level);
@@ -47,35 +47,22 @@ async fn main() -> anyhow::Result<()> {
 
     // 初始化 API Key 管理器
     //
-    // Story 1.6 决策记录:
-    // - 当前 MVP 阶段使用全局 MASTER_PASSWORD，适用于单用户场景
-    // - UnlockContext 已在 SessionStore 中实现，存放用户密码的内存副本
-    // - Story 1.7 已完成历史数据迁移（default_user → 首个注册用户）
-    // - 后续可迁移到用户密码派生加密
-    //
-    // 安全约束 (Story 1.5 Task 2.2):
-    // - 非开发模式下必须设置 MASTER_PASSWORD 环境变量
-    // - 密钥仅存于内存，不持久化到文件
-    let master_password = match std::env::var("MASTER_PASSWORD") {
-        Ok(pwd) if !pwd.is_empty() => {
-            info!("使用环境变量中的主密码");
-            pwd
-        }
-        _ => {
-            #[cfg(debug_assertions)]
-            {
-                tracing::warn!("⚠️ 使用默认开发密码，请勿在生产环境使用！");
-                "default_dev_password_change_me".to_string()
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                panic!(
-                    "❌ 生产模式必须设置 MASTER_PASSWORD 环境变量！请在 .env 或环境中配置安全的主密码。"
-                );
-            }
-        }
-    };
-    let api_key_manager = Arc::new(ApiKeyManager::new(master_password));
+    // 当前策略（Critical Prep / 2026-01-03）：
+    // - 主路径使用用户登录密码派生（UnlockContext 在 SessionStore 中保存密码的内存副本）
+    // - 如设置 MASTER_PASSWORD，则仅用于向后兼容解密旧数据（旧版本写入）
+    // - 新写入数据始终使用用户登录密码派生
+    let legacy_master_password = std::env::var("MASTER_PASSWORD")
+        .ok()
+        .filter(|s| !s.is_empty());
+    if legacy_master_password.is_some() {
+        info!("检测到 MASTER_PASSWORD：将用于解密 legacy 凭证数据（向后兼容）");
+    } else {
+        tracing::warn!(
+            "未设置 MASTER_PASSWORD：仅使用登录密码派生；如存在 legacy 凭证数据可能需要重新保存配置完成迁移"
+        );
+    }
+
+    let api_key_manager = Arc::new(ApiKeyManager::new(legacy_master_password));
     info!("API Key 管理器初始化成功");
 
     // 初始化会话存储（24 小时过期）
@@ -114,6 +101,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         db,
         http_client,
+        config: config.clone(),
         api_key_manager,
         session_store,
         login_attempt_store,

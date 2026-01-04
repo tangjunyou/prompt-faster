@@ -48,7 +48,7 @@ pub enum ConnectionError {
 
 /// 测试 Dify API 连接
 ///
-/// 使用 POST /v1/completion-messages 端点验证 API Key 有效性
+/// 使用 GET /v1/parameters 端点验证 API Key 有效性
 ///
 /// # Arguments
 /// * `client` - 共享的 HTTP 客户端（复用连接池）
@@ -65,18 +65,12 @@ pub async fn test_connection(
     api_key: &str,
     correlation_id: &str,
 ) -> Result<TestConnectionResult, ConnectionError> {
-    let url = format!("{}/v1/completion-messages", base_url.trim_end_matches('/'));
+    let url = format!("{}/v1/parameters", base_url.trim_end_matches('/'));
 
     let response = client
-        .post(&url)
+        .get(&url)
         .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
         .header("X-Correlation-Id", correlation_id)
-        .json(&serde_json::json!({
-            "inputs": {},
-            "response_mode": "blocking",
-            "user": "connection-test"
-        }))
         .send()
         .await
         .map_err(|e| {

@@ -21,8 +21,8 @@ use prompt_faster::infra::db::repositories::{CredentialRepo, CredentialType, Tea
 use prompt_faster::infra::external::api_key_manager::{ApiKeyManager, NONCE_LENGTH, SALT_LENGTH};
 use sqlx::SqlitePool;
 
-/// 测试用主密码
-const TEST_MASTER_PASSWORD: &str = "test_master_password_for_integration";
+/// 测试用“登录密码”（用于派生加密密钥）
+const TEST_USER_PASSWORD: &[u8] = b"test_user_password_for_integration";
 
 /// 测试用用户 ID（仅用于测试 Repository 层逻辑）
 const TEST_USER_ID: &str = "test_user";
@@ -42,11 +42,15 @@ async fn setup_test_db() -> SqlitePool {
 /// 测试 API Key Manager 加解密可逆性
 #[tokio::test]
 async fn test_api_key_encryption_roundtrip() {
-    let manager = ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string());
+    let manager = ApiKeyManager::new(None);
     let original_key = "sk-test-api-key-12345678";
 
-    let encrypted = manager.encrypt(original_key).expect("加密失败");
-    let decrypted = manager.decrypt(&encrypted).expect("解密失败");
+    let encrypted = manager
+        .encrypt(TEST_USER_PASSWORD, original_key)
+        .expect("加密失败");
+    let decrypted = manager
+        .decrypt(TEST_USER_PASSWORD, &encrypted)
+        .expect("解密失败");
 
     assert_eq!(original_key, decrypted);
 }
@@ -54,10 +58,12 @@ async fn test_api_key_encryption_roundtrip() {
 /// 测试加密后的数据确实不是明文
 #[tokio::test]
 async fn test_encrypted_data_is_not_plaintext() {
-    let manager = ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string());
+    let manager = ApiKeyManager::new(None);
     let api_key = "sk-very-secret-api-key";
 
-    let encrypted = manager.encrypt(api_key).expect("加密失败");
+    let encrypted = manager
+        .encrypt(TEST_USER_PASSWORD, api_key)
+        .expect("加密失败");
 
     // 密文不应该包含明文
     let ciphertext_str = String::from_utf8_lossy(&encrypted.ciphertext);
@@ -80,11 +86,15 @@ async fn test_encrypted_data_is_not_plaintext() {
 /// 测试相同明文 + 不同 salt/nonce 产生不同密文
 #[tokio::test]
 async fn test_different_salt_produces_different_ciphertext() {
-    let manager = ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string());
+    let manager = ApiKeyManager::new(None);
     let api_key = "sk-same-api-key";
 
-    let encrypted1 = manager.encrypt(api_key).expect("加密失败");
-    let encrypted2 = manager.encrypt(api_key).expect("加密失败");
+    let encrypted1 = manager
+        .encrypt(TEST_USER_PASSWORD, api_key)
+        .expect("加密失败");
+    let encrypted2 = manager
+        .encrypt(TEST_USER_PASSWORD, api_key)
+        .expect("加密失败");
 
     // 不同的 salt 和 nonce 应产生不同的密文
     assert_ne!(
@@ -98,12 +108,16 @@ async fn test_different_salt_produces_different_ciphertext() {
 /// 测试错误密码无法解密
 #[tokio::test]
 async fn test_wrong_password_fails_decryption() {
-    let manager1 = ApiKeyManager::new("correct_password".to_string());
-    let manager2 = ApiKeyManager::new("wrong_password".to_string());
+    let manager1 = ApiKeyManager::new(None);
+    let manager2 = ApiKeyManager::new(None);
+    let correct_password = b"correct_password";
+    let wrong_password = b"wrong_password";
     let api_key = "sk-secret-key";
 
-    let encrypted = manager1.encrypt(api_key).expect("加密失败");
-    let result = manager2.decrypt(&encrypted);
+    let encrypted = manager1
+        .encrypt(correct_password, api_key)
+        .expect("加密失败");
+    let result = manager2.decrypt(wrong_password, &encrypted);
 
     assert!(result.is_err(), "错误密码应导致解密失败");
 }
@@ -112,11 +126,13 @@ async fn test_wrong_password_fails_decryption() {
 #[tokio::test]
 async fn test_credential_storage_is_encrypted() {
     let pool = setup_test_db().await;
-    let manager = ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string());
+    let manager = ApiKeyManager::new(None);
     let original_api_key = "sk-original-api-key-for-storage-test";
 
     // 加密 API Key
-    let encrypted = manager.encrypt(original_api_key).expect("加密失败");
+    let encrypted = manager
+        .encrypt(TEST_USER_PASSWORD, original_api_key)
+        .expect("加密失败");
 
     // 保存到数据库
     use prompt_faster::infra::db::repositories::UpsertCredentialInput;
@@ -153,7 +169,9 @@ async fn test_credential_storage_is_encrypted() {
         salt: loaded.salt,
     };
 
-    let decrypted = manager.decrypt(&loaded_encrypted).expect("解密失败");
+    let decrypted = manager
+        .decrypt(TEST_USER_PASSWORD, &loaded_encrypted)
+        .expect("解密失败");
     assert_eq!(original_api_key, decrypted, "解密后应与原文一致");
 }
 
@@ -209,12 +227,14 @@ async fn test_teacher_settings_default() {
 #[tokio::test]
 async fn test_credential_upsert_updates_existing() {
     let pool = setup_test_db().await;
-    let manager = ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string());
+    let manager = ApiKeyManager::new(None);
 
     use prompt_faster::infra::db::repositories::UpsertCredentialInput;
 
     // 第一次保存
-    let encrypted1 = manager.encrypt("sk-first-key").expect("加密失败");
+    let encrypted1 = manager
+        .encrypt(TEST_USER_PASSWORD, "sk-first-key")
+        .expect("加密失败");
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
@@ -231,7 +251,9 @@ async fn test_credential_upsert_updates_existing() {
     .expect("第一次保存失败");
 
     // 第二次保存（更新）
-    let encrypted2 = manager.encrypt("sk-second-key").expect("加密失败");
+    let encrypted2 = manager
+        .encrypt(TEST_USER_PASSWORD, "sk-second-key")
+        .expect("加密失败");
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
@@ -269,7 +291,9 @@ async fn test_credential_upsert_updates_existing() {
         nonce: dify_credentials[0].nonce.clone(),
         salt: dify_credentials[0].salt.clone(),
     };
-    let decrypted = manager.decrypt(&loaded_encrypted).expect("解密失败");
+    let decrypted = manager
+        .decrypt(TEST_USER_PASSWORD, &loaded_encrypted)
+        .expect("解密失败");
     assert_eq!(decrypted, "sk-second-key", "应解密为第二个 key");
 }
 
@@ -277,12 +301,14 @@ async fn test_credential_upsert_updates_existing() {
 #[tokio::test]
 async fn test_different_credential_types_stored_separately() {
     let pool = setup_test_db().await;
-    let manager = ApiKeyManager::new(TEST_MASTER_PASSWORD.to_string());
+    let manager = ApiKeyManager::new(None);
 
     use prompt_faster::infra::db::repositories::UpsertCredentialInput;
 
     // 保存 Dify 凭证
-    let encrypted_dify = manager.encrypt("sk-dify-key").expect("加密失败");
+    let encrypted_dify = manager
+        .encrypt(TEST_USER_PASSWORD, "sk-dify-key")
+        .expect("加密失败");
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {
@@ -299,7 +325,9 @@ async fn test_different_credential_types_stored_separately() {
     .expect("保存 Dify 凭证失败");
 
     // 保存 GenericLlm 凭证
-    let encrypted_llm = manager.encrypt("sk-llm-key").expect("加密失败");
+    let encrypted_llm = manager
+        .encrypt(TEST_USER_PASSWORD, "sk-llm-key")
+        .expect("加密失败");
     CredentialRepo::upsert(
         &pool,
         UpsertCredentialInput {

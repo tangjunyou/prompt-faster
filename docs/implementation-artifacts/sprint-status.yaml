@@ -44,7 +44,7 @@ development_status:
   # Epic 1: 系统基础与 API 连接
   # FRs: FR1, FR2, FR3, FR4, FR5
   # ============================================
-  epic-1: in-progress
+  epic-1: done
   1-1-project-initialization-and-basic-architecture: done
   1-2-dify-api-credential-configuration: done
   1-3-generic-llm-api-credential-configuration: done
@@ -55,7 +55,7 @@ development_status:
   1-8-unified-error-response-and-openapi-docs: done
   1-9-frontend-architecture-and-type-safe-api-client: done
   1-10-ci-pipeline-and-test-gates: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   # ============================================
   # Epic 2: 测试集管理
