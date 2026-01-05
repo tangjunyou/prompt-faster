@@ -690,9 +690,10 @@ mod tests {
         insert_user(&pool, "u1", "user1").await;
         insert_workspace(&pool, "w1", "u1").await;
 
-        let created = TestSetRepo::create(&pool, "w1", "ts1", Some("d"), &sample_cases(), None, None)
-            .await
-            .expect("创建失败");
+        let created =
+            TestSetRepo::create(&pool, "w1", "ts1", Some("d"), &sample_cases(), None, None)
+                .await
+                .expect("创建失败");
 
         let loaded = TestSetRepo::find_by_id(&pool, "w1", &created.id)
             .await
