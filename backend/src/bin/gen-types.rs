@@ -6,6 +6,9 @@ use prompt_faster::api::routes::auth::{
     SaveConfigResponse, TeacherSettingsInput, TeacherSettingsResponse, TestDifyConnectionRequest,
     TestGenericLlmConnectionRequest,
 };
+use prompt_faster::api::routes::dify::{
+    DifyBinding, DifyBindingSource, DifyConfig, SaveDifyConfigRequest, SaveDifyConfigResponse,
+};
 use prompt_faster::api::routes::health::HealthResponse;
 use prompt_faster::api::routes::test_set_templates::{
     SaveAsTemplateRequest, TestSetTemplateListItemResponse, TestSetTemplateResponse,
@@ -26,7 +29,9 @@ use prompt_faster::domain::models::{
     OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
     RuleSystem, RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
-use prompt_faster::infra::external::dify_client::TestConnectionResult;
+use prompt_faster::infra::external::dify_client::{
+    DifyInputVariable, DifyValueType, DifyVariablesResponse, TestConnectionResult,
+};
 use ts_rs::TS;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -46,6 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TestDifyConnectionRequest::export_all_to(&out_dir)?;
     TestGenericLlmConnectionRequest::export_all_to(&out_dir)?;
     TestConnectionResult::export_all_to(&out_dir)?;
+    DifyVariablesResponse::export_all_to(&out_dir)?;
+    DifyInputVariable::export_all_to(&out_dir)?;
+    DifyValueType::export_all_to(&out_dir)?;
 
     // 认证相关
     RegisterRequest::export_all_to(&out_dir)?;
@@ -75,6 +83,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TestSetListItemResponse::export_all_to(&out_dir)?;
     TestSetResponse::export_all_to(&out_dir)?;
     DeleteTestSetResponse::export_all_to(&out_dir)?;
+
+    // Dify 变量配置（测试集维度）
+    DifyConfig::export_all_to(&out_dir)?;
+    SaveDifyConfigRequest::export_all_to(&out_dir)?;
+    SaveDifyConfigResponse::export_all_to(&out_dir)?;
+    DifyBinding::export_all_to(&out_dir)?;
+    DifyBindingSource::export_all_to(&out_dir)?;
 
     // 测试集模板
     SaveAsTemplateRequest::export_all_to(&out_dir)?;

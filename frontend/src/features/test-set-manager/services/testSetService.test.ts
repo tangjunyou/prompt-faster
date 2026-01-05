@@ -57,6 +57,7 @@ const server = setupServer(
       name: body.name,
       description: body.description ?? null,
       cases: [],
+      dify_config: null,
       created_at: 10,
       updated_at: 10,
     }
@@ -78,6 +79,7 @@ const server = setupServer(
       name: '测试集详情',
       description: null,
       cases: [],
+      dify_config: null,
       created_at: 10,
       updated_at: 11,
     }
@@ -100,6 +102,7 @@ const server = setupServer(
       name: body.name,
       description: body.description ?? null,
       cases: [],
+      dify_config: null,
       created_at: 10,
       updated_at: 12,
     }

@@ -9,6 +9,7 @@ use utoipa::ToSchema;
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
+use crate::api::routes::dify::DifyConfig;
 use crate::api::state::AppState;
 use crate::domain::models::TestCase;
 use crate::infra::db::repositories::{
@@ -31,6 +32,7 @@ pub struct TestSetTemplateResponse {
     pub name: String,
     pub description: Option<String>,
     pub cases: Vec<TestCase>,
+    pub dify_config: Option<DifyConfig>,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]
@@ -82,6 +84,15 @@ fn test_set_not_found<T: Serialize>() -> ApiResponse<T> {
         error_codes::TEST_SET_NOT_FOUND,
         "测试集不存在",
     )
+}
+
+fn parse_dify_config(dify_config_json: Option<String>) -> Result<Option<DifyConfig>, String> {
+    let Some(json) = dify_config_json else {
+        return Ok(None);
+    };
+
+    let config: DifyConfig = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    Ok(Some(config))
 }
 
 fn validate_template_name<T: Serialize>(name: &str) -> Result<(), ApiResponse<T>> {
@@ -242,6 +253,13 @@ pub(crate) async fn get_test_set_template(
         name: loaded.name,
         description: loaded.description,
         cases: loaded.cases,
+        dify_config: match parse_dify_config(loaded.dify_config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "解析 dify_config_json 失败");
+                None
+            }
+        },
         created_at: loaded.created_at,
         updated_at: loaded.updated_at,
     })
@@ -324,6 +342,13 @@ pub(crate) async fn save_as_template(
         name: created.name,
         description: created.description,
         cases: created.cases,
+        dify_config: match parse_dify_config(created.dify_config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "解析 dify_config_json 失败");
+                None
+            }
+        },
         created_at: created.created_at,
         updated_at: created.updated_at,
     })

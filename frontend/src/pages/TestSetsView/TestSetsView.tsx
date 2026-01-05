@@ -28,8 +28,13 @@ import {
 } from '@/features/test-set-manager/services/parseTestCasesJsonl'
 import { getTestSet } from '@/features/test-set-manager/services/testSetService'
 import { getTestSetTemplate } from '@/features/test-set-manager/services/testSetTemplateService'
+import { refreshDifyVariables, saveDifyConfig } from '@/features/test-set-manager/services/difyService'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
+import type { DifyBindingSource } from '@/types/generated/api/DifyBindingSource'
+import type { DifyConfig } from '@/types/generated/api/DifyConfig'
+import type { DifyInputVariable } from '@/types/generated/api/DifyInputVariable'
+import type { SaveDifyConfigRequest } from '@/types/generated/api/SaveDifyConfigRequest'
 import type { TestCase } from '@/types/generated/models/TestCase'
 import type { JsonValue } from '@/types/generated/serde_json/JsonValue'
 
@@ -110,6 +115,23 @@ export function TestSetsView() {
   const [isLoadingEdit, setIsLoadingEdit] = useState(false)
   const [loadingEditId, setLoadingEditId] = useState<string | null>(null)
 
+  type DifyBindingDraft = {
+    source: '' | DifyBindingSource
+    fixedJsonText: string
+    inputKey: string
+  }
+
+  const [difyVariables, setDifyVariables] = useState<DifyInputVariable[] | null>(null)
+  const [difyVariablesError, setDifyVariablesError] = useState<string | null>(null)
+  const [isRefreshingDifyVariables, setIsRefreshingDifyVariables] = useState(false)
+
+  const [difyTargetPromptVariable, setDifyTargetPromptVariable] = useState('')
+  const [difyBindingDrafts, setDifyBindingDrafts] = useState<Record<string, DifyBindingDraft>>({})
+  const [difySaveError, setDifySaveError] = useState<string | null>(null)
+  const [difySaveSuccess, setDifySaveSuccess] = useState<string | null>(null)
+
+  const [pendingTemplateDifyConfig, setPendingTemplateDifyConfig] = useState<SaveDifyConfigRequest | null>(null)
+
   const [importFileName, setImportFileName] = useState<string | null>(null)
   const [importFileError, setImportFileError] = useState<string | null>(null)
   const [importErrors, setImportErrors] = useState<JsonlParseError[]>([])
@@ -147,6 +169,32 @@ export function TestSetsView() {
 
   const title = useMemo(() => (editingId ? '编辑测试集' : '创建测试集'), [editingId])
 
+  const applyDifyConfigToDrafts = (config: DifyConfig | null) => {
+    setDifyTargetPromptVariable(config?.targetPromptVariable ?? '')
+
+    const nextDrafts: Record<string, DifyBindingDraft> = {}
+    const bindings = config?.bindings ?? {}
+    for (const [name, binding] of Object.entries(bindings)) {
+      if (!binding) continue
+      if (binding.source === 'fixed') {
+        nextDrafts[name] = {
+          source: 'fixed',
+          fixedJsonText: JSON.stringify(binding.value, null, 2),
+          inputKey: '',
+        }
+      } else {
+        nextDrafts[name] = {
+          source: 'testCaseInput',
+          fixedJsonText: '',
+          inputKey: binding.inputKey ?? '',
+        }
+      }
+    }
+    setDifyBindingDrafts(nextDrafts)
+    setDifySaveError(null)
+    setDifySaveSuccess(null)
+  }
+
   const startEdit = async (ts: TestSetListItemResponse) => {
     if (!workspaceId) return
     if (authStatus !== 'authenticated' || !sessionToken) return
@@ -159,6 +207,10 @@ export function TestSetsView() {
       setName(full.name)
       setDescription(full.description ?? '')
       setCasesJson(JSON.stringify(full.cases, null, 2))
+      setDifyVariables(null)
+      setDifyVariablesError(null)
+      applyDifyConfigToDrafts(full.dify_config)
+      setPendingTemplateDifyConfig(null)
       setLocalCasesError(null)
       setSaveSuccessMessage(null)
     } catch (e) {
@@ -175,6 +227,14 @@ export function TestSetsView() {
     setDescription('')
     setCasesJson('[]')
     setLocalCasesError(null)
+    setDifyVariables(null)
+    setDifyVariablesError(null)
+    setIsRefreshingDifyVariables(false)
+    setDifyTargetPromptVariable('')
+    setDifyBindingDrafts({})
+    setDifySaveError(null)
+    setDifySaveSuccess(null)
+    setPendingTemplateDifyConfig(null)
     if (!options?.keepSuccessMessage) setSaveSuccessMessage(null)
   }
 
@@ -248,7 +308,16 @@ export function TestSetsView() {
       setName(tpl.name)
       setDescription(tpl.description ?? '')
       setCasesJson(JSON.stringify(tpl.cases, null, 2))
-      setSaveSuccessMessage('已从模板预填')
+      if (tpl.dify_config) {
+        setPendingTemplateDifyConfig({
+          targetPromptVariable: tpl.dify_config.targetPromptVariable,
+          bindings: tpl.dify_config.bindings,
+        })
+        setSaveSuccessMessage('已从模板预填（含 Dify 配置）')
+      } else {
+        setPendingTemplateDifyConfig(null)
+        setSaveSuccessMessage('已从模板预填')
+      }
       closeTemplatePicker()
     } catch (e) {
       setLocalTemplatePickerError(e instanceof Error ? e.message : '加载模板失败')
@@ -388,12 +457,22 @@ export function TestSetsView() {
       return
     }
 
-    await createTestSet({
+    const created = await createTestSet({
       name: name.trim(),
       description: description.trim() ? description.trim() : null,
       cases,
     })
-    setSaveSuccessMessage('创建成功')
+    if (pendingTemplateDifyConfig && authStatus === 'authenticated' && sessionToken) {
+      try {
+        await saveDifyConfig(workspaceId, created.id, pendingTemplateDifyConfig, sessionToken)
+        setSaveSuccessMessage('创建成功（已同步 Dify 配置）')
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : '保存失败'
+        setSaveSuccessMessage(`创建成功，但 Dify 配置写入失败：${msg}`)
+      }
+    } else {
+      setSaveSuccessMessage('创建成功')
+    }
     resetForm({ keepSuccessMessage: true })
   }
 
@@ -403,6 +482,91 @@ export function TestSetsView() {
     if (!confirmed) return
     await deleteTestSet(ts.id)
     if (editingId === ts.id) resetForm()
+  }
+
+  const sampleInputKeys = useMemo(() => {
+    try {
+      const parsed = JSON.parse(casesJson) as unknown
+      if (!Array.isArray(parsed)) return []
+      const first = parsed[0] as unknown
+      if (typeof first !== 'object' || first === null) return []
+      const record = first as Record<string, unknown>
+      const input = record.input
+      if (typeof input !== 'object' || input === null || Array.isArray(input)) return []
+      return Object.keys(input as Record<string, unknown>).sort()
+    } catch {
+      return []
+    }
+  }, [casesJson])
+
+  const handleRefreshDifyVariables = async () => {
+    if (!workspaceId || !editingId) return
+    if (authStatus !== 'authenticated' || !sessionToken) return
+
+    setIsRefreshingDifyVariables(true)
+    setDifyVariablesError(null)
+    setDifySaveError(null)
+    setDifySaveSuccess(null)
+    try {
+      const res = await refreshDifyVariables(workspaceId, editingId, sessionToken)
+      setDifyVariables(res.variables)
+    } catch (e) {
+      setDifyVariablesError(e instanceof Error ? e.message : '解析变量失败')
+    } finally {
+      setIsRefreshingDifyVariables(false)
+    }
+  }
+
+  const handleSaveDifyConfig = async () => {
+    if (!workspaceId || !editingId) return
+    if (authStatus !== 'authenticated' || !sessionToken) return
+
+    const target = difyTargetPromptVariable.trim()
+    if (!target) {
+      setDifySaveError('请选择待优化 system prompt 变量')
+      setDifySaveSuccess(null)
+      return
+    }
+
+    const bindings: SaveDifyConfigRequest['bindings'] = {}
+    for (const [name, draft] of Object.entries(difyBindingDrafts)) {
+      if (!draft.source) continue
+      if (name === target) continue
+
+      if (draft.source === 'fixed') {
+        try {
+          const parsed = JSON.parse(draft.fixedJsonText)
+          bindings[name] = { source: 'fixed', value: parsed as JsonValue, inputKey: null }
+        } catch {
+          setDifySaveError(`变量 ${name} 的固定值不是合法 JSON`)
+          setDifySaveSuccess(null)
+          return
+        }
+      } else {
+        const key = draft.inputKey.trim()
+        if (!key) {
+          setDifySaveError(`变量 ${name} 的 inputKey 不能为空`)
+          setDifySaveSuccess(null)
+          return
+        }
+        bindings[name] = { source: 'testCaseInput', value: null, inputKey: key }
+      }
+    }
+
+    setDifySaveError(null)
+    setDifySaveSuccess(null)
+    try {
+      const res = await saveDifyConfig(
+        workspaceId,
+        editingId,
+        { targetPromptVariable: target, bindings },
+        sessionToken
+      )
+      applyDifyConfigToDrafts(res.difyConfig)
+      setDifySaveSuccess('保存成功')
+    } catch (e) {
+      setDifySaveError(e instanceof Error ? e.message : '保存失败')
+    }
   }
 
   return (
@@ -782,6 +946,200 @@ export function TestSetsView() {
           </form>
         </CardContent>
       </Card>
+
+      {editingId && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Dify 变量配置</CardTitle>
+            <CardDescription>
+              刷新 Dify 输入变量结构，并指定待优化的 system prompt 变量与其他变量的取值来源。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <Button type="button" onClick={() => void handleRefreshDifyVariables()} disabled={isRefreshingDifyVariables}>
+                {isRefreshingDifyVariables ? '解析中...' : '刷新/解析变量'}
+              </Button>
+              <div className="text-xs text-muted-foreground">仅后端使用已保存的 Dify 凭证；前端不会接触明文 API Key。</div>
+            </div>
+
+            {difyVariablesError && (
+              <div className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div>解析失败：{difyVariablesError}</div>
+                <Button type="button" variant="outline" onClick={() => void handleRefreshDifyVariables()} disabled={isRefreshingDifyVariables}>
+                  重试
+                </Button>
+              </div>
+            )}
+
+            {difyVariables ? (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="dify-target-variable">待优化 system prompt 变量</Label>
+                  <select
+                    id="dify-target-variable"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    value={difyTargetPromptVariable}
+                    onChange={(e) => {
+                      const next = e.target.value
+                      const selected = difyVariables.find((v) => v.name === next)
+                      if (selected?.type === 'unknown') {
+                        const ok = window.confirm('该变量类型为 unknown，可能不是字符串。仍要选择为优化目标吗？')
+                        if (!ok) return
+                      }
+                      setDifyTargetPromptVariable(next)
+                      setDifySaveError(null)
+                      setDifySaveSuccess(null)
+                    }}
+                  >
+                    <option value="" disabled>
+                      请选择...
+                    </option>
+                    {difyVariables
+                      .filter((v) => v.type === 'string' || v.type === 'unknown')
+                      .map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name} ({v.type})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="p-2">变量名</th>
+                        <th className="p-2">类型</th>
+                        <th className="p-2">组件</th>
+                        <th className="p-2">必填</th>
+                        <th className="p-2">默认值</th>
+                        <th className="p-2">来源配置</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {difyVariables.map((v) => {
+                        const isTarget = v.name === difyTargetPromptVariable
+                        const draft =
+                          difyBindingDrafts[v.name] ?? { source: '', fixedJsonText: '', inputKey: '' }
+                        const defaultText = v.default_value === null ? '-' : JSON.stringify(v.default_value)
+
+                        return (
+                          <tr key={v.name} className="border-t">
+                            <td className="p-2 font-mono text-xs">
+                              {v.name}
+                              {isTarget && (
+                                <span className="ml-2 rounded bg-blue-600 px-2 py-0.5 text-[10px] text-white">
+                                  优化目标
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2">{v.type}</td>
+                            <td className="p-2">{v.component}</td>
+                            <td className="p-2">
+                              {v.required_known ? (v.required ? '是' : '否') : '未知'}
+                            </td>
+                            <td className="p-2 font-mono text-xs">{defaultText}</td>
+                            <td className="p-2">
+                              {isTarget ? (
+                                <div className="text-xs text-muted-foreground">由优化引擎运行时注入</div>
+                              ) : (
+                                <div className="flex flex-col gap-2">
+                                  <select
+                                    className="h-9 w-48 rounded-md border border-input bg-background px-2 text-sm"
+                                    value={draft.source}
+                                    onChange={(e) => {
+                                      const nextSource = e.target.value as '' | DifyBindingSource
+                                      setDifyBindingDrafts((prev) => {
+                                        const current =
+                                          prev[v.name] ?? { source: '', fixedJsonText: '', inputKey: '' }
+                                        const nextDraft = { ...current, source: nextSource }
+                                        if (nextSource === 'fixed' && !nextDraft.fixedJsonText) {
+                                          nextDraft.fixedJsonText = JSON.stringify(v.default_value, null, 2)
+                                        }
+                                        if (nextSource === 'testCaseInput' && !nextDraft.inputKey) {
+                                          nextDraft.inputKey = v.name
+                                        }
+                                        return { ...prev, [v.name]: nextDraft }
+                                      })
+                                      setDifySaveError(null)
+                                      setDifySaveSuccess(null)
+                                    }}
+                                  >
+                                    <option value="">未配置（使用默认值/省略）</option>
+                                    <option value="fixed">固定默认值</option>
+                                    <option value="testCaseInput">关联测试用例字段</option>
+                                  </select>
+
+                                  {draft.source === 'fixed' && (
+                                    <textarea
+                                      className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs"
+                                      value={draft.fixedJsonText}
+                                      onChange={(e) =>
+                                        setDifyBindingDrafts((prev) => ({
+                                          ...prev,
+                                          [v.name]: { ...draft, fixedJsonText: e.target.value },
+                                        }))
+                                      }
+                                      placeholder='例如："hello" / 123 / true / {"a":1} / [1,2]'
+                                    />
+                                  )}
+
+                                  {draft.source === 'testCaseInput' && (
+                                    <div className="flex items-center gap-2">
+                                      <Input
+                                        value={draft.inputKey}
+                                        onChange={(e) =>
+                                          setDifyBindingDrafts((prev) => ({
+                                            ...prev,
+                                            [v.name]: { ...draft, inputKey: e.target.value },
+                                          }))
+                                        }
+                                        placeholder="TestCase.input 的 key"
+                                        list={`dify-input-keys-${v.name}`}
+                                      />
+                                      <datalist id={`dify-input-keys-${v.name}`}>
+                                        {sampleInputKeys.map((k) => (
+                                          <option key={k} value={k} />
+                                        ))}
+                                      </datalist>
+                                    </div>
+                                  )}
+
+                                  {!draft.source && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {v.default_value === null ? '未配置：将按 Dify 语义省略该输入字段' : '未配置：将使用默认值'}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {difySaveError && <div className="text-sm text-red-500">保存失败：{difySaveError}</div>}
+                {difySaveSuccess && <div className="text-sm text-green-600">{difySaveSuccess}</div>}
+
+                <div className="flex items-center gap-2">
+                  <Button type="button" onClick={() => void handleSaveDifyConfig()}>
+                    保存 Dify 配置
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                {difyTargetPromptVariable
+                  ? `已保存配置：优化目标变量为 ${difyTargetPromptVariable}。点击“刷新/解析变量”以编辑或校验绑定。`
+                  : '点击“刷新/解析变量”以加载 Dify 输入变量。'}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </section>
   )
 }

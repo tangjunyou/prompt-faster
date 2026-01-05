@@ -40,6 +40,9 @@ pub const DATABASE_ERROR: &str = "DATABASE_ERROR";
 /// 服务器内部错误
 pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
 
+/// 上游服务错误（通用）
+pub const UPSTREAM_ERROR: &str = "UPSTREAM_ERROR";
+
 // ============================================================================
 // 认证错误码 (AUTH)
 // ============================================================================

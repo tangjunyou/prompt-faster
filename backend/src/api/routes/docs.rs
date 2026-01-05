@@ -33,6 +33,10 @@ use utoipa_swagger_ui::SwaggerUi;
         (
             name = "test_set_templates",
             description = "测试集模板 API（保存为模板、从模板创建）"
+        ),
+        (
+            name = "dify_variables",
+            description = "Dify 变量解析与绑定配置（隶属于 test_sets）"
         )
     ),
     paths(
@@ -55,6 +59,8 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::test_sets::get_test_set,
         crate::api::routes::test_sets::update_test_set,
         crate::api::routes::test_sets::delete_test_set,
+        crate::api::routes::test_sets::refresh_dify_variables,
+        crate::api::routes::test_sets::save_dify_config,
         crate::api::routes::test_set_templates::list_test_set_templates,
         crate::api::routes::test_set_templates::get_test_set_template,
         crate::api::routes::test_set_templates::save_as_template,
@@ -91,6 +97,15 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::api::routes::test_sets::TestSetListItemResponse,
             crate::api::routes::test_sets::TestSetResponse,
             crate::api::routes::test_sets::DeleteTestSetResponse,
+            // Dify Variables / Config
+            crate::infra::external::dify_client::DifyVariablesResponse,
+            crate::infra::external::dify_client::DifyInputVariable,
+            crate::infra::external::dify_client::DifyValueType,
+            crate::api::routes::dify::DifyConfig,
+            crate::api::routes::dify::SaveDifyConfigRequest,
+            crate::api::routes::dify::SaveDifyConfigResponse,
+            crate::api::routes::dify::DifyBinding,
+            crate::api::routes::dify::DifyBindingSource,
             // Test Set Templates
             crate::api::routes::test_set_templates::SaveAsTemplateRequest,
             crate::api::routes::test_set_templates::TestSetTemplateListItemResponse,

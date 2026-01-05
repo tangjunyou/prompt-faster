@@ -2,9 +2,10 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{
     Json, Router,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 use tracing::{info, warn};
 use ts_rs::TS;
 use utoipa::ToSchema;
@@ -12,12 +13,18 @@ use utoipa::ToSchema;
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
+use crate::api::routes::dify::{
+    DifyBindingSource, DifyConfig, SaveDifyConfigRequest, SaveDifyConfigResponse,
+};
 use crate::api::routes::test_set_templates;
 use crate::api::state::AppState;
 use crate::domain::models::TestCase;
+use crate::infra::db::repositories::{CredentialRepo, CredentialRepoError, CredentialType};
 use crate::infra::db::repositories::{
     TestSetRepo, TestSetRepoError, WorkspaceRepo, WorkspaceRepoError,
 };
+use crate::infra::external::api_key_manager::EncryptedApiKey;
+use crate::infra::external::dify_client::{self, DifyVariablesResponse};
 use crate::shared::error_codes;
 
 #[derive(Debug, Deserialize, ToSchema, TS)]
@@ -44,6 +51,7 @@ pub struct TestSetResponse {
     pub name: String,
     pub description: Option<String>,
     pub cases: Vec<TestCase>,
+    pub dify_config: Option<DifyConfig>,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]
@@ -95,6 +103,15 @@ fn test_set_not_found<T: Serialize>() -> ApiResponse<T> {
     )
 }
 
+fn parse_dify_config(dify_config_json: Option<String>) -> Result<Option<DifyConfig>, String> {
+    let Some(json) = dify_config_json else {
+        return Ok(None);
+    };
+
+    let config: DifyConfig = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    Ok(Some(config))
+}
+
 fn validate_name<T: Serialize>(name: &str) -> Result<(), ApiResponse<T>> {
     let name = name.trim();
 
@@ -117,6 +134,100 @@ fn validate_name<T: Serialize>(name: &str) -> Result<(), ApiResponse<T>> {
     Ok(())
 }
 
+fn validate_dify_config_request<T: Serialize>(
+    req: &SaveDifyConfigRequest,
+    snapshot: Option<&DifyConfig>,
+) -> Result<(), ApiResponse<T>> {
+    let target = req.target_prompt_variable.trim();
+    if target.is_empty() {
+        return Err(ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_ERROR,
+            "targetPromptVariable 不能为空",
+        ));
+    }
+    if target.chars().count() > 128 {
+        return Err(ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_ERROR,
+            "targetPromptVariable 不能超过 128 个字符",
+        ));
+    }
+
+    if req.bindings.contains_key(target) {
+        return Err(ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_ERROR,
+            "targetPromptVariable 不能出现在 bindings 中",
+        ));
+    }
+
+    for (var_name, binding) in &req.bindings {
+        if var_name.trim().is_empty() {
+            return Err(ApiResponse::err(
+                StatusCode::BAD_REQUEST,
+                error_codes::VALIDATION_ERROR,
+                "bindings 中存在空变量名",
+            ));
+        }
+
+        match binding.source {
+            DifyBindingSource::Fixed => {
+                if binding.value.is_none() {
+                    return Err(ApiResponse::err(
+                        StatusCode::BAD_REQUEST,
+                        error_codes::VALIDATION_ERROR,
+                        format!("变量 {} 的固定值缺少 value 字段", var_name),
+                    ));
+                }
+            }
+            DifyBindingSource::TestCaseInput => {
+                let key = binding.input_key.as_deref().map(|s| s.trim()).unwrap_or("");
+                if key.is_empty() {
+                    return Err(ApiResponse::err(
+                        StatusCode::BAD_REQUEST,
+                        error_codes::VALIDATION_ERROR,
+                        format!("变量 {} 的 testCaseInput 缺少 inputKey", var_name),
+                    ));
+                }
+                if key.chars().count() > 128 {
+                    return Err(ApiResponse::err(
+                        StatusCode::BAD_REQUEST,
+                        error_codes::VALIDATION_ERROR,
+                        format!("变量 {} 的 inputKey 不能超过 128 个字符", var_name),
+                    ));
+                }
+            }
+        }
+    }
+
+    // 必填变量校验：仅在有 snapshot 时启用（用户可通过 refresh 更新 snapshot）
+    if let Some(existing) = snapshot {
+        if let Some(vars) = existing.parameters_snapshot.as_ref() {
+            for v in vars {
+                if !v.required_known || !v.required {
+                    continue;
+                }
+                if v.default_value.is_some() {
+                    continue;
+                }
+                if v.name == target {
+                    continue;
+                }
+                if !req.bindings.contains_key(&v.name) {
+                    return Err(ApiResponse::err(
+                        StatusCode::BAD_REQUEST,
+                        error_codes::VALIDATION_ERROR,
+                        format!("必填变量 {} 未配置来源且无默认值", v.name),
+                    ));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn parse_cases<T: Serialize>(cases: serde_json::Value) -> Result<Vec<TestCase>, ApiResponse<T>> {
     serde_json::from_value::<Vec<TestCase>>(cases).map_err(|e| {
         ApiResponse::err_with_details(
@@ -126,6 +237,269 @@ fn parse_cases<T: Serialize>(cases: serde_json::Value) -> Result<Vec<TestCase>, 
             serde_json::json!({ "error": e.to_string() }),
         )
     })
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/workspaces/{workspace_id}/test-sets/{test_set_id}/dify/variables/refresh",
+    params(
+        ("workspace_id" = String, Path, description = "工作区 ID"),
+        ("test_set_id" = String, Path, description = "测试集 ID")
+    ),
+    responses(
+        (status = 200, description = "获取成功", body = ApiSuccess<DifyVariablesResponse>),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 404, description = "测试集不存在", body = ApiError),
+        (status = 502, description = "上游错误", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "dify_variables"
+)]
+#[instrument(skip_all)]
+pub(crate) async fn refresh_dify_variables(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace_id, test_set_id)): Path<(String, String)>,
+    current_user: CurrentUser,
+) -> ApiResponse<DifyVariablesResponse> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = &current_user.user_id;
+
+    let user_password = match current_user.unlock_context.as_ref() {
+        Some(ctx) => ctx.password_bytes(),
+        None => {
+            return ApiResponse::err(
+                StatusCode::UNAUTHORIZED,
+                error_codes::UNAUTHORIZED,
+                "会话已过期，请重新登录",
+            );
+        }
+    };
+
+    let loaded =
+        match TestSetRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &test_set_id).await
+        {
+            Ok(ts) => ts,
+            Err(TestSetRepoError::NotFound) => return test_set_not_found(),
+            Err(e) => {
+                warn!(error = %e, "查询测试集失败");
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询测试集失败",
+                );
+            }
+        };
+
+    let dify_credential =
+        match CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::Dify).await
+        {
+            Ok(cred) => cred,
+            Err(CredentialRepoError::NotFound { .. }) => {
+                return ApiResponse::err(
+                    StatusCode::BAD_REQUEST,
+                    error_codes::VALIDATION_ERROR,
+                    "请先在“配置”中保存 Dify 凭证",
+                );
+            }
+            Err(e) => {
+                warn!(error = %e, "查询 Dify 凭证失败");
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询 Dify 凭证失败",
+                );
+            }
+        };
+
+    let encrypted = EncryptedApiKey {
+        ciphertext: dify_credential.encrypted_api_key,
+        nonce: dify_credential.nonce,
+        salt: dify_credential.salt,
+    };
+
+    let api_key_bytes = match state
+        .api_key_manager
+        .decrypt_bytes(user_password, &encrypted)
+    {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(error = %e, "解密 Dify API Key 失败");
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::ENCRYPTION_ERROR,
+                "解密 Dify API Key 失败",
+            );
+        }
+    };
+
+    let api_key = match std::str::from_utf8(api_key_bytes.as_slice()) {
+        Ok(s) => s,
+        Err(_) => {
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::ENCRYPTION_ERROR,
+                "解密后的 Dify API Key 非法",
+            );
+        }
+    };
+
+    let resp = match dify_client::get_parameters(
+        &state.http_client,
+        &dify_credential.base_url,
+        api_key,
+        &correlation_id,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(error = %e, "调用 Dify /parameters 失败");
+            let message = match e {
+                dify_client::ConnectionError::InvalidCredentials => {
+                    "Dify API Key 无效，请重新配置".to_string()
+                }
+                dify_client::ConnectionError::Forbidden => "Dify 拒绝访问，请检查权限".to_string(),
+                dify_client::ConnectionError::Timeout => "Dify 请求超时，请重试".to_string(),
+                dify_client::ConnectionError::ParseError(_) => {
+                    "解析 Dify 参数结构失败，请重试".to_string()
+                }
+                _ => "Dify 服务异常，请稍后重试".to_string(),
+            };
+            return ApiResponse::err(
+                StatusCode::BAD_GATEWAY,
+                error_codes::UPSTREAM_ERROR,
+                &message,
+            );
+        }
+    };
+
+    // 可选缓存：如果已存在 dify_config_json，则更新其中的 parametersSnapshot 用于回显/校验
+    if let Ok(Some(mut cfg)) = parse_dify_config(loaded.dify_config_json) {
+        cfg.parameters_snapshot = Some(
+            resp.variables
+                .iter()
+                .cloned()
+                .map(|mut v| {
+                    v.raw = None;
+                    v
+                })
+                .collect(),
+        );
+        if let Ok(cfg_json) = serde_json::to_string(&cfg) {
+            let _ = TestSetRepo::update_dify_config_json_scoped(
+                &state.db,
+                user_id,
+                &workspace_id,
+                &test_set_id,
+                Some(&cfg_json),
+            )
+            .await;
+        }
+    }
+
+    ApiResponse::ok(resp)
+}
+
+#[utoipa::path(
+    put,
+    path = "/api/v1/workspaces/{workspace_id}/test-sets/{test_set_id}/dify/config",
+    params(
+        ("workspace_id" = String, Path, description = "工作区 ID"),
+        ("test_set_id" = String, Path, description = "测试集 ID")
+    ),
+    request_body = SaveDifyConfigRequest,
+    responses(
+        (status = 200, description = "保存成功", body = ApiSuccess<SaveDifyConfigResponse>),
+        (status = 400, description = "参数错误", body = ApiError),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 404, description = "测试集不存在", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "dify_variables"
+)]
+#[instrument(skip_all)]
+pub(crate) async fn save_dify_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace_id, test_set_id)): Path<(String, String)>,
+    current_user: CurrentUser,
+    Json(req): Json<SaveDifyConfigRequest>,
+) -> ApiResponse<SaveDifyConfigResponse> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = &current_user.user_id;
+
+    info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "保存 Dify 配置");
+
+    let loaded =
+        match TestSetRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &test_set_id).await
+        {
+            Ok(ts) => ts,
+            Err(TestSetRepoError::NotFound) => return test_set_not_found(),
+            Err(e) => {
+                warn!(error = %e, "查询测试集失败");
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询测试集失败",
+                );
+            }
+        };
+
+    let existing = match parse_dify_config(loaded.dify_config_json.clone()) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(error = %e, "解析 dify_config_json 失败");
+            None
+        }
+    };
+
+    if let Err(err) =
+        validate_dify_config_request::<SaveDifyConfigResponse>(&req, existing.as_ref())
+    {
+        return err;
+    }
+
+    let dify_config = DifyConfig {
+        target_prompt_variable: req.target_prompt_variable.trim().to_string(),
+        bindings: req.bindings.clone(),
+        parameters_snapshot: existing.and_then(|c| c.parameters_snapshot),
+    };
+
+    let cfg_json = match serde_json::to_string(&dify_config) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(error = %e, "序列化 dify_config 失败");
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::INTERNAL_ERROR,
+                "保存失败：序列化错误",
+            );
+        }
+    };
+
+    match TestSetRepo::update_dify_config_json_scoped(
+        &state.db,
+        user_id,
+        &workspace_id,
+        &test_set_id,
+        Some(&cfg_json),
+    )
+    .await
+    {
+        Ok(()) => {}
+        Err(TestSetRepoError::NotFound) => return test_set_not_found(),
+        Err(e) => {
+            warn!(error = %e, "保存 dify_config_json 失败");
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::DATABASE_ERROR,
+                "保存 Dify 配置失败",
+            );
+        }
+    }
+
+    ApiResponse::ok(SaveDifyConfigResponse { dify_config })
 }
 
 #[utoipa::path(
@@ -270,6 +644,7 @@ pub(crate) async fn create_test_set(
         name: created.name,
         description: created.description,
         cases: created.cases,
+        dify_config: None,
         created_at: created.created_at,
         updated_at: created.updated_at,
     })
@@ -322,6 +697,13 @@ pub(crate) async fn get_test_set(
         name: loaded.name,
         description: loaded.description,
         cases: loaded.cases,
+        dify_config: match parse_dify_config(loaded.dify_config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "解析 dify_config_json 失败");
+                None
+            }
+        },
         created_at: loaded.created_at,
         updated_at: loaded.updated_at,
     })
@@ -394,6 +776,13 @@ pub(crate) async fn update_test_set(
         name: updated.name,
         description: updated.description,
         cases: updated.cases,
+        dify_config: match parse_dify_config(updated.dify_config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "解析 dify_config_json 失败");
+                None
+            }
+        },
         created_at: updated.created_at,
         updated_at: updated.updated_at,
     })
@@ -448,6 +837,11 @@ pub fn router() -> Router<AppState> {
             "/{test_set_id}/save-as-template",
             post(test_set_templates::save_as_template),
         )
+        .route(
+            "/{test_set_id}/dify/variables/refresh",
+            post(refresh_dify_variables),
+        )
+        .route("/{test_set_id}/dify/config", put(save_dify_config))
         .route(
             "/{test_set_id}",
             get(get_test_set)

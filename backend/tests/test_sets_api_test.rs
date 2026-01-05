@@ -350,6 +350,89 @@ async fn test_cross_user_update_returns_test_set_not_found() {
 }
 
 #[tokio::test]
+async fn test_update_test_set_preserves_dify_config() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "ts_update_keep_cfg", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+
+    // Create test set
+    let create_req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/workspaces/{}/test-sets", workspace_id),
+            json!({"name": "ts1", "description": null, "cases": sample_cases_json()}),
+        ),
+        &token,
+    );
+    let create_resp = app.clone().oneshot(create_req).await.unwrap();
+    assert_eq!(create_resp.status(), StatusCode::OK);
+    let create_body = read_json_body(create_resp).await;
+    let test_set_id = create_body["data"]["id"]
+        .as_str()
+        .expect("缺少 id")
+        .to_string();
+
+    // Save dify config
+    let save_cfg_req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/test-sets/{}/dify/config",
+                workspace_id, test_set_id
+            ),
+            json!({
+                "targetPromptVariable": "system_prompt",
+                "bindings": { "k": { "source": "fixed", "value": 3 } }
+            }),
+        ),
+        &token,
+    );
+    let save_cfg_resp = app.clone().oneshot(save_cfg_req).await.unwrap();
+    assert_eq!(save_cfg_resp.status(), StatusCode::OK);
+
+    // Update test set
+    let update_req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/test-sets/{}",
+                workspace_id, test_set_id
+            ),
+            json!({"name": "ts1-updated", "description": null, "cases": sample_cases_json()}),
+        ),
+        &token,
+    );
+    let update_resp = app.clone().oneshot(update_req).await.unwrap();
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    let update_body = read_json_body(update_resp).await;
+    assert_eq!(update_body["data"]["name"], "ts1-updated");
+    assert_eq!(
+        update_body["data"]["dify_config"]["targetPromptVariable"],
+        "system_prompt"
+    );
+
+    // Get test set again
+    let get_req = with_bearer(
+        Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/v1/workspaces/{}/test-sets/{}",
+                workspace_id, test_set_id
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        &token,
+    );
+    let get_resp = app.clone().oneshot(get_req).await.unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+    let get_body = read_json_body(get_resp).await;
+    assert_eq!(
+        get_body["data"]["dify_config"]["targetPromptVariable"],
+        "system_prompt"
+    );
+}
+
+#[tokio::test]
 async fn test_cross_user_delete_returns_test_set_not_found() {
     let app = setup_test_app().await;
     let token_a = register_user(&app, "ts_user_a_delete", "TestPass123!").await;

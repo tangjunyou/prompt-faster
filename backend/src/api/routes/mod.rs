@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod dify;
 pub mod docs;
 pub mod health;
 pub mod test_set_templates;

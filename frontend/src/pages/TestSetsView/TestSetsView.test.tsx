@@ -7,15 +7,19 @@ import { http, HttpResponse } from 'msw'
 
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { SaveAsTemplateRequest } from '@/types/generated/api/SaveAsTemplateRequest'
+import type { DifyVariablesResponse } from '@/types/generated/api/DifyVariablesResponse'
+import type { SaveDifyConfigRequest } from '@/types/generated/api/SaveDifyConfigRequest'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
 import type { TestSetTemplateListItemResponse } from '@/types/generated/api/TestSetTemplateListItemResponse'
 import type { TestSetTemplateResponse } from '@/types/generated/api/TestSetTemplateResponse'
+import type { TestSetResponse } from '@/types/generated/api/TestSetResponse'
 import type { UserInfo } from '@/types/generated/api/UserInfo'
 import { TestSetsView } from './TestSetsView'
 
 const API_BASE = 'http://localhost:3000/api/v1'
 
 let lastSaveAsTemplateBody: SaveAsTemplateRequest | null = null
+let lastSaveDifyConfigBody: SaveDifyConfigRequest | null = null
 
 const server = setupServer(
   http.get(`${API_BASE}/workspaces/:workspaceId/test-sets`, ({ request }) => {
@@ -40,6 +44,97 @@ const server = setupServer(
     ]
     return HttpResponse.json({ data })
   }),
+
+  http.get(`${API_BASE}/workspaces/:workspaceId/test-sets/:id`, ({ request, params }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+
+    const data: TestSetResponse = {
+      id: String(params.id),
+      workspace_id: String(params.workspaceId),
+      name: '测试集 1',
+      description: 'd',
+      cases: [
+        {
+          id: 'case-1',
+          input: { foo: 'bar' },
+          reference: { Exact: { expected: 'ok' } },
+          split: null,
+          metadata: null,
+        },
+      ],
+      dify_config: null,
+      created_at: 1,
+      updated_at: 2,
+    }
+    return HttpResponse.json({ data })
+  }),
+
+  http.post(
+    `${API_BASE}/workspaces/:workspaceId/test-sets/:testSetId/dify/variables/refresh`,
+    ({ request }) => {
+      const auth = request.headers.get('authorization')
+      if (auth !== 'Bearer test-token') {
+        return HttpResponse.json(
+          { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+          { status: 401 }
+        )
+      }
+
+      const data: DifyVariablesResponse = {
+        variables: [
+          {
+            name: 'system_prompt',
+            component: 'text-input',
+            type: 'string',
+            required: true,
+            required_known: true,
+            default_value: null,
+            raw: null,
+          },
+          {
+            name: 'k',
+            component: 'number',
+            type: 'number',
+            required: false,
+            required_known: true,
+            default_value: 3,
+            raw: null,
+          },
+        ],
+      }
+      return HttpResponse.json({ data })
+    }
+  ),
+
+  http.put(
+    `${API_BASE}/workspaces/:workspaceId/test-sets/:testSetId/dify/config`,
+    async ({ request }) => {
+      const auth = request.headers.get('authorization')
+      if (auth !== 'Bearer test-token') {
+        return HttpResponse.json(
+          { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+          { status: 401 }
+        )
+      }
+
+      lastSaveDifyConfigBody = (await request.json()) as SaveDifyConfigRequest
+      return HttpResponse.json({
+        data: {
+          difyConfig: {
+            targetPromptVariable: lastSaveDifyConfigBody.targetPromptVariable,
+            bindings: lastSaveDifyConfigBody.bindings,
+            parametersSnapshot: null,
+          },
+        },
+      })
+    }
+  ),
 
   http.get(`${API_BASE}/workspaces/:workspaceId/test-set-templates`, ({ request, params }) => {
     const auth = request.headers.get('authorization')
@@ -87,6 +182,7 @@ const server = setupServer(
           metadata: null,
         },
       ],
+      dify_config: null,
       created_at: 10,
       updated_at: 10,
     }
@@ -113,6 +209,7 @@ const server = setupServer(
           name: lastSaveAsTemplateBody.name,
           description: lastSaveAsTemplateBody.description,
           cases: [],
+          dify_config: null,
           created_at: 10,
           updated_at: 10,
         },
@@ -154,6 +251,7 @@ describe('TestSetsView templates', () => {
       requiresRegistration: null,
     })
     lastSaveAsTemplateBody = null
+    lastSaveDifyConfigBody = null
   })
 
   it('选择模板后应预填 name/description/cases', async () => {
@@ -197,5 +295,83 @@ describe('TestSetsView templates', () => {
     })
 
     expect(lastSaveAsTemplateBody).toEqual({ name: '新模板', description: 'd' })
+  })
+
+  it('Dify 变量配置：刷新、选择优化目标、保存', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const editButton = await screen.findByRole('button', { name: '编辑' })
+    fireEvent.click(editButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('Dify 变量配置')).toBeInTheDocument()
+    })
+
+    const refreshButton = screen.getByRole('button', { name: '刷新/解析变量' })
+    fireEvent.click(refreshButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('system_prompt')).toBeInTheDocument()
+      expect(screen.getByText('k')).toBeInTheDocument()
+    })
+
+    const targetSelect = screen.getByLabelText('待优化 system prompt 变量') as HTMLSelectElement
+    fireEvent.change(targetSelect, { target: { value: 'system_prompt' } })
+
+    const fixedSelect = screen.getAllByDisplayValue('未配置（使用默认值/省略）')[0] as HTMLSelectElement
+    fireEvent.change(fixedSelect, { target: { value: 'fixed' } })
+
+    const jsonEditor = await screen.findByPlaceholderText('例如："hello" / 123 / true / {"a":1} / [1,2]')
+    fireEvent.change(jsonEditor, { target: { value: '5' } })
+
+    const saveButton = screen.getByRole('button', { name: '保存 Dify 配置' })
+    fireEvent.click(saveButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('保存成功')).toBeInTheDocument()
+    })
+
+    expect(lastSaveDifyConfigBody?.targetPromptVariable).toBe('system_prompt')
+    expect(lastSaveDifyConfigBody?.bindings?.k?.source).toBe('fixed')
+  })
+
+  it('Dify 变量配置：解析失败应展示友好错误并可重试', async () => {
+    server.use(
+      http.post(
+        `${API_BASE}/workspaces/:workspaceId/test-sets/:testSetId/dify/variables/refresh`,
+        ({ request }) => {
+          const auth = request.headers.get('authorization')
+          if (auth !== 'Bearer test-token') {
+            return HttpResponse.json(
+              { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+              { status: 401 }
+            )
+          }
+          return HttpResponse.json(
+            { error: { code: 'UPSTREAM_ERROR', message: 'Dify 服务异常，请稍后重试' } },
+            { status: 502 }
+          )
+        }
+      )
+    )
+
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const editButton = await screen.findByRole('button', { name: '编辑' })
+    fireEvent.click(editButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('Dify 变量配置')).toBeInTheDocument()
+    })
+
+    const refreshButton = screen.getByRole('button', { name: '刷新/解析变量' })
+    fireEvent.click(refreshButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('解析失败：Dify 服务异常，请稍后重试')).toBeInTheDocument()
+    })
+
+    const retryButton = screen.getByRole('button', { name: '重试' })
+    expect(retryButton).toBeInTheDocument()
   })
 })
