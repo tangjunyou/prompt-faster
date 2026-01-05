@@ -1,6 +1,9 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::{Json, Router, routing::get};
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use ts_rs::TS;
@@ -9,6 +12,7 @@ use utoipa::ToSchema;
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
+use crate::api::routes::test_set_templates;
 use crate::api::state::AppState;
 use crate::domain::models::TestCase;
 use crate::infra::db::repositories::{
@@ -440,6 +444,10 @@ pub(crate) async fn delete_test_set(
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_test_sets).post(create_test_set))
+        .route(
+            "/{test_set_id}/save-as-template",
+            post(test_set_templates::save_as_template),
+        )
         .route(
             "/{test_set_id}",
             get(get_test_set)

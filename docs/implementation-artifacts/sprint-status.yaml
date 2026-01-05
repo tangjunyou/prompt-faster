@@ -64,7 +64,7 @@ development_status:
   epic-2: in-progress
   2-1-test-set-data-model-and-basic-crud: done
   2-2-test-set-batch-import: done
-  2-3-test-set-template-save-and-reuse: backlog
+  2-3-test-set-template-save-and-reuse: done
   2-4-dify-variable-parsing-and-prompt-variable-designation: backlog
   2-5-generic-api-custom-variables-and-fixed-task-answers: backlog
   2-6-creative-task-configuration: backlog

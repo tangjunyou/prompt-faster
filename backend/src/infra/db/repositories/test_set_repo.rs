@@ -43,8 +43,8 @@ impl TestSetRepo {
 
         sqlx::query(
             r#"
-            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, is_template, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7)
             "#,
         )
         .bind(&id)
@@ -77,6 +77,7 @@ impl TestSetRepo {
             SELECT id, workspace_id, name, description, cases_json, created_at, updated_at
             FROM test_sets
             WHERE workspace_id = ?1
+              AND is_template = 0
             ORDER BY created_at DESC
             "#,
         )
@@ -109,6 +110,7 @@ impl TestSetRepo {
             SELECT id, workspace_id, name, description, cases_json, created_at, updated_at
             FROM test_sets
             WHERE workspace_id = ?1
+              AND is_template = 0
             ORDER BY created_at DESC
             "#,
         )
@@ -142,7 +144,7 @@ impl TestSetRepo {
             r#"
             SELECT id, workspace_id, name, description, cases_json, created_at, updated_at
             FROM test_sets
-            WHERE workspace_id = ?1 AND id = ?2
+            WHERE workspace_id = ?1 AND id = ?2 AND is_template = 0
             "#,
         )
         .bind(workspace_id)
@@ -179,7 +181,7 @@ impl TestSetRepo {
             SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.created_at, ts.updated_at
             FROM test_sets ts
             JOIN workspaces w ON w.id = ts.workspace_id
-            WHERE ts.workspace_id = ?1 AND ts.id = ?2 AND w.user_id = ?3
+            WHERE ts.workspace_id = ?1 AND ts.id = ?2 AND ts.is_template = 0 AND w.user_id = ?3
             "#,
         )
         .bind(workspace_id)
@@ -221,7 +223,7 @@ impl TestSetRepo {
             r#"
             UPDATE test_sets
             SET name = ?1, description = ?2, cases_json = ?3, updated_at = ?4
-            WHERE workspace_id = ?5 AND id = ?6
+            WHERE workspace_id = ?5 AND id = ?6 AND is_template = 0
             "#,
         )
         .bind(name)
@@ -258,6 +260,7 @@ impl TestSetRepo {
             UPDATE test_sets
             SET name = ?1, description = ?2, cases_json = ?3, updated_at = ?4
             WHERE workspace_id = ?5 AND id = ?6
+              AND is_template = 0
               AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ?5 AND w.user_id = ?7)
             "#,
         )
@@ -286,7 +289,7 @@ impl TestSetRepo {
         let result = sqlx::query(
             r#"
             DELETE FROM test_sets
-            WHERE workspace_id = ?1 AND id = ?2
+            WHERE workspace_id = ?1 AND id = ?2 AND is_template = 0
             "#,
         )
         .bind(workspace_id)
@@ -307,6 +310,7 @@ impl TestSetRepo {
             r#"
             DELETE FROM test_sets
             WHERE workspace_id = ?1 AND id = ?2
+              AND is_template = 0
               AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ?1 AND w.user_id = ?3)
             "#,
         )
@@ -317,6 +321,147 @@ impl TestSetRepo {
         .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn list_template_summaries_by_workspace_scoped(
+        pool: &SqlitePool,
+        user_id: &str,
+        workspace_id: &str,
+    ) -> Result<Vec<TestSetSummary>, TestSetRepoError> {
+        let rows = sqlx::query_as::<_, (String, String, String, Option<String>, String, i64, i64)>(
+            r#"
+            SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.created_at, ts.updated_at
+            FROM test_sets ts
+            JOIN workspaces w ON w.id = ts.workspace_id
+            WHERE ts.workspace_id = ?1
+              AND ts.is_template = 1
+              AND w.user_id = ?2
+            ORDER BY ts.created_at DESC
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for (id, workspace_id, name, description, cases_json, created_at, updated_at) in rows {
+            let value: serde_json::Value = serde_json::from_str(&cases_json)?;
+            let cases_count = value.as_array().map(|a| a.len()).unwrap_or(0) as u32;
+            out.push(TestSetSummary {
+                id,
+                workspace_id,
+                name,
+                description,
+                cases_count,
+                created_at,
+                updated_at,
+            });
+        }
+        Ok(out)
+    }
+
+    pub async fn find_template_by_id_scoped(
+        pool: &SqlitePool,
+        user_id: &str,
+        workspace_id: &str,
+        template_id: &str,
+    ) -> Result<TestSet, TestSetRepoError> {
+        let row = sqlx::query_as::<_, (String, String, String, Option<String>, String, i64, i64)>(
+            r#"
+            SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.created_at, ts.updated_at
+            FROM test_sets ts
+            JOIN workspaces w ON w.id = ts.workspace_id
+            WHERE ts.workspace_id = ?1
+              AND ts.id = ?2
+              AND ts.is_template = 1
+              AND w.user_id = ?3
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(template_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        let Some((id, workspace_id, name, description, cases_json, created_at, updated_at)) = row
+        else {
+            return Err(TestSetRepoError::NotFound);
+        };
+
+        let cases: Vec<TestCase> = serde_json::from_str(&cases_json)?;
+
+        Ok(TestSet {
+            id,
+            workspace_id,
+            name,
+            description,
+            cases,
+            created_at,
+            updated_at,
+        })
+    }
+
+    pub async fn create_template_from_test_set_scoped(
+        pool: &SqlitePool,
+        user_id: &str,
+        workspace_id: &str,
+        source_test_set_id: &str,
+        template_name: &str,
+        template_description: Option<&str>,
+    ) -> Result<TestSet, TestSetRepoError> {
+        let row = sqlx::query_as::<_, (String,)>(
+            r#"
+            SELECT ts.cases_json
+            FROM test_sets ts
+            JOIN workspaces w ON w.id = ts.workspace_id
+            WHERE ts.workspace_id = ?1
+              AND ts.id = ?2
+              AND ts.is_template = 0
+              AND w.user_id = ?3
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(source_test_set_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        let Some((cases_json,)) = row else {
+            return Err(TestSetRepoError::NotFound);
+        };
+
+        let now = now_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let description = template_description.map(|s| s.to_string());
+
+        sqlx::query(
+            r#"
+            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, is_template, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7)
+            "#,
+        )
+        .bind(&id)
+        .bind(workspace_id)
+        .bind(template_name)
+        .bind(description.as_deref())
+        .bind(&cases_json)
+        .bind(now)
+        .bind(now)
+        .execute(pool)
+        .await?;
+
+        let cases: Vec<TestCase> = serde_json::from_str(&cases_json)?;
+
+        Ok(TestSet {
+            id,
+            workspace_id: workspace_id.to_string(),
+            name: template_name.to_string(),
+            description,
+            cases,
+            created_at: now,
+            updated_at: now,
+        })
     }
 }
 

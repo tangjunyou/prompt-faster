@@ -29,6 +29,10 @@ use utoipa_swagger_ui::SwaggerUi;
         (
             name = "test_sets",
             description = "测试集管理 API（CRUD，隶属于 workspace）"
+        ),
+        (
+            name = "test_set_templates",
+            description = "测试集模板 API（保存为模板、从模板创建）"
         )
     ),
     paths(
@@ -51,6 +55,9 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::test_sets::get_test_set,
         crate::api::routes::test_sets::update_test_set,
         crate::api::routes::test_sets::delete_test_set,
+        crate::api::routes::test_set_templates::list_test_set_templates,
+        crate::api::routes::test_set_templates::get_test_set_template,
+        crate::api::routes::test_set_templates::save_as_template,
     ),
     components(
         schemas(
@@ -84,6 +91,10 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::api::routes::test_sets::TestSetListItemResponse,
             crate::api::routes::test_sets::TestSetResponse,
             crate::api::routes::test_sets::DeleteTestSetResponse,
+            // Test Set Templates
+            crate::api::routes::test_set_templates::SaveAsTemplateRequest,
+            crate::api::routes::test_set_templates::TestSetTemplateListItemResponse,
+            crate::api::routes::test_set_templates::TestSetTemplateResponse,
             crate::domain::models::TestCase,
             crate::domain::models::TaskReference,
             crate::domain::models::Constraint,

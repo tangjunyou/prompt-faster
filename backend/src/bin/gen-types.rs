@@ -7,6 +7,9 @@ use prompt_faster::api::routes::auth::{
     TestGenericLlmConnectionRequest,
 };
 use prompt_faster::api::routes::health::HealthResponse;
+use prompt_faster::api::routes::test_set_templates::{
+    SaveAsTemplateRequest, TestSetTemplateListItemResponse, TestSetTemplateResponse,
+};
 use prompt_faster::api::routes::test_sets::{
     CreateTestSetRequest, DeleteTestSetResponse, TestSetListItemResponse, TestSetResponse,
     UpdateTestSetRequest,
@@ -72,6 +75,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TestSetListItemResponse::export_all_to(&out_dir)?;
     TestSetResponse::export_all_to(&out_dir)?;
     DeleteTestSetResponse::export_all_to(&out_dir)?;
+
+    // 测试集模板
+    SaveAsTemplateRequest::export_all_to(&out_dir)?;
+    TestSetTemplateListItemResponse::export_all_to(&out_dir)?;
+    TestSetTemplateResponse::export_all_to(&out_dir)?;
 
     // 核心模型
     Workspace::export_all_to(&out_dir)?;

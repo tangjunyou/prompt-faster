@@ -1,7 +1,14 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -11,11 +18,16 @@ import {
   useUpdateTestSet,
 } from '@/features/test-set-manager/hooks/useTestSets'
 import {
+  useSaveAsTemplate,
+  useTestSetTemplates,
+} from '@/features/test-set-manager/hooks/useTestSetTemplates'
+import {
   parseTestCasesJsonl,
   type JsonlParseError,
   type ParseStats,
 } from '@/features/test-set-manager/services/parseTestCasesJsonl'
 import { getTestSet } from '@/features/test-set-manager/services/testSetService'
+import { getTestSetTemplate } from '@/features/test-set-manager/services/testSetTemplateService'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
 import type { TestCase } from '@/types/generated/models/TestCase'
@@ -55,12 +67,36 @@ function validateCasesJson(parsed: unknown): string | null {
   return null
 }
 
+function formatMillis(ms: number): string {
+  if (!Number.isFinite(ms)) return '-'
+  const date = new Date(ms)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
+}
+
 export function TestSetsView() {
   const params = useParams()
   const workspaceId = params.id ?? ''
 
   const { data, isLoading, error } = useTestSets(workspaceId)
   const testSets: TestSetListItemResponse[] = data ?? []
+
+  const [isSaveAsTemplateOpen, setIsSaveAsTemplateOpen] = useState(false)
+  const [saveAsTemplateSource, setSaveAsTemplateSource] = useState<TestSetListItemResponse | null>(null)
+  const [templateName, setTemplateName] = useState('')
+  const [templateDescription, setTemplateDescription] = useState('')
+  const [localTemplateError, setLocalTemplateError] = useState<string | null>(null)
+
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
+  const [isApplyingTemplate, setIsApplyingTemplate] = useState(false)
+  const [localTemplatePickerError, setLocalTemplatePickerError] = useState<string | null>(null)
+
+  const {
+    data: templatesData,
+    isLoading: isLoadingTemplates,
+    error: templatesError,
+  } = useTestSetTemplates(workspaceId, { enabled: isTemplatePickerOpen })
+  const templates = templatesData ?? []
 
   const sessionToken = useAuthStore((state) => state.sessionToken)
   const authStatus = useAuthStore((state) => state.authStatus)
@@ -96,10 +132,18 @@ export function TestSetsView() {
     error: updateError,
   } = useUpdateTestSet(workspaceId, editingId ?? '')
 
+  const {
+    mutateAsync: saveAsTemplateMutate,
+    isPending: isSavingTemplate,
+    error: saveTemplateError,
+    reset: resetSaveTemplateMutation,
+  } = useSaveAsTemplate(workspaceId)
+
   const isSaving = isCreating || isUpdating
   const listErrorMessage = error instanceof Error ? error.message : '加载失败'
   const saveError = createError ?? updateError
   const saveErrorMessage = saveError instanceof Error ? saveError.message : null
+  const saveTemplateErrorMessage = saveTemplateError instanceof Error ? saveTemplateError.message : null
 
   const title = useMemo(() => (editingId ? '编辑测试集' : '创建测试集'), [editingId])
 
@@ -132,6 +176,85 @@ export function TestSetsView() {
     setCasesJson('[]')
     setLocalCasesError(null)
     if (!options?.keepSuccessMessage) setSaveSuccessMessage(null)
+  }
+
+  const openSaveAsTemplate = (ts: TestSetListItemResponse) => {
+    resetSaveTemplateMutation()
+    setSaveAsTemplateSource(ts)
+    setTemplateName(ts.name)
+    setTemplateDescription(ts.description ?? '')
+    setLocalTemplateError(null)
+    setSaveSuccessMessage(null)
+    setIsSaveAsTemplateOpen(true)
+  }
+
+  const closeSaveAsTemplate = () => {
+    resetSaveTemplateMutation()
+    setIsSaveAsTemplateOpen(false)
+    setSaveAsTemplateSource(null)
+    setLocalTemplateError(null)
+  }
+
+  const handleConfirmSaveAsTemplate = async () => {
+    if (!workspaceId) return
+    if (authStatus !== 'authenticated' || !sessionToken) return
+    if (!saveAsTemplateSource) return
+
+    const trimmedName = templateName.trim()
+    if (!trimmedName) {
+      setLocalTemplateError('模板名称不能为空')
+      return
+    }
+    if (Array.from(trimmedName).length > 128) {
+      setLocalTemplateError('模板名称不能超过 128 个字符')
+      return
+    }
+
+    setLocalTemplateError(null)
+    setSaveSuccessMessage(null)
+
+    try {
+      await saveAsTemplateMutate({
+        testSetId: saveAsTemplateSource.id,
+        params: {
+          name: trimmedName,
+          description: templateDescription.trim() ? templateDescription.trim() : null,
+        },
+      })
+      setSaveSuccessMessage('已保存为模板')
+      closeSaveAsTemplate()
+    } catch {
+      // 错误由 saveTemplateErrorMessage 渲染；保持弹窗打开便于用户修正。
+    }
+  }
+
+  const closeTemplatePicker = () => {
+    setIsTemplatePickerOpen(false)
+    setLocalTemplatePickerError(null)
+  }
+
+  const applyTemplateToForm = async (templateId: string) => {
+    if (!workspaceId) return
+    if (authStatus !== 'authenticated' || !sessionToken) return
+
+    setIsApplyingTemplate(true)
+    setLocalTemplatePickerError(null)
+    setLocalCasesError(null)
+    setSaveSuccessMessage(null)
+    try {
+      const tpl = await getTestSetTemplate(workspaceId, templateId, sessionToken)
+      clearImport()
+      resetForm()
+      setName(tpl.name)
+      setDescription(tpl.description ?? '')
+      setCasesJson(JSON.stringify(tpl.cases, null, 2))
+      setSaveSuccessMessage('已从模板预填')
+      closeTemplatePicker()
+    } catch (e) {
+      setLocalTemplatePickerError(e instanceof Error ? e.message : '加载模板失败')
+    } finally {
+      setIsApplyingTemplate(false)
+    }
   }
 
   const cancelImportParsing = () => {
@@ -224,9 +347,15 @@ export function TestSetsView() {
     if (!workspaceId) return
     if (!name.trim()) return
 
-    if (importFileName !== null && importHasBlockingError) {
-      setLocalCasesError('批量导入解析失败（或仍在解析中），请先修复文件或清除导入结果后再保存。')
-      return
+    if (importFileName !== null) {
+      if (isParsingImport) {
+        setLocalCasesError('批量导入正在解析中，请稍候...')
+        return
+      }
+      if (importFileError || importErrors.length > 0) {
+        setLocalCasesError('批量导入解析失败，请先修复文件或清除导入结果后再保存。')
+        return
+      }
     }
 
     let parsed: unknown
@@ -278,6 +407,120 @@ export function TestSetsView() {
 
   return (
     <section className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6" data-testid="test-sets-view">
+      {isSaveAsTemplateOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle>保存为模板</CardTitle>
+              <CardDescription>
+                来源：{saveAsTemplateSource?.name ?? '-'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <div className="grid gap-2">
+                <Label htmlFor="template-name">模板名称</Label>
+                <Input
+                  id="template-name"
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="例如：客服对话模板"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="template-description">描述（可选）</Label>
+                <Input
+                  id="template-description"
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  placeholder="可选"
+                />
+              </div>
+
+              {localTemplateError && (
+                <div className="text-sm text-red-500">校验失败：{localTemplateError}</div>
+              )}
+              {saveTemplateErrorMessage && (
+                <div className="text-sm text-red-500">保存失败：{saveTemplateErrorMessage}</div>
+              )}
+            </CardContent>
+            <CardFooter className="justify-end gap-2">
+              <Button type="button" variant="outline" onClick={closeSaveAsTemplate} disabled={isSavingTemplate}>
+                取消
+              </Button>
+              <Button type="button" onClick={() => void handleConfirmSaveAsTemplate()} disabled={isSavingTemplate}>
+                {isSavingTemplate ? '保存中...' : '保存'}
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
+      {isTemplatePickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <CardTitle>从模板创建</CardTitle>
+              <CardDescription>选择一个模板后，将自动预填 name/description/cases。</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingTemplates && (
+                <div className="text-sm text-muted-foreground">加载模板中...</div>
+              )}
+              {templatesError && (
+                <div className="text-sm text-red-500">
+                  加载失败：{templatesError instanceof Error ? templatesError.message : '加载模板失败'}
+                </div>
+              )}
+              {localTemplatePickerError && (
+                <div className="text-sm text-red-500">操作失败：{localTemplatePickerError}</div>
+              )}
+
+              {!isLoadingTemplates && !templatesError && templates.length === 0 && (
+                <div className="text-sm text-muted-foreground">暂无模板，请先从一个测试集「保存为模板」。</div>
+              )}
+
+              {!isLoadingTemplates && !templatesError && templates.length > 0 && (
+                <ul className="space-y-2 text-sm">
+                  {templates.map((tpl) => (
+                    <li key={tpl.id} className="flex items-start justify-between gap-3 rounded-md border px-3 py-2">
+                      <div className="min-w-0">
+                        <div className="font-medium">{tpl.name}</div>
+                        <div className="text-muted-foreground">
+                          {tpl.description || '暂无描述'} · {tpl.cases_count} 条用例 · {formatMillis(tpl.created_at)}
+                        </div>
+                      </div>
+                      <div className="shrink-0">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void applyTemplateToForm(tpl.id)}
+                          disabled={isApplyingTemplate}
+                        >
+                          {isApplyingTemplate ? '加载中...' : '使用'}
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+            <CardFooter className="justify-end">
+              <Button type="button" variant="outline" onClick={closeTemplatePicker} disabled={isApplyingTemplate}>
+                关闭
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">测试集管理</h1>
@@ -328,6 +571,15 @@ export function TestSetsView() {
                     <Button
                       type="button"
                       size="sm"
+                      variant="outline"
+                      onClick={() => openSaveAsTemplate(ts)}
+                      disabled={isSaving || isDeleting || isLoadingEdit}
+                    >
+                      保存为模板
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
                       variant="destructive"
                       onClick={() => handleDelete(ts)}
                       disabled={isSaving || isDeleting || isLoadingEdit}
@@ -344,8 +596,27 @@ export function TestSetsView() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{title}</CardTitle>
-          <CardDescription>cases 使用 JSON 编辑（最小校验：id/input/reference）。</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <CardTitle>{title}</CardTitle>
+              <CardDescription>cases 使用 JSON 编辑（最小校验：id/input/reference）。</CardDescription>
+            </div>
+            <div className="shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSaveSuccessMessage(null)
+                  setLocalTemplatePickerError(null)
+                  setIsTemplatePickerOpen(true)
+                }}
+                disabled={!workspaceId || authStatus !== 'authenticated' || !sessionToken}
+              >
+                从模板创建
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
