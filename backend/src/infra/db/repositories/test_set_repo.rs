@@ -36,6 +36,8 @@ impl TestSetRepo {
         name: &str,
         description: Option<&str>,
         cases: &[TestCase],
+        dify_config_json: Option<&str>,
+        generic_config_json: Option<&str>,
     ) -> Result<TestSet, TestSetRepoError> {
         let now = now_millis();
         let id = uuid::Uuid::new_v4().to_string();
@@ -43,8 +45,8 @@ impl TestSetRepo {
 
         sqlx::query(
             r#"
-            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, dify_config_json, is_template, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0, ?6, ?7)
+            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, dify_config_json, generic_config_json, is_template, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?9)
             "#,
         )
         .bind(&id)
@@ -52,6 +54,8 @@ impl TestSetRepo {
         .bind(name)
         .bind(description)
         .bind(&cases_json)
+        .bind(dify_config_json)
+        .bind(generic_config_json)
         .bind(now)
         .bind(now)
         .execute(pool)
@@ -63,7 +67,8 @@ impl TestSetRepo {
             name: name.to_string(),
             description: description.map(|s| s.to_string()),
             cases: cases.to_vec(),
-            dify_config_json: None,
+            dify_config_json: dify_config_json.map(|s| s.to_string()),
+            generic_config_json: generic_config_json.map(|s| s.to_string()),
             created_at: now,
             updated_at: now,
         })
@@ -96,6 +101,7 @@ impl TestSetRepo {
                 description,
                 cases,
                 dify_config_json: None,
+                generic_config_json: None,
                 created_at,
                 updated_at,
             });
@@ -151,12 +157,13 @@ impl TestSetRepo {
                 Option<String>,
                 String,
                 Option<String>,
+                Option<String>,
                 i64,
                 i64,
             ),
         >(
             r#"
-            SELECT id, workspace_id, name, description, cases_json, dify_config_json, created_at, updated_at
+            SELECT id, workspace_id, name, description, cases_json, dify_config_json, generic_config_json, created_at, updated_at
             FROM test_sets
             WHERE workspace_id = ?1 AND id = ?2 AND is_template = 0
             "#,
@@ -173,6 +180,7 @@ impl TestSetRepo {
             description,
             cases_json,
             dify_config_json,
+            generic_config_json,
             created_at,
             updated_at,
         )) = row
@@ -189,6 +197,7 @@ impl TestSetRepo {
             description,
             cases,
             dify_config_json,
+            generic_config_json,
             created_at,
             updated_at,
         })
@@ -209,12 +218,13 @@ impl TestSetRepo {
                 Option<String>,
                 String,
                 Option<String>,
+                Option<String>,
                 i64,
                 i64,
             ),
         >(
             r#"
-            SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.dify_config_json, ts.created_at, ts.updated_at
+            SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.dify_config_json, ts.generic_config_json, ts.created_at, ts.updated_at
             FROM test_sets ts
             JOIN workspaces w ON w.id = ts.workspace_id
             WHERE ts.workspace_id = ?1 AND ts.id = ?2 AND ts.is_template = 0 AND w.user_id = ?3
@@ -233,6 +243,7 @@ impl TestSetRepo {
             description,
             cases_json,
             dify_config_json,
+            generic_config_json,
             created_at,
             updated_at,
         )) = row
@@ -249,6 +260,7 @@ impl TestSetRepo {
             description,
             cases,
             dify_config_json,
+            generic_config_json,
             created_at,
             updated_at,
         })
@@ -422,12 +434,13 @@ impl TestSetRepo {
                 Option<String>,
                 String,
                 Option<String>,
+                Option<String>,
                 i64,
                 i64,
             ),
         >(
             r#"
-            SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.dify_config_json, ts.created_at, ts.updated_at
+            SELECT ts.id, ts.workspace_id, ts.name, ts.description, ts.cases_json, ts.dify_config_json, ts.generic_config_json, ts.created_at, ts.updated_at
             FROM test_sets ts
             JOIN workspaces w ON w.id = ts.workspace_id
             WHERE ts.workspace_id = ?1
@@ -449,6 +462,7 @@ impl TestSetRepo {
             description,
             cases_json,
             dify_config_json,
+            generic_config_json,
             created_at,
             updated_at,
         )) = row
@@ -465,6 +479,7 @@ impl TestSetRepo {
             description,
             cases,
             dify_config_json,
+            generic_config_json,
             created_at,
             updated_at,
         })
@@ -478,9 +493,9 @@ impl TestSetRepo {
         template_name: &str,
         template_description: Option<&str>,
     ) -> Result<TestSet, TestSetRepoError> {
-        let row = sqlx::query_as::<_, (String, Option<String>)>(
+        let row = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
             r#"
-            SELECT ts.cases_json, ts.dify_config_json
+            SELECT ts.cases_json, ts.dify_config_json, ts.generic_config_json
             FROM test_sets ts
             JOIN workspaces w ON w.id = ts.workspace_id
             WHERE ts.workspace_id = ?1
@@ -495,7 +510,7 @@ impl TestSetRepo {
         .fetch_optional(pool)
         .await?;
 
-        let Some((cases_json, dify_config_json)) = row else {
+        let Some((cases_json, dify_config_json, generic_config_json)) = row else {
             return Err(TestSetRepoError::NotFound);
         };
 
@@ -505,8 +520,8 @@ impl TestSetRepo {
 
         sqlx::query(
             r#"
-            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, dify_config_json, is_template, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)
+            INSERT INTO test_sets (id, workspace_id, name, description, cases_json, dify_config_json, generic_config_json, is_template, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, ?9)
             "#,
         )
         .bind(&id)
@@ -515,6 +530,7 @@ impl TestSetRepo {
         .bind(description.as_deref())
         .bind(&cases_json)
         .bind(dify_config_json.as_deref())
+        .bind(generic_config_json.as_deref())
         .bind(now)
         .bind(now)
         .execute(pool)
@@ -529,6 +545,7 @@ impl TestSetRepo {
             description,
             cases,
             dify_config_json,
+            generic_config_json,
             created_at: now,
             updated_at: now,
         })
@@ -553,6 +570,39 @@ impl TestSetRepo {
             "#,
         )
         .bind(dify_config_json)
+        .bind(now)
+        .bind(workspace_id)
+        .bind(test_set_id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(TestSetRepoError::NotFound);
+        }
+
+        Ok(())
+    }
+
+    pub async fn update_generic_config_json_scoped(
+        pool: &SqlitePool,
+        user_id: &str,
+        workspace_id: &str,
+        test_set_id: &str,
+        generic_config_json: Option<&str>,
+    ) -> Result<(), TestSetRepoError> {
+        let now = now_millis();
+
+        let result = sqlx::query(
+            r#"
+            UPDATE test_sets
+            SET generic_config_json = ?1, updated_at = ?2
+            WHERE workspace_id = ?3 AND id = ?4
+              AND is_template = 0
+              AND EXISTS (SELECT 1 FROM workspaces w WHERE w.id = ?3 AND w.user_id = ?5)
+            "#,
+        )
+        .bind(generic_config_json)
         .bind(now)
         .bind(workspace_id)
         .bind(test_set_id)
@@ -640,9 +690,10 @@ mod tests {
         insert_user(&pool, "u1", "user1").await;
         insert_workspace(&pool, "w1", "u1").await;
 
-        let created = TestSetRepo::create(&pool, "w1", "ts1", Some("d"), &sample_cases())
-            .await
-            .expect("创建失败");
+        let created =
+            TestSetRepo::create(&pool, "w1", "ts1", Some("d"), &sample_cases(), None, None)
+                .await
+                .expect("创建失败");
 
         let loaded = TestSetRepo::find_by_id(&pool, "w1", &created.id)
             .await

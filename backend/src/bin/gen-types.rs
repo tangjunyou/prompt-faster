@@ -9,6 +9,10 @@ use prompt_faster::api::routes::auth::{
 use prompt_faster::api::routes::dify::{
     DifyBinding, DifyBindingSource, DifyConfig, SaveDifyConfigRequest, SaveDifyConfigResponse,
 };
+use prompt_faster::api::routes::generic::{
+    DeleteGenericConfigResponse, GenericConfig, GenericInputVariable, GenericValueType,
+    SaveGenericConfigRequest, SaveGenericConfigResponse,
+};
 use prompt_faster::api::routes::health::HealthResponse;
 use prompt_faster::api::routes::test_set_templates::{
     SaveAsTemplateRequest, TestSetTemplateListItemResponse, TestSetTemplateResponse,
@@ -90,6 +94,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     SaveDifyConfigResponse::export_all_to(&out_dir)?;
     DifyBinding::export_all_to(&out_dir)?;
     DifyBindingSource::export_all_to(&out_dir)?;
+
+    // 通用 API 自定义变量配置（测试集维度）
+    GenericConfig::export_all_to(&out_dir)?;
+    SaveGenericConfigRequest::export_all_to(&out_dir)?;
+    SaveGenericConfigResponse::export_all_to(&out_dir)?;
+    DeleteGenericConfigResponse::export_all_to(&out_dir)?;
+    GenericInputVariable::export_all_to(&out_dir)?;
+    GenericValueType::export_all_to(&out_dir)?;
 
     // 测试集模板
     SaveAsTemplateRequest::export_all_to(&out_dir)?;

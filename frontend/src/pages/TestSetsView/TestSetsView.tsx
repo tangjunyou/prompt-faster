@@ -29,12 +29,17 @@ import {
 import { getTestSet } from '@/features/test-set-manager/services/testSetService'
 import { getTestSetTemplate } from '@/features/test-set-manager/services/testSetTemplateService'
 import { refreshDifyVariables, saveDifyConfig } from '@/features/test-set-manager/services/difyService'
+import { deleteGenericConfig, saveGenericConfig } from '@/features/test-set-manager/services/genericConfigService'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
 import type { DifyBindingSource } from '@/types/generated/api/DifyBindingSource'
 import type { DifyConfig } from '@/types/generated/api/DifyConfig'
 import type { DifyInputVariable } from '@/types/generated/api/DifyInputVariable'
 import type { SaveDifyConfigRequest } from '@/types/generated/api/SaveDifyConfigRequest'
+import type { GenericConfig } from '@/types/generated/api/GenericConfig'
+import type { GenericInputVariable } from '@/types/generated/api/GenericInputVariable'
+import type { GenericValueType } from '@/types/generated/api/GenericValueType'
+import type { SaveGenericConfigRequest } from '@/types/generated/api/SaveGenericConfigRequest'
 import type { TestCase } from '@/types/generated/models/TestCase'
 import type { JsonValue } from '@/types/generated/serde_json/JsonValue'
 
@@ -121,6 +126,13 @@ export function TestSetsView() {
     inputKey: string
   }
 
+  type GenericVariableDraft = {
+    id: string
+    name: string
+    valueType: GenericValueType
+    defaultValueText: string
+  }
+
   const [difyVariables, setDifyVariables] = useState<DifyInputVariable[] | null>(null)
   const [difyVariablesError, setDifyVariablesError] = useState<string | null>(null)
   const [isRefreshingDifyVariables, setIsRefreshingDifyVariables] = useState(false)
@@ -131,6 +143,11 @@ export function TestSetsView() {
   const [difySaveSuccess, setDifySaveSuccess] = useState<string | null>(null)
 
   const [pendingTemplateDifyConfig, setPendingTemplateDifyConfig] = useState<SaveDifyConfigRequest | null>(null)
+
+  const [genericVariableDrafts, setGenericVariableDrafts] = useState<GenericVariableDraft[]>([])
+  const [genericSaveError, setGenericSaveError] = useState<string | null>(null)
+  const [genericSaveSuccess, setGenericSaveSuccess] = useState<string | null>(null)
+  const [isGenericConfigEnabled, setIsGenericConfigEnabled] = useState(false)
 
   const [importFileName, setImportFileName] = useState<string | null>(null)
   const [importFileError, setImportFileError] = useState<string | null>(null)
@@ -195,6 +212,35 @@ export function TestSetsView() {
     setDifySaveSuccess(null)
   }
 
+  const makeLocalId = () =>
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+  const formatGenericDefaultValueText = (valueType: GenericValueType, value: JsonValue | null): string => {
+    if (value === null) return ''
+    if (valueType === 'json') return JSON.stringify(value, null, 2)
+    if (valueType === 'string') return typeof value === 'string' ? value : ''
+    if (valueType === 'number') return typeof value === 'number' ? String(value) : ''
+    if (valueType === 'boolean') return typeof value === 'boolean' ? (value ? 'true' : 'false') : ''
+    return ''
+  }
+
+  const applyGenericConfigToDrafts = (config: GenericConfig | null) => {
+    const variables = config?.variables ?? []
+    setIsGenericConfigEnabled(Boolean(config))
+    setGenericVariableDrafts(
+      variables.map((v) => ({
+        id: makeLocalId(),
+        name: v.name ?? '',
+        valueType: (v.valueType ?? 'string') as GenericValueType,
+        defaultValueText: formatGenericDefaultValueText((v.valueType ?? 'string') as GenericValueType, v.defaultValue),
+      }))
+    )
+    setGenericSaveError(null)
+    setGenericSaveSuccess(null)
+  }
+
   const startEdit = async (ts: TestSetListItemResponse) => {
     if (!workspaceId) return
     if (authStatus !== 'authenticated' || !sessionToken) return
@@ -211,6 +257,7 @@ export function TestSetsView() {
       setDifyVariablesError(null)
       applyDifyConfigToDrafts(full.dify_config)
       setPendingTemplateDifyConfig(null)
+      applyGenericConfigToDrafts(full.generic_config)
       setLocalCasesError(null)
       setSaveSuccessMessage(null)
     } catch (e) {
@@ -235,6 +282,10 @@ export function TestSetsView() {
     setDifySaveError(null)
     setDifySaveSuccess(null)
     setPendingTemplateDifyConfig(null)
+    setGenericVariableDrafts([])
+    setGenericSaveError(null)
+    setGenericSaveSuccess(null)
+    setIsGenericConfigEnabled(false)
     if (!options?.keepSuccessMessage) setSaveSuccessMessage(null)
   }
 
@@ -308,16 +359,25 @@ export function TestSetsView() {
       setName(tpl.name)
       setDescription(tpl.description ?? '')
       setCasesJson(JSON.stringify(tpl.cases, null, 2))
+      applyGenericConfigToDrafts(tpl.generic_config)
+
+      const hasDify = Boolean(tpl.dify_config)
+      const hasGeneric = Boolean(tpl.generic_config)
+
       if (tpl.dify_config) {
         setPendingTemplateDifyConfig({
           targetPromptVariable: tpl.dify_config.targetPromptVariable,
           bindings: tpl.dify_config.bindings,
         })
-        setSaveSuccessMessage('已从模板预填（含 Dify 配置）')
       } else {
         setPendingTemplateDifyConfig(null)
-        setSaveSuccessMessage('已从模板预填')
       }
+
+      if (hasDify && hasGeneric) setSaveSuccessMessage('已从模板预填（含 Dify 配置/通用变量）')
+      else if (hasDify) setSaveSuccessMessage('已从模板预填（含 Dify 配置）')
+      else if (hasGeneric) setSaveSuccessMessage('已从模板预填（含通用变量）')
+      else setSaveSuccessMessage('已从模板预填')
+
       closeTemplatePicker()
     } catch (e) {
       setLocalTemplatePickerError(e instanceof Error ? e.message : '加载模板失败')
@@ -446,6 +506,16 @@ export function TestSetsView() {
 
     const cases = parsed as JsonValue
 
+    const builtGeneric = isGenericConfigEnabled
+      ? buildGenericConfigRequestFromDrafts(genericVariableDrafts)
+      : null
+
+    if (builtGeneric && !builtGeneric.ok) {
+      setGenericSaveError(builtGeneric.error)
+      setGenericSaveSuccess(null)
+      return
+    }
+
     if (editingId) {
       await updateTestSet({
         name: name.trim(),
@@ -457,22 +527,21 @@ export function TestSetsView() {
       return
     }
 
-    const created = await createTestSet({
+    const includeDify = Boolean(pendingTemplateDifyConfig)
+    const includeGeneric = Boolean(builtGeneric && builtGeneric.ok)
+
+    await createTestSet({
       name: name.trim(),
       description: description.trim() ? description.trim() : null,
       cases,
+      dify_config: pendingTemplateDifyConfig,
+      generic_config: builtGeneric && builtGeneric.ok ? builtGeneric.req : null,
     })
-    if (pendingTemplateDifyConfig && authStatus === 'authenticated' && sessionToken) {
-      try {
-        await saveDifyConfig(workspaceId, created.id, pendingTemplateDifyConfig, sessionToken)
-        setSaveSuccessMessage('创建成功（已同步 Dify 配置）')
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : '保存失败'
-        setSaveSuccessMessage(`创建成功，但 Dify 配置写入失败：${msg}`)
-      }
-    } else {
-      setSaveSuccessMessage('创建成功')
-    }
+
+    if (!includeDify && !includeGeneric) setSaveSuccessMessage('创建成功')
+    else if (includeDify && includeGeneric) setSaveSuccessMessage('创建成功（含 Dify 配置/通用变量）')
+    else if (includeDify) setSaveSuccessMessage('创建成功（含 Dify 配置）')
+    else setSaveSuccessMessage('创建成功（含通用变量）')
     resetForm({ keepSuccessMessage: true })
   }
 
@@ -482,6 +551,47 @@ export function TestSetsView() {
     if (!confirmed) return
     await deleteTestSet(ts.id)
     if (editingId === ts.id) resetForm()
+  }
+
+  const casesForExpectedEditor = useMemo(() => {
+    try {
+      const parsed = JSON.parse(casesJson) as unknown
+      const validationError = validateCasesJson(parsed)
+      if (validationError) return null
+      return parsed as TestCase[]
+    } catch {
+      return null
+    }
+  }, [casesJson])
+
+  const updateExactExpectedAtIndex = (index: number, expected: string) => {
+    setCasesJson((prev) => {
+      try {
+        const parsed = JSON.parse(prev) as unknown
+        if (!Array.isArray(parsed)) return prev
+        if (index < 0 || index >= parsed.length) return prev
+        const next = parsed.map((item, i) => {
+          if (i !== index) return item
+          if (typeof item !== 'object' || item === null) return item
+          const record = item as Record<string, unknown>
+          const reference = record.reference
+          if (typeof reference !== 'object' || reference === null || Array.isArray(reference)) return item
+          const refRecord = reference as Record<string, unknown>
+          const exact = refRecord.Exact
+          if (typeof exact !== 'object' || exact === null || Array.isArray(exact)) return item
+          return {
+            ...record,
+            reference: {
+              ...refRecord,
+              Exact: { ...(exact as Record<string, unknown>), expected },
+            },
+          }
+        })
+        return JSON.stringify(next, null, 2)
+      } catch {
+        return prev
+      }
+    })
   }
 
   const sampleInputKeys = useMemo(() => {
@@ -566,6 +676,122 @@ export function TestSetsView() {
       setDifySaveSuccess('保存成功')
     } catch (e) {
       setDifySaveError(e instanceof Error ? e.message : '保存失败')
+    }
+  }
+
+  const handleAddGenericVariable = () => {
+    setIsGenericConfigEnabled(true)
+    setGenericVariableDrafts((prev) => [
+      ...prev,
+      { id: makeLocalId(), name: '', valueType: 'string', defaultValueText: '' },
+    ])
+    setGenericSaveError(null)
+    setGenericSaveSuccess(null)
+  }
+
+  const buildGenericConfigRequestFromDrafts = (
+    drafts: GenericVariableDraft[]
+  ): { ok: true; req: SaveGenericConfigRequest } | { ok: false; error: string } => {
+    const seen = new Set<string>()
+    const variables: GenericInputVariable[] = []
+
+    for (const draft of drafts) {
+      const name = draft.name.trim()
+      if (!name) return { ok: false, error: '变量名不能为空' }
+      if (Array.from(name).length > 128) return { ok: false, error: '变量名不能超过 128 个字符' }
+      if (seen.has(name)) return { ok: false, error: '变量名必须唯一' }
+      seen.add(name)
+
+      const raw = draft.defaultValueText.trim()
+      let defaultValue: JsonValue | null = null
+
+      if (raw) {
+        if (draft.valueType === 'string') {
+          defaultValue = draft.defaultValueText
+        } else if (draft.valueType === 'number') {
+          const num = Number(raw)
+          if (!Number.isFinite(num)) return { ok: false, error: `变量 ${name} 的默认值必须是数字` }
+          defaultValue = num
+        } else if (draft.valueType === 'boolean') {
+          if (raw !== 'true' && raw !== 'false') return { ok: false, error: `变量 ${name} 的默认值必须是 true/false` }
+          defaultValue = raw === 'true'
+        } else {
+          try {
+            defaultValue = JSON.parse(draft.defaultValueText) as JsonValue
+          } catch {
+            return { ok: false, error: `变量 ${name} 的默认值不是合法 JSON` }
+          }
+        }
+      }
+
+      variables.push({ name, valueType: draft.valueType, defaultValue })
+    }
+
+    const req: SaveGenericConfigRequest = { variables }
+    const bytes = new TextEncoder().encode(JSON.stringify(req)).length
+    if (bytes > 32 * 1024) return { ok: false, error: '配置过大：最大 32KB' }
+
+    return { ok: true, req }
+  }
+
+  const handleSaveGenericConfig = async () => {
+    if (!workspaceId) return
+
+    if (!isGenericConfigEnabled) {
+      setGenericSaveError(null)
+      setGenericSaveSuccess('未启用通用变量配置')
+      return
+    }
+
+    const built = buildGenericConfigRequestFromDrafts(genericVariableDrafts)
+    if (!built.ok) {
+      setGenericSaveError(built.error)
+      setGenericSaveSuccess(null)
+      return
+    }
+
+    setGenericSaveError(null)
+    setGenericSaveSuccess(null)
+
+    if (!editingId) {
+      setGenericSaveSuccess('已校验：将在创建测试集时写入')
+      return
+    }
+
+    if (authStatus !== 'authenticated' || !sessionToken) return
+
+    try {
+      const res = await saveGenericConfig(workspaceId, editingId, built.req, sessionToken)
+      applyGenericConfigToDrafts(res.genericConfig)
+      setGenericSaveSuccess('保存成功')
+    } catch (e) {
+      setGenericSaveError(e instanceof Error ? e.message : '保存失败')
+    }
+  }
+
+  const handleDisableGenericConfig = async () => {
+    const confirmed = window.confirm('确定禁用并清空通用变量配置？')
+    if (!confirmed) return
+
+    if (!editingId) {
+      setIsGenericConfigEnabled(false)
+      setGenericVariableDrafts([])
+      setGenericSaveError(null)
+      setGenericSaveSuccess('已禁用')
+      return
+    }
+
+    if (authStatus !== 'authenticated' || !sessionToken) return
+
+    try {
+      await deleteGenericConfig(workspaceId, editingId, sessionToken)
+      setIsGenericConfigEnabled(false)
+      setGenericVariableDrafts([])
+      setGenericSaveError(null)
+      setGenericSaveSuccess('已禁用并清空')
+    } catch (e) {
+      setGenericSaveError(e instanceof Error ? e.message : '清空失败')
+      setGenericSaveSuccess(null)
     }
   }
 
@@ -925,6 +1151,36 @@ export function TestSetsView() {
               )}
             </div>
 
+            {casesForExpectedEditor && casesForExpectedEditor.some((c) => 'Exact' in c.reference) && (
+              <div className="grid gap-3 rounded-md border border-input p-3">
+                <div className="grid gap-1">
+                  <div className="text-sm font-medium">标准答案（固定任务）</div>
+                  <div className="text-xs text-muted-foreground">
+                    将写入 <span className="font-mono">cases[*].reference.Exact.expected</span>（JSON 编辑仍为最终数据源）。
+                  </div>
+                </div>
+                <div className="grid gap-3">
+                  {casesForExpectedEditor.map((c, index) => (
+                    <div key={c.id} className="grid gap-2">
+                      <div className="text-xs text-muted-foreground">{c.id}</div>
+                      {'Exact' in c.reference ? (
+                        <textarea
+                          className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          value={c.reference.Exact.expected}
+                          onChange={(e) => updateExactExpectedAtIndex(index, e.target.value)}
+                          placeholder="输入标准答案（期望输出）"
+                        />
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          该用例 reference 不是 Exact（不会修改）
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {saveErrorMessage && (
               <div className="text-sm text-red-500">保存失败：{saveErrorMessage}</div>
             )}
@@ -947,8 +1203,161 @@ export function TestSetsView() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>通用 API 自定义变量</CardTitle>
+          <CardDescription>
+            在测试集维度维护通用 API 的额外输入变量（不包含任何明文 API Key）。
+            {!editingId && <span className="ml-1">创建测试集时将自动写入。</span>}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-muted-foreground">大小上限：32KB（超限将保存失败）。</div>
+            <Button type="button" variant="outline" onClick={handleAddGenericVariable}>
+              新增变量
+            </Button>
+          </div>
+
+          {!isGenericConfigEnabled ? (
+            <div className="text-sm text-muted-foreground">未启用。点击“新增变量”开始编辑。</div>
+          ) : genericVariableDrafts.length === 0 ? (
+            <div className="text-sm text-muted-foreground">已启用但未配置变量。</div>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-input">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">name</th>
+                    <th className="px-3 py-2 font-medium">valueType</th>
+                    <th className="px-3 py-2 font-medium">defaultValue</th>
+                    <th className="px-3 py-2 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {genericVariableDrafts.map((v) => (
+                    <tr key={v.id} className="border-t">
+                      <td className="px-3 py-2 align-top">
+                        <Input
+                          value={v.name}
+                          onChange={(e) => {
+                            setGenericVariableDrafts((prev) =>
+                              prev.map((it) => (it.id === v.id ? { ...it, name: e.target.value } : it))
+                            )
+                            setGenericSaveError(null)
+                            setGenericSaveSuccess(null)
+                          }}
+                          placeholder="变量名（唯一）"
+                        />
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <select
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          value={v.valueType}
+                          onChange={(e) => {
+                            const next = e.target.value as GenericValueType
+                            setGenericVariableDrafts((prev) =>
+                              prev.map((it) => (it.id === v.id ? { ...it, valueType: next } : it))
+                            )
+                            setGenericSaveError(null)
+                            setGenericSaveSuccess(null)
+                          }}
+                        >
+                          <option value="string">string</option>
+                          <option value="number">number</option>
+                          <option value="boolean">boolean</option>
+                          <option value="json">json</option>
+                        </select>
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        {v.valueType === 'json' ? (
+                          <textarea
+                            className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            value={v.defaultValueText}
+                            onChange={(e) => {
+                              setGenericVariableDrafts((prev) =>
+                                prev.map((it) =>
+                                  it.id === v.id ? { ...it, defaultValueText: e.target.value } : it
+                                )
+                              )
+                              setGenericSaveError(null)
+                              setGenericSaveSuccess(null)
+                            }}
+                            placeholder='例如："hello" / 123 / true / {"a":1} / [1,2]'
+                          />
+                        ) : v.valueType === 'boolean' ? (
+                          <select
+                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                            value={v.defaultValueText.trim()}
+                            onChange={(e) => {
+                              setGenericVariableDrafts((prev) =>
+                                prev.map((it) =>
+                                  it.id === v.id ? { ...it, defaultValueText: e.target.value } : it
+                                )
+                              )
+                              setGenericSaveError(null)
+                              setGenericSaveSuccess(null)
+                            }}
+                          >
+                            <option value="">（空）</option>
+                            <option value="true">true</option>
+                            <option value="false">false</option>
+                          </select>
+                        ) : (
+                          <Input
+                            value={v.defaultValueText}
+                            onChange={(e) => {
+                              setGenericVariableDrafts((prev) =>
+                                prev.map((it) =>
+                                  it.id === v.id ? { ...it, defaultValueText: e.target.value } : it
+                                )
+                              )
+                              setGenericSaveError(null)
+                              setGenericSaveSuccess(null)
+                            }}
+                            placeholder={v.valueType === 'number' ? '例如：3.14' : '可选'}
+                          />
+                        )}
+                      </td>
+                      <td className="px-3 py-2 align-top">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            setGenericVariableDrafts((prev) => prev.filter((it) => it.id !== v.id))
+                            setGenericSaveError(null)
+                            setGenericSaveSuccess(null)
+                          }}
+                        >
+                          删除
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {genericSaveError && <div className="text-sm text-red-500">保存失败：{genericSaveError}</div>}
+          {genericSaveSuccess && <div className="text-sm text-green-600">{genericSaveSuccess}</div>}
+
+          <div className="flex items-center gap-2">
+            <Button type="button" onClick={() => void handleSaveGenericConfig()}>
+              {editingId ? '保存通用变量' : '校验通用变量'}
+            </Button>
+            {isGenericConfigEnabled && (
+              <Button type="button" variant="outline" onClick={() => void handleDisableGenericConfig()}>
+                禁用并清空
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {editingId && (
-        <Card>
+        <>
+          <Card>
           <CardHeader>
             <CardTitle>Dify 变量配置</CardTitle>
             <CardDescription>
@@ -1139,6 +1548,7 @@ export function TestSetsView() {
             )}
           </CardContent>
         </Card>
+        </>
       )}
     </section>
   )

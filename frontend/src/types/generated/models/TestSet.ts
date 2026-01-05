@@ -5,4 +5,8 @@ export type TestSet = { id: string, workspace_id: string, name: string, descript
 /**
  * 测试集维度的 Dify 变量配置（JSON 文本，字段结构见 Story 2.4）
  */
-dify_config_json: string | null, created_at: number, updated_at: number, };
+dify_config_json: string | null, 
+/**
+ * 测试集维度的“通用 API 自定义变量配置”（JSON 文本，字段结构见 Story 2.5）
+ */
+generic_config_json: string | null, created_at: number, updated_at: number, };
