@@ -58,6 +58,7 @@ const server = setupServer(
       description: body.description ?? null,
       cases: [],
       dify_config: null,
+      generic_config: null,
       created_at: 10,
       updated_at: 10,
     }
@@ -80,6 +81,7 @@ const server = setupServer(
       description: null,
       cases: [],
       dify_config: null,
+      generic_config: null,
       created_at: 10,
       updated_at: 11,
     }
@@ -103,6 +105,7 @@ const server = setupServer(
       description: body.description ?? null,
       cases: [],
       dify_config: null,
+      generic_config: null,
       created_at: 10,
       updated_at: 12,
     }
@@ -138,7 +141,11 @@ describe('testSetService', () => {
   })
 
   it('createTestSet 应返回创建后的测试集', async () => {
-    const res = await createTestSet('ws-1', { name: '新测试集', description: null, cases: [] }, 'test-token')
+    const res = await createTestSet(
+      'ws-1',
+      { name: '新测试集', description: null, cases: [], dify_config: null, generic_config: null },
+      'test-token'
+    )
     expect(res.id).toBe('ts-created')
     expect(res.workspace_id).toBe('ws-1')
   })

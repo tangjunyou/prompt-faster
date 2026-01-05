@@ -15,6 +15,8 @@ pub struct TestSet {
     pub cases: Vec<TestCase>,
     /// 测试集维度的 Dify 变量配置（JSON 文本，字段结构见 Story 2.4）
     pub dify_config_json: Option<String>,
+    /// 测试集维度的“通用 API 自定义变量配置”（JSON 文本，字段结构见 Story 2.5）
+    pub generic_config_json: Option<String>,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]

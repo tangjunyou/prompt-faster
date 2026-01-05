@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 
 import { useAuthStore } from '@/stores/useAuthStore'
+import type { CreateTestSetRequest } from '@/types/generated/api/CreateTestSetRequest'
 import type { SaveAsTemplateRequest } from '@/types/generated/api/SaveAsTemplateRequest'
 import type { DifyVariablesResponse } from '@/types/generated/api/DifyVariablesResponse'
 import type { SaveDifyConfigRequest } from '@/types/generated/api/SaveDifyConfigRequest'
+import type { SaveGenericConfigRequest } from '@/types/generated/api/SaveGenericConfigRequest'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
 import type { TestSetTemplateListItemResponse } from '@/types/generated/api/TestSetTemplateListItemResponse'
 import type { TestSetTemplateResponse } from '@/types/generated/api/TestSetTemplateResponse'
@@ -20,6 +22,9 @@ const API_BASE = 'http://localhost:3000/api/v1'
 
 let lastSaveAsTemplateBody: SaveAsTemplateRequest | null = null
 let lastSaveDifyConfigBody: SaveDifyConfigRequest | null = null
+let lastSaveGenericConfigBody: SaveGenericConfigRequest | null = null
+let lastCreateTestSetBody: CreateTestSetRequest | null = null
+let deleteGenericCalled = false
 
 const server = setupServer(
   http.get(`${API_BASE}/workspaces/:workspaceId/test-sets`, ({ request }) => {
@@ -69,8 +74,34 @@ const server = setupServer(
         },
       ],
       dify_config: null,
+      generic_config: null,
       created_at: 1,
       updated_at: 2,
+    }
+    return HttpResponse.json({ data })
+  }),
+
+  http.post(`${API_BASE}/workspaces/:workspaceId/test-sets`, async ({ request, params }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+
+    const body = (await request.json()) as CreateTestSetRequest
+    lastCreateTestSetBody = body
+    const data: TestSetResponse = {
+      id: 'ts-created',
+      workspace_id: String(params.workspaceId),
+      name: body.name ?? 'ts-created',
+      description: body.description ?? null,
+      cases: [],
+      dify_config: null,
+      generic_config: null,
+      created_at: 10,
+      updated_at: 10,
     }
     return HttpResponse.json({ data })
   }),
@@ -136,6 +167,40 @@ const server = setupServer(
     }
   ),
 
+  http.put(
+    `${API_BASE}/workspaces/:workspaceId/test-sets/:testSetId/generic/config`,
+    async ({ request }) => {
+      const auth = request.headers.get('authorization')
+      if (auth !== 'Bearer test-token') {
+        return HttpResponse.json(
+          { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+          { status: 401 }
+        )
+      }
+
+      lastSaveGenericConfigBody = (await request.json()) as SaveGenericConfigRequest
+      return HttpResponse.json({
+        data: {
+          genericConfig: {
+            variables: lastSaveGenericConfigBody.variables,
+          },
+        },
+      })
+    }
+  ),
+
+  http.delete(`${API_BASE}/workspaces/:workspaceId/test-sets/:testSetId/generic/config`, ({ request }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+    deleteGenericCalled = true
+    return HttpResponse.json({ data: { message: '已清空' } })
+  }),
+
   http.get(`${API_BASE}/workspaces/:workspaceId/test-set-templates`, ({ request, params }) => {
     const auth = request.headers.get('authorization')
     if (auth !== 'Bearer test-token') {
@@ -183,6 +248,7 @@ const server = setupServer(
         },
       ],
       dify_config: null,
+      generic_config: null,
       created_at: 10,
       updated_at: 10,
     }
@@ -210,6 +276,7 @@ const server = setupServer(
           description: lastSaveAsTemplateBody.description,
           cases: [],
           dify_config: null,
+          generic_config: null,
           created_at: 10,
           updated_at: 10,
         },
@@ -252,6 +319,9 @@ describe('TestSetsView templates', () => {
     })
     lastSaveAsTemplateBody = null
     lastSaveDifyConfigBody = null
+    lastSaveGenericConfigBody = null
+    lastCreateTestSetBody = null
+    deleteGenericCalled = false
   })
 
   it('选择模板后应预填 name/description/cases', async () => {
@@ -373,5 +443,190 @@ describe('TestSetsView templates', () => {
 
     const retryButton = screen.getByRole('button', { name: '重试' })
     expect(retryButton).toBeInTheDocument()
+  })
+
+  it('通用 API 自定义变量：新增变量并保存', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const editButton = await screen.findByRole('button', { name: '编辑' })
+    fireEvent.click(editButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('通用 API 自定义变量')).toBeInTheDocument()
+    })
+
+    const addButton = screen.getByRole('button', { name: '新增变量' })
+    fireEvent.click(addButton)
+
+    const nameInput = await screen.findByPlaceholderText('变量名（唯一）')
+    fireEvent.change(nameInput, { target: { value: 'x' } })
+    const row = nameInput.closest('tr')
+    expect(row).not.toBeNull()
+    const defaultInput = within(row as HTMLElement).getByPlaceholderText('可选')
+    fireEvent.change(defaultInput, { target: { value: 'y' } })
+
+    const saveButton = screen.getByRole('button', { name: '保存通用变量' })
+    fireEvent.click(saveButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('保存成功')).toBeInTheDocument()
+    })
+
+    expect(lastSaveGenericConfigBody?.variables?.[0]?.name).toBe('x')
+    expect(lastSaveGenericConfigBody?.variables?.[0]?.valueType).toBe('string')
+    expect(lastSaveGenericConfigBody?.variables?.[0]?.defaultValue).toBe('y')
+  })
+
+  it('通用 API 自定义变量：编辑态禁用并清空应调用 delete 接口', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const editButton = await screen.findByRole('button', { name: '编辑' })
+    fireEvent.click(editButton)
+
+    const addButton = await screen.findByRole('button', { name: '新增变量' })
+    fireEvent.click(addButton)
+
+    const nameInput = await screen.findByPlaceholderText('变量名（唯一）')
+    fireEvent.change(nameInput, { target: { value: 'x' } })
+
+    const originalConfirm = window.confirm
+    window.confirm = () => true
+    try {
+      const disableButton = screen.getByRole('button', { name: '禁用并清空' })
+      fireEvent.click(disableButton)
+
+      await waitFor(() => {
+        expect(screen.getByText('已禁用并清空')).toBeInTheDocument()
+      })
+
+      expect(deleteGenericCalled).toBe(true)
+    } finally {
+      window.confirm = originalConfirm
+    }
+  })
+
+  it('创建测试集：通用变量（创建态）应随创建写入', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const nameInput = (await screen.findByLabelText('名称')) as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: '新测试集' } })
+
+    const addButton = screen.getByRole('button', { name: '新增变量' })
+    fireEvent.click(addButton)
+
+    const varNameInput = await screen.findByPlaceholderText('变量名（唯一）')
+    fireEvent.change(varNameInput, { target: { value: 'x' } })
+    const row = varNameInput.closest('tr')
+    expect(row).not.toBeNull()
+    const defaultInput = within(row as HTMLElement).getByPlaceholderText('可选')
+    fireEvent.change(defaultInput, { target: { value: 'y' } })
+
+    const createButton = screen.getByRole('button', { name: '创建测试集' })
+    fireEvent.click(createButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('创建成功（含通用变量）')).toBeInTheDocument()
+    })
+
+    expect(lastCreateTestSetBody?.name).toBe('新测试集')
+    expect(lastCreateTestSetBody?.generic_config?.variables?.[0]?.name).toBe('x')
+  })
+
+  it('创建测试集：通用变量超 32KB 时应阻止创建并提示错误', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const nameInput = (await screen.findByLabelText('名称')) as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: '超大配置测试集' } })
+
+    const addButton = screen.getByRole('button', { name: '新增变量' })
+    fireEvent.click(addButton)
+
+    const varNameInput = await screen.findByPlaceholderText('变量名（唯一）')
+    fireEvent.change(varNameInput, { target: { value: 'big' } })
+    const row = varNameInput.closest('tr')
+    expect(row).not.toBeNull()
+    const defaultInput = within(row as HTMLElement).getByPlaceholderText('可选')
+    fireEvent.change(defaultInput, { target: { value: 'a'.repeat(40 * 1024) } })
+
+    const createButton = screen.getByRole('button', { name: '创建测试集' })
+    fireEvent.click(createButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('保存失败：配置过大：最大 32KB')).toBeInTheDocument()
+    })
+
+    expect(lastCreateTestSetBody).toBeNull()
+    expect(lastSaveGenericConfigBody).toBeNull()
+  })
+
+  it('标准答案编辑：应写入 cases[*].reference.Exact.expected', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const editButton = await screen.findByRole('button', { name: '编辑' })
+    fireEvent.click(editButton)
+
+    const expectedEditor = await screen.findByPlaceholderText('输入标准答案（期望输出）')
+    fireEvent.change(expectedEditor, { target: { value: 'new-expected' } })
+
+    const casesTextarea = screen.getByLabelText('cases (JSON)') as HTMLTextAreaElement
+    expect(casesTextarea.value).toContain('"expected": "new-expected"')
+  })
+
+  it('模板创建后应自动写回通用变量配置', async () => {
+    server.use(
+      http.get(`${API_BASE}/workspaces/:workspaceId/test-set-templates/:id`, ({ request, params }) => {
+        const auth = request.headers.get('authorization')
+        if (auth !== 'Bearer test-token') {
+          return HttpResponse.json(
+            { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+            { status: 401 }
+          )
+        }
+
+        const data: TestSetTemplateResponse = {
+          id: String(params.id),
+          workspace_id: String(params.workspaceId),
+          name: '模板 1',
+          description: 'desc',
+          cases: [
+            {
+              id: 'case-1',
+              input: { text: 'hi' },
+              reference: { Exact: { expected: 'ok' } },
+              split: null,
+              metadata: null,
+            },
+          ],
+          dify_config: null,
+          generic_config: {
+            variables: [{ name: 'x', valueType: 'string', defaultValue: 'y' }],
+          },
+          created_at: 10,
+          updated_at: 10,
+        }
+        return HttpResponse.json({ data })
+      })
+    )
+
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const openButton = await screen.findByRole('button', { name: '从模板创建' })
+    fireEvent.click(openButton)
+
+    const useButton = await screen.findByRole('button', { name: '使用' })
+    fireEvent.click(useButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('已从模板预填（含通用变量）')).toBeInTheDocument()
+    })
+
+    const createButton = await screen.findByRole('button', { name: '创建测试集' })
+    fireEvent.click(createButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('创建成功（含通用变量）')).toBeInTheDocument()
+    })
+
+    expect(lastCreateTestSetBody?.generic_config?.variables?.[0]?.name).toBe('x')
   })
 })

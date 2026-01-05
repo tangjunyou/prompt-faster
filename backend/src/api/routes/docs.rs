@@ -37,6 +37,10 @@ use utoipa_swagger_ui::SwaggerUi;
         (
             name = "dify_variables",
             description = "Dify 变量解析与绑定配置（隶属于 test_sets）"
+        ),
+        (
+            name = "generic_config",
+            description = "通用 API 自定义变量配置（隶属于 test_sets）"
         )
     ),
     paths(
@@ -61,6 +65,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::test_sets::delete_test_set,
         crate::api::routes::test_sets::refresh_dify_variables,
         crate::api::routes::test_sets::save_dify_config,
+        crate::api::routes::test_sets::save_generic_config,
         crate::api::routes::test_set_templates::list_test_set_templates,
         crate::api::routes::test_set_templates::get_test_set_template,
         crate::api::routes::test_set_templates::save_as_template,
@@ -106,6 +111,13 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::api::routes::dify::SaveDifyConfigResponse,
             crate::api::routes::dify::DifyBinding,
             crate::api::routes::dify::DifyBindingSource,
+            // Generic API custom variables config
+            crate::api::routes::generic::GenericConfig,
+            crate::api::routes::generic::GenericInputVariable,
+            crate::api::routes::generic::GenericValueType,
+            crate::api::routes::generic::SaveGenericConfigRequest,
+            crate::api::routes::generic::SaveGenericConfigResponse,
+            crate::api::routes::generic::DeleteGenericConfigResponse,
             // Test Set Templates
             crate::api::routes::test_set_templates::SaveAsTemplateRequest,
             crate::api::routes::test_set_templates::TestSetTemplateListItemResponse,

@@ -10,6 +10,7 @@ use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::routes::dify::DifyConfig;
+use crate::api::routes::generic::GenericConfig;
 use crate::api::state::AppState;
 use crate::domain::models::TestCase;
 use crate::infra::db::repositories::{
@@ -33,6 +34,7 @@ pub struct TestSetTemplateResponse {
     pub description: Option<String>,
     pub cases: Vec<TestCase>,
     pub dify_config: Option<DifyConfig>,
+    pub generic_config: Option<GenericConfig>,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]
@@ -92,6 +94,21 @@ fn parse_dify_config(dify_config_json: Option<String>) -> Result<Option<DifyConf
     };
 
     let config: DifyConfig = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+    Ok(Some(config))
+}
+
+fn parse_generic_config(
+    generic_config_json: Option<String>,
+) -> Result<Option<GenericConfig>, String> {
+    let Some(json) = generic_config_json else {
+        return Ok(None);
+    };
+
+    let json = json.trim();
+    if json.is_empty() {
+        return Ok(None);
+    }
+    let config: GenericConfig = serde_json::from_str(json).map_err(|e| e.to_string())?;
     Ok(Some(config))
 }
 
@@ -260,6 +277,13 @@ pub(crate) async fn get_test_set_template(
                 None
             }
         },
+        generic_config: match parse_generic_config(loaded.generic_config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "解析 generic_config_json 失败");
+                None
+            }
+        },
         created_at: loaded.created_at,
         updated_at: loaded.updated_at,
     })
@@ -346,6 +370,13 @@ pub(crate) async fn save_as_template(
             Ok(v) => v,
             Err(e) => {
                 warn!(error = %e, "解析 dify_config_json 失败");
+                None
+            }
+        },
+        generic_config: match parse_generic_config(created.generic_config_json) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "解析 generic_config_json 失败");
                 None
             }
         },

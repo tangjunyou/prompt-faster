@@ -54,6 +54,7 @@ const server = setupServer(
       description: null,
       cases: [],
       dify_config: null,
+      generic_config: null,
       created_at: 10,
       updated_at: 11,
     }
@@ -79,6 +80,7 @@ const server = setupServer(
         description: body.description ?? null,
         cases: [],
         dify_config: null,
+        generic_config: null,
         created_at: 20,
         updated_at: 20,
       }
