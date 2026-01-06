@@ -76,6 +76,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::optimization_tasks::create_optimization_task,
         crate::api::routes::optimization_tasks::list_optimization_tasks,
         crate::api::routes::optimization_tasks::get_optimization_task,
+        crate::api::routes::optimization_tasks::update_optimization_task_config,
     ),
     components(
         schemas(
@@ -136,9 +137,12 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::DataSplit,
             // Optimization Tasks
             crate::api::routes::optimization_tasks::CreateOptimizationTaskRequest,
+            crate::api::routes::optimization_tasks::UpdateOptimizationTaskConfigRequest,
             crate::api::routes::optimization_tasks::OptimizationTaskResponse,
             crate::api::routes::optimization_tasks::OptimizationTaskListItemResponse,
             crate::domain::models::ExecutionTargetType,
+            crate::domain::models::OptimizationTaskConfig,
+            crate::domain::models::DataSplitPercentConfig,
             crate::domain::models::OptimizationTaskMode,
             crate::domain::models::OptimizationTaskStatus,
         )

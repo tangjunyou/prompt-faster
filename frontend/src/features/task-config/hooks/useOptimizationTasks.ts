@@ -11,7 +11,9 @@ import {
   createOptimizationTask,
   getOptimizationTask,
   listOptimizationTasks,
+  updateOptimizationTaskConfig,
 } from '../services/optimizationTaskService'
+import type { UpdateOptimizationTaskConfigRequest } from '@/types/generated/api/UpdateOptimizationTaskConfigRequest'
 
 const OPTIMIZATION_TASKS_QUERY_KEY = ['optimizationTasks'] as const
 
@@ -57,3 +59,21 @@ export function useCreateOptimizationTask(workspaceId: string) {
   })
 }
 
+export function useUpdateOptimizationTaskConfig(workspaceId: string, taskId: string) {
+  const queryClient = useQueryClient()
+  const sessionToken = useAuthStore((state) => state.sessionToken)
+  const authStatus = useAuthStore((state) => state.authStatus)
+
+  return useMutation({
+    mutationFn: async (params: UpdateOptimizationTaskConfigRequest) => {
+      if (authStatus !== 'authenticated' || !sessionToken) {
+        throw new Error('未登录')
+      }
+      return updateOptimizationTaskConfig(workspaceId, taskId, params, sessionToken)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [...OPTIMIZATION_TASKS_QUERY_KEY, workspaceId] })
+      queryClient.invalidateQueries({ queryKey: [...OPTIMIZATION_TASKS_QUERY_KEY, workspaceId, taskId] })
+    },
+  })
+}

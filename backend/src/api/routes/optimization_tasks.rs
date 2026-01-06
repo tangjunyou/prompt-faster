@@ -2,7 +2,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{
     Json, Router,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
@@ -14,7 +14,8 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::domain::models::{
-    ExecutionTargetType, OptimizationTaskMode, OptimizationTaskStatus, TaskReference,
+    DataSplitPercentConfig, ExecutionTargetType, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION,
+    OptimizationTaskConfig, OptimizationTaskMode, OptimizationTaskStatus, TaskReference,
 };
 use crate::infra::db::repositories::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TestSetRepo,
@@ -45,6 +46,7 @@ pub struct OptimizationTaskResponse {
     pub task_mode: OptimizationTaskMode,
     pub status: OptimizationTaskStatus,
     pub test_set_ids: Vec<String>,
+    pub config: OptimizationTaskConfig,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]
@@ -65,6 +67,16 @@ pub struct OptimizationTaskListItemResponse {
     pub created_at: i64,
     #[ts(type = "number")]
     pub updated_at: i64,
+}
+
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
+pub struct UpdateOptimizationTaskConfigRequest {
+    pub initial_prompt: Option<String>,
+    pub max_iterations: u32,
+    pub pass_threshold_percent: u8,
+    pub train_percent: u8,
+    pub validation_percent: u8,
 }
 
 fn extract_correlation_id(headers: &HeaderMap) -> String {
@@ -271,6 +283,19 @@ async fn load_and_validate_test_sets<T: Serialize>(
     Ok(())
 }
 
+fn validate_task_config<T: Serialize>(
+    config: &OptimizationTaskConfig,
+) -> Result<(), ApiResponse<T>> {
+    if let Err(msg) = config.validate() {
+        return Err(ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_ERROR,
+            msg,
+        ));
+    }
+    Ok(())
+}
+
 #[utoipa::path(
     post,
     path = "/api/v1/workspaces/{workspace_id}/optimization-tasks",
@@ -357,6 +382,7 @@ pub(crate) async fn create_optimization_task(
     .await
     {
         Ok(created) => ApiResponse::ok(OptimizationTaskResponse {
+            config: OptimizationTaskConfig::default(),
             id: created.task.id,
             workspace_id: created.task.workspace_id,
             name: created.task.name,
@@ -480,6 +506,9 @@ pub(crate) async fn get_optimization_task(
     match OptimizationTaskRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &task_id).await
     {
         Ok(task) => ApiResponse::ok(OptimizationTaskResponse {
+            config: OptimizationTaskConfig::normalized_from_config_json(
+                task.task.config_json.as_deref(),
+            ),
             id: task.task.id,
             workspace_id: task.task.workspace_id,
             name: task.task.name,
@@ -505,6 +534,107 @@ pub(crate) async fn get_optimization_task(
     }
 }
 
+#[utoipa::path(
+    put,
+    path = "/api/v1/workspaces/{workspace_id}/optimization-tasks/{task_id}/config",
+    request_body = UpdateOptimizationTaskConfigRequest,
+    params(
+        ("workspace_id" = String, Path, description = "工作区 ID"),
+        ("task_id" = String, Path, description = "优化任务 ID")
+    ),
+    responses(
+        (status = 200, description = "更新成功", body = ApiSuccess<OptimizationTaskResponse>),
+        (status = 400, description = "参数错误", body = ApiError),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 404, description = "资源不存在", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "optimization_tasks"
+)]
+pub(crate) async fn update_optimization_task_config(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((workspace_id, task_id)): Path<(String, String)>,
+    current_user: CurrentUser,
+    Json(req): Json<UpdateOptimizationTaskConfigRequest>,
+) -> ApiResponse<OptimizationTaskResponse> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = &current_user.user_id;
+
+    let initial_prompt_len = req.initial_prompt.as_ref().map(|s| s.len()).unwrap_or(0);
+    info!(
+        correlation_id = %correlation_id,
+        user_id = %user_id,
+        workspace_id = %workspace_id,
+        task_id = %task_id,
+        initial_prompt_len = initial_prompt_len,
+        "更新优化任务配置"
+    );
+
+    if let Err(resp) =
+        ensure_workspace_exists::<OptimizationTaskResponse>(&state, &workspace_id, user_id).await
+    {
+        return resp;
+    }
+
+    let config = OptimizationTaskConfig {
+        schema_version: OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION,
+        initial_prompt: req.initial_prompt,
+        max_iterations: req.max_iterations,
+        pass_threshold_percent: req.pass_threshold_percent,
+        data_split: DataSplitPercentConfig {
+            train_percent: req.train_percent,
+            validation_percent: req.validation_percent,
+            holdout_percent: 0,
+        },
+    }
+    .normalized();
+
+    if let Err(resp) = validate_task_config::<OptimizationTaskResponse>(&config) {
+        return resp;
+    }
+
+    match OptimizationTaskRepo::update_config_scoped(
+        &state.db,
+        user_id,
+        &workspace_id,
+        &task_id,
+        config,
+    )
+    .await
+    {
+        Ok(updated) => ApiResponse::ok(OptimizationTaskResponse {
+            config: OptimizationTaskConfig::normalized_from_config_json(
+                updated.task.config_json.as_deref(),
+            ),
+            id: updated.task.id,
+            workspace_id: updated.task.workspace_id,
+            name: updated.task.name,
+            description: updated.task.description,
+            goal: updated.task.goal,
+            execution_target_type: updated.task.execution_target_type,
+            task_mode: updated.task.task_mode,
+            status: updated.task.status,
+            test_set_ids: updated.test_set_ids,
+            created_at: updated.task.created_at,
+            updated_at: updated.task.updated_at,
+        }),
+        Err(OptimizationTaskRepoError::NotFound) => optimization_task_not_found(),
+        Err(OptimizationTaskRepoError::WorkspaceNotFound) => workspace_not_found(),
+        Err(OptimizationTaskRepoError::InvalidConfig(msg)) => {
+            ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg)
+        }
+        Err(e) => {
+            warn!(error = %e, "更新优化任务配置失败");
+            ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::DATABASE_ERROR,
+                "更新优化任务配置失败",
+            )
+        }
+    }
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route(
@@ -512,4 +642,5 @@ pub fn router() -> Router<AppState> {
             post(create_optimization_task).get(list_optimization_tasks),
         )
         .route("/{task_id}", get(get_optimization_task))
+        .route("/{task_id}/config", put(update_optimization_task_config))
 }

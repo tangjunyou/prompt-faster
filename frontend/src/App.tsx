@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router'
 import './App.css'
-import { ApiConfigPage, FocusView, OptimizationTasksView, RunView, TestSetsView, WorkspaceView } from './pages'
+import { ApiConfigPage, FocusView, OptimizationTaskConfigView, OptimizationTasksView, RunView, TestSetsView, WorkspaceView } from './pages'
 import { LoginPage } from './features/auth/components/LoginPage'
 import { ProtectedRoute } from './features/auth/components/ProtectedRoute'
 import { registerUnauthorizedHandler } from './lib/api'
@@ -100,6 +100,14 @@ function App() {
           element={
             <ProtectedRoute>
               <OptimizationTasksView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/workspaces/:id/tasks/:taskId"
+          element={
+            <ProtectedRoute>
+              <OptimizationTaskConfigView />
             </ProtectedRoute>
           }
         />

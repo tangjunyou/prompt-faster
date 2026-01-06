@@ -2,6 +2,7 @@
 
 pub mod algorithm;
 pub mod optimization_task;
+pub mod optimization_task_config;
 pub mod test_set;
 pub mod user;
 pub mod workspace;
@@ -14,6 +15,9 @@ pub use algorithm::{
 };
 pub use optimization_task::{
     ExecutionTargetType, OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus,
+};
+pub use optimization_task_config::{
+    DataSplitPercentConfig, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig,
 };
 pub use test_set::TestSet;
 pub use user::User;

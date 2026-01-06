@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -245,7 +245,12 @@ export function OptimizationTasksView() {
               {tasks.map((task) => (
                 <li key={task.id} className="rounded-md border px-3 py-2">
                   <div className="flex flex-col gap-1">
-                    <div className="font-medium">{task.name}</div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 font-medium">{task.name}</div>
+                      <Button asChild variant="outline" size="sm">
+                        <Link to={`/workspaces/${workspaceId}/tasks/${task.id}`}>配置</Link>
+                      </Button>
+                    </div>
                     <div className="text-muted-foreground">目标：{task.goal}</div>
                     <div className="text-muted-foreground">
                       执行目标：{task.execution_target_type} · 模式：{task.task_mode} · 状态：{task.status}
@@ -263,4 +268,3 @@ export function OptimizationTasksView() {
     </section>
   )
 }
-
