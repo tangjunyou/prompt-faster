@@ -12,7 +12,7 @@ use utoipa::ToSchema;
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
-use crate::api::routes::{test_set_templates, test_sets};
+use crate::api::routes::{optimization_tasks, test_set_templates, test_sets};
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{WorkspaceRepo, WorkspaceRepoError};
 use crate::shared::error_codes;
@@ -273,6 +273,10 @@ pub fn router() -> Router<AppState> {
         .route("/", post(create_workspace).get(list_workspaces))
         .route("/{id}", get(get_workspace).delete(delete_workspace))
         .nest("/{workspace_id}/test-sets", test_sets::router())
+        .nest(
+            "/{workspace_id}/optimization-tasks",
+            optimization_tasks::router(),
+        )
         .nest(
             "/{workspace_id}/test-set-templates",
             test_set_templates::router(),

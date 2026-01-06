@@ -78,6 +78,9 @@ pub const WORKSPACE_NOT_FOUND: &str = "WORKSPACE_NOT_FOUND";
 /// 测试集不存在
 pub const TEST_SET_NOT_FOUND: &str = "TEST_SET_NOT_FOUND";
 
+/// 优化任务不存在
+pub const OPTIMIZATION_TASK_NOT_FOUND: &str = "OPTIMIZATION_TASK_NOT_FOUND";
+
 /// 资源不存在（通用）
 pub const RESOURCE_NOT_FOUND: &str = "RESOURCE_NOT_FOUND";
 

@@ -41,6 +41,10 @@ use utoipa_swagger_ui::SwaggerUi;
         (
             name = "generic_config",
             description = "通用 API 自定义变量配置（隶属于 test_sets）"
+        ),
+        (
+            name = "optimization_tasks",
+            description = "优化任务配置 API（隶属于 workspace）"
         )
     ),
     paths(
@@ -69,6 +73,9 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::test_set_templates::list_test_set_templates,
         crate::api::routes::test_set_templates::get_test_set_template,
         crate::api::routes::test_set_templates::save_as_template,
+        crate::api::routes::optimization_tasks::create_optimization_task,
+        crate::api::routes::optimization_tasks::list_optimization_tasks,
+        crate::api::routes::optimization_tasks::get_optimization_task,
     ),
     components(
         schemas(
@@ -127,6 +134,13 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::Constraint,
             crate::domain::models::QualityDimension,
             crate::domain::models::DataSplit,
+            // Optimization Tasks
+            crate::api::routes::optimization_tasks::CreateOptimizationTaskRequest,
+            crate::api::routes::optimization_tasks::OptimizationTaskResponse,
+            crate::api::routes::optimization_tasks::OptimizationTaskListItemResponse,
+            crate::domain::models::ExecutionTargetType,
+            crate::domain::models::OptimizationTaskMode,
+            crate::domain::models::OptimizationTaskStatus,
         )
     ),
     info(

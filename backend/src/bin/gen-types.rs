@@ -14,6 +14,9 @@ use prompt_faster::api::routes::generic::{
     SaveGenericConfigRequest, SaveGenericConfigResponse,
 };
 use prompt_faster::api::routes::health::HealthResponse;
+use prompt_faster::api::routes::optimization_tasks::{
+    CreateOptimizationTaskRequest, OptimizationTaskListItemResponse, OptimizationTaskResponse,
+};
 use prompt_faster::api::routes::test_set_templates::{
     SaveAsTemplateRequest, TestSetTemplateListItemResponse, TestSetTemplateResponse,
 };
@@ -29,9 +32,10 @@ use prompt_faster::api::routes::workspaces::{
 };
 use prompt_faster::domain::models::{
     Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
-    ExecutionResult, FailurePoint, Iteration, IterationState, LineageType, OptimizationTask,
-    OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
-    RuleSystem, RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
+    ExecutionResult, ExecutionTargetType, FailurePoint, Iteration, IterationState, LineageType,
+    OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus, OutputLength,
+    QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
+    RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
 use prompt_faster::infra::external::dify_client::{
     DifyInputVariable, DifyValueType, DifyVariablesResponse, TestConnectionResult,
@@ -108,12 +112,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TestSetTemplateListItemResponse::export_all_to(&out_dir)?;
     TestSetTemplateResponse::export_all_to(&out_dir)?;
 
+    // 优化任务
+    CreateOptimizationTaskRequest::export_all_to(&out_dir)?;
+    OptimizationTaskResponse::export_all_to(&out_dir)?;
+    OptimizationTaskListItemResponse::export_all_to(&out_dir)?;
+
     // 核心模型
     Workspace::export_all_to(&out_dir)?;
     User::export_all_to(&out_dir)?;
     TestCase::export_all_to(&out_dir)?;
     TestSet::export_all_to(&out_dir)?;
-    OptimizationTask::export_all_to(&out_dir)?;
+    OptimizationTaskEntity::export_all_to(&out_dir)?;
     Iteration::export_all_to(&out_dir)?;
     EvaluationResult::export_all_to(&out_dir)?;
     Checkpoint::export_all_to(&out_dir)?;
@@ -134,6 +143,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TokenUsage::export_all_to(&out_dir)?;
     // 枚举/辅助模型
     DataSplit::export_all_to(&out_dir)?;
+    ExecutionTargetType::export_all_to(&out_dir)?;
+    OptimizationTaskMode::export_all_to(&out_dir)?;
+    OptimizationTaskStatus::export_all_to(&out_dir)?;
     TaskReference::export_all_to(&out_dir)?;
     Constraint::export_all_to(&out_dir)?;
     QualityDimension::export_all_to(&out_dir)?;

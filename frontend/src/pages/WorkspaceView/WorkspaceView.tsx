@@ -96,9 +96,14 @@ export function WorkspaceView() {
                       </div>
                     </div>
                     <div className="shrink-0">
-                      <Button asChild size="sm" variant="outline">
-                        <Link to={`/workspaces/${workspace.id}/test-sets`}>管理测试集</Link>
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={`/workspaces/${workspace.id}/test-sets`}>管理测试集</Link>
+                        </Button>
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={`/workspaces/${workspace.id}/tasks`}>管理任务</Link>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </li>

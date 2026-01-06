@@ -7,3 +7,4 @@ export { RunView } from './RunView';
 export { FocusView } from './FocusView';
 export { WorkspaceView } from './WorkspaceView';
 export { TestSetsView } from './TestSetsView';
+export { OptimizationTasksView } from './OptimizationTasksView';
