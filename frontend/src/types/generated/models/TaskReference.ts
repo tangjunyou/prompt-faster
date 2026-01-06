@@ -5,4 +5,4 @@ import type { QualityDimension } from "./QualityDimension";
 /**
  * 任务参考类型
  */
-export type TaskReference = { "Exact": { expected: string, } } | { "Constrained": { constraints: Array<Constraint>, quality_dimensions: Array<QualityDimension>, } } | { "Hybrid": { exact_parts: { [key in string]?: string }, constraints: Array<Constraint>, } };
+export type TaskReference = { "Exact": { expected: string, } } | { "Constrained": { core_request: string | null, constraints: Array<Constraint>, quality_dimensions: Array<QualityDimension>, } } | { "Hybrid": { exact_parts: { [key in string]?: string }, constraints: Array<Constraint>, } };

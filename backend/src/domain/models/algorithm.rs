@@ -43,6 +43,8 @@ pub enum TaskReference {
         expected: String,
     },
     Constrained {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        core_request: Option<String>,
         constraints: Vec<Constraint>,
         quality_dimensions: Vec<QualityDimension>,
     },
@@ -58,6 +60,9 @@ pub enum TaskReference {
 pub struct Constraint {
     pub name: String,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub weight: Option<f64>,
 }
 

@@ -155,6 +155,26 @@ fn sample_cases_json() -> Value {
     ])
 }
 
+fn sample_constrained_cases_json() -> Value {
+    json!([
+      {
+        "id": "case-1",
+        "input": { "prompt": "写一段欢迎文案" },
+        "reference": {
+          "Constrained": {
+            "core_request": "友好、简洁、鼓励探索",
+            "constraints": [
+              { "name": "length", "description": "长度限制", "params": { "minChars": 30, "maxChars": 120 }, "weight": null }
+            ],
+            "quality_dimensions": []
+          }
+        },
+        "split": null,
+        "metadata": null
+      }
+    ])
+}
+
 #[tokio::test]
 async fn test_unauthorized_access_returns_401() {
     let app = setup_test_app().await;
@@ -273,6 +293,105 @@ async fn test_crud_happy_path() {
     );
     let delete_resp = app.clone().oneshot(delete_req).await.unwrap();
     assert_eq!(delete_resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_crud_persists_constrained_core_request_and_constraint_params() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "ts_constrained_user", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+
+    // Create
+    let create_req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/workspaces/{}/test-sets", workspace_id),
+            json!({"name": "ts-constrained", "description": null, "cases": sample_constrained_cases_json()}),
+        ),
+        &token,
+    );
+    let create_resp = app.clone().oneshot(create_req).await.unwrap();
+    assert_eq!(create_resp.status(), StatusCode::OK);
+    let create_body = read_json_body(create_resp).await;
+    let test_set_id = create_body["data"]["id"]
+        .as_str()
+        .expect("缺少 id")
+        .to_string();
+
+    assert_eq!(
+        create_body["data"]["cases"][0]["reference"]["Constrained"]["core_request"],
+        "友好、简洁、鼓励探索"
+    );
+    assert_eq!(
+        create_body["data"]["cases"][0]["reference"]["Constrained"]["constraints"][0]["params"]["minChars"],
+        30
+    );
+
+    // Get
+    let get_req = with_bearer(
+        Request::builder()
+            .method("GET")
+            .uri(format!(
+                "/api/v1/workspaces/{}/test-sets/{}",
+                workspace_id, test_set_id
+            ))
+            .body(Body::empty())
+            .unwrap(),
+        &token,
+    );
+    let get_resp = app.clone().oneshot(get_req).await.unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+    let get_body = read_json_body(get_resp).await;
+    assert_eq!(
+        get_body["data"]["cases"][0]["reference"]["Constrained"]["core_request"],
+        "友好、简洁、鼓励探索"
+    );
+    assert_eq!(
+        get_body["data"]["cases"][0]["reference"]["Constrained"]["constraints"][0]["params"]["maxChars"],
+        120
+    );
+
+    // Update
+    let updated_cases = json!([
+      {
+        "id": "case-1",
+        "input": { "prompt": "写一段欢迎文案" },
+        "reference": {
+          "Constrained": {
+            "core_request": "更简洁，保持鼓励",
+            "constraints": [
+              { "name": "length", "description": "长度限制", "params": { "minChars": 10, "maxChars": 50 } }
+            ],
+            "quality_dimensions": []
+          }
+        },
+        "split": null,
+        "metadata": null
+      }
+    ]);
+
+    let update_req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/test-sets/{}",
+                workspace_id, test_set_id
+            ),
+            json!({"name": "ts-constrained-updated", "description": null, "cases": updated_cases}),
+        ),
+        &token,
+    );
+    let update_resp = app.clone().oneshot(update_req).await.unwrap();
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    let update_body = read_json_body(update_resp).await;
+    assert_eq!(
+        update_body["data"]["cases"][0]["reference"]["Constrained"]["core_request"],
+        "更简洁，保持鼓励"
+    );
+    assert_eq!(
+        update_body["data"]["cases"][0]["reference"]["Constrained"]["constraints"][0]["params"]["minChars"],
+        10
+    );
 }
 
 #[tokio::test]

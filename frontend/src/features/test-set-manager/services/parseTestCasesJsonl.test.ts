@@ -115,8 +115,53 @@ describe('parseTestCasesJsonl', () => {
     ].join('\n')
 
     const res = await parseTestCasesJsonl(text)
-    expect(res.cases).toHaveLength(0)
-    expect(res.errors.map((e) => e.line)).toEqual([1, 2, 3, 4])
+    expect(res.cases).toHaveLength(1)
+    expect(res.errors.map((e) => e.line)).toEqual([1, 2, 3])
+  })
+
+  it('Constrained.core_request/Constraint.params/weight 应向后兼容缺失/null', async () => {
+    const text = [
+      JSON.stringify({
+        id: 'c-1',
+        input: {},
+        reference: {
+          Constrained: {
+            core_request: '写一段欢迎文案，友好简洁',
+            constraints: [
+              { name: 'length', description: '长度限制', params: { minChars: 10, maxChars: 20 } },
+            ],
+            quality_dimensions: [],
+          },
+        },
+      }),
+      JSON.stringify({
+        id: 'c-2',
+        input: {},
+        reference: {
+          Constrained: {
+            core_request: null,
+            constraints: [{ name: 'format', description: '格式要求', params: ['any'], weight: null }],
+            quality_dimensions: [],
+          },
+        },
+      }),
+      JSON.stringify({
+        id: 'c-3',
+        input: {},
+        reference: {
+          Constrained: {
+            core_request: 123,
+            constraints: [{ name: 'format', description: '格式要求', weight: 1 }],
+            quality_dimensions: [],
+          },
+        },
+      }),
+    ].join('\n')
+
+    const res = await parseTestCasesJsonl(text)
+    expect(res.cases).toHaveLength(2)
+    expect(res.errors).toHaveLength(1)
+    expect(res.errors[0]?.line).toBe(3)
   })
 
   it('应支持 100+ 行并触发进度回调与让出事件循环', async () => {

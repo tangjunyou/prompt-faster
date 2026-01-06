@@ -572,6 +572,158 @@ describe('TestSetsView templates', () => {
     expect(casesTextarea.value).toContain('"expected": "new-expected"')
   })
 
+  it('创意任务配置：应写回 casesJson 并在创建请求体中包含 core_request/constraints.params', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const nameInput = (await screen.findByLabelText('名称')) as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: '创意测试集' } })
+
+    const casesTextarea = screen.getByLabelText('cases (JSON)') as HTMLTextAreaElement
+    fireEvent.change(casesTextarea, {
+      target: {
+        value: JSON.stringify(
+          [
+            {
+              id: 'case-1',
+              input: { prompt: '写欢迎文案' },
+              reference: { Constrained: { constraints: [], quality_dimensions: [] } },
+              split: null,
+              metadata: null,
+            },
+            {
+              id: 'case-2',
+              input: { prompt: 'x' },
+              reference: { Exact: { expected: 'ok' } },
+              split: null,
+              metadata: null,
+            },
+          ],
+          null,
+          2
+        ),
+      },
+    })
+
+    await screen.findByText('创意任务配置（Constrained）')
+
+    const coreRequest = await screen.findByPlaceholderText('输入核心诉求（自然语言）')
+    fireEvent.change(coreRequest, { target: { value: '友好、简洁、鼓励探索' } })
+
+    const minChars = await screen.findByLabelText('最小字符数')
+    fireEvent.change(minChars, { target: { value: '30' } })
+    const maxChars = await screen.findByLabelText('最大字符数')
+    fireEvent.change(maxChars, { target: { value: '120' } })
+
+    const mustInclude = await screen.findByLabelText('必含关键词（每行一个）')
+    fireEvent.change(mustInclude, { target: { value: '欢迎\\n一起' } })
+    const mustExclude = await screen.findByLabelText('禁止内容（每行一个）')
+    fireEvent.change(mustExclude, { target: { value: '政治\\n敏感' } })
+
+    const format = await screen.findByLabelText('格式要求')
+    fireEvent.change(format, { target: { value: 'markdown' } })
+
+    expect(casesTextarea.value).toContain('"core_request": "友好、简洁、鼓励探索"')
+    expect(casesTextarea.value).toContain('"name": "length"')
+    expect(casesTextarea.value).toContain('"minChars": 30')
+    expect(casesTextarea.value).toContain('"maxChars": 120')
+    expect(casesTextarea.value).toContain('"name": "must_include"')
+    expect(casesTextarea.value).toContain('"keywords": [')
+    expect(casesTextarea.value).toContain('"name": "must_exclude"')
+    expect(casesTextarea.value).toContain('"name": "format"')
+    expect(casesTextarea.value).toContain('"format": "markdown"')
+
+    const createButton = screen.getByRole('button', { name: '创建测试集' })
+    fireEvent.click(createButton)
+
+    await waitFor(() => {
+      expect(screen.getByText('创建成功')).toBeInTheDocument()
+    })
+
+    type CreatedCase = {
+      reference?: {
+        Constrained?: {
+          core_request?: unknown
+          constraints?: Array<{ params?: unknown }>
+        }
+        Exact?: {
+          expected?: unknown
+        }
+      }
+    }
+
+    const createdCases = lastCreateTestSetBody?.cases as unknown as CreatedCase[] | undefined
+    expect(createdCases?.[0]?.reference?.Constrained?.core_request).toBe('友好、简洁、鼓励探索')
+    expect(createdCases?.[0]?.reference?.Constrained?.constraints?.[0]?.params).toEqual({
+      minChars: 30,
+      maxChars: 120,
+    })
+    expect(createdCases?.[1]?.reference?.Exact?.expected).toBe('ok')
+  })
+
+  it('创意任务配置：当 params 非对象时应提示并允许用户选择是否覆盖', async () => {
+    renderPage('/workspaces/ws-1/test-sets')
+
+    const nameInput = (await screen.findByLabelText('名称')) as HTMLInputElement
+    fireEvent.change(nameInput, { target: { value: '创意测试集' } })
+
+    const casesTextarea = screen.getByLabelText('cases (JSON)') as HTMLTextAreaElement
+    fireEvent.change(casesTextarea, {
+      target: {
+        value: JSON.stringify(
+          [
+            {
+              id: 'case-1',
+              input: { prompt: '写欢迎文案' },
+              reference: {
+                Constrained: {
+                  core_request: '友好、简洁',
+                  constraints: [
+                    { name: 'length', description: '长度限制', params: ['bad'], weight: null },
+                  ],
+                  quality_dimensions: [],
+                },
+              },
+              split: null,
+              metadata: null,
+            },
+          ],
+          null,
+          2
+        ),
+      },
+    })
+
+    await screen.findByText('创意任务配置（Constrained）')
+
+    const minChars = await screen.findByLabelText('最小字符数')
+
+    const originalConfirm = window.confirm
+    try {
+      const confirmCalls: string[] = []
+      window.confirm = (msg?: string) => {
+        confirmCalls.push(String(msg ?? ''))
+        return false
+      }
+
+      fireEvent.change(minChars, { target: { value: '30' } })
+      expect(confirmCalls.length).toBe(1)
+      expect(casesTextarea.value).toContain('"params": [')
+      expect(casesTextarea.value).not.toContain('"minChars": 30')
+
+      window.confirm = (msg?: string) => {
+        confirmCalls.push(String(msg ?? ''))
+        return true
+      }
+
+      fireEvent.change(minChars, { target: { value: '30' } })
+      expect(confirmCalls.length).toBe(2)
+      expect(casesTextarea.value).not.toContain('"params": [')
+      expect(casesTextarea.value).toContain('"minChars": 30')
+    } finally {
+      window.confirm = originalConfirm
+    }
+  })
+
   it('模板创建后应自动写回通用变量配置', async () => {
     server.use(
       http.get(`${API_BASE}/workspaces/:workspaceId/test-set-templates/:id`, ({ request, params }) => {

@@ -67,7 +67,7 @@ development_status:
   2-3-test-set-template-save-and-reuse: done
   2-4-dify-variable-parsing-and-prompt-variable-designation: done
   2-5-generic-api-custom-variables-and-fixed-task-answers: done
-  2-6-creative-task-configuration: backlog
+  2-6-creative-task-configuration: done
   epic-2-retrospective: optional
 
   # ============================================
