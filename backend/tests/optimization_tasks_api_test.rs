@@ -18,7 +18,7 @@ use prompt_faster::shared::config::AppConfig;
 
 const TEST_MASTER_PASSWORD: &str = "test_master_password_for_integration";
 
-async fn setup_test_app() -> Router {
+async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
     let db = create_pool("sqlite::memory:")
         .await
         .expect("创建测试数据库失败");
@@ -47,7 +47,7 @@ async fn setup_test_app() -> Router {
     let login_attempt_store = LoginAttemptStore::default();
 
     let state = AppState {
-        db,
+        db: db.clone(),
         http_client,
         config,
         api_key_manager,
@@ -71,7 +71,7 @@ async fn setup_test_app() -> Router {
         auth_middleware,
     ));
 
-    Router::<AppState>::new()
+    let router = Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
         .nest("/api/v1/auth", auth::public_router())
         .nest("/api/v1/auth", protected_routes)
@@ -79,7 +79,14 @@ async fn setup_test_app() -> Router {
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/workspaces", protected_workspaces_routes)
         .with_state(state)
-        .layer(middleware::from_fn(correlation_id_middleware))
+        .layer(middleware::from_fn(correlation_id_middleware));
+
+    (router, db)
+}
+
+async fn setup_test_app() -> Router {
+    let (app, _db) = setup_test_app_with_db().await;
+    app
 }
 
 async fn read_json_body(response: axum::response::Response) -> Value {
@@ -219,6 +226,37 @@ async fn create_test_set_with_cases(
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_json_body(resp).await;
     body["data"]["id"].as_str().expect("缺少 id").to_string()
+}
+
+async fn create_optimization_task(
+    app: &Router,
+    workspace_id: &str,
+    token: &str,
+    task_mode: &str,
+    test_set_ids: Vec<String>,
+) -> String {
+    let create_req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/workspaces/{}/optimization-tasks", workspace_id),
+            json!({
+                "name": "task-1",
+                "description": null,
+                "goal": "g",
+                "execution_target_type": "dify",
+                "task_mode": task_mode,
+                "test_set_ids": test_set_ids
+            }),
+        ),
+        token,
+    );
+    let create_resp = app.clone().oneshot(create_req).await.unwrap();
+    assert_eq!(create_resp.status(), StatusCode::OK);
+    let create_body = read_json_body(create_resp).await;
+    create_body["data"]["id"]
+        .as_str()
+        .expect("缺少 id")
+        .to_string()
 }
 
 #[tokio::test]
@@ -517,5 +555,560 @@ async fn test_create_with_multiple_test_sets_then_get_reflects_all() {
     assert_eq!(
         get_body["data"]["test_set_ids"].as_array().unwrap().len(),
         2
+    );
+}
+
+#[tokio::test]
+async fn test_get_task_returns_normalized_default_config_includes_new_fields_when_config_json_null()
+{
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_get_default_cfg", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let get_req = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}",
+                workspace_id, task_id
+            ),
+        ),
+        &token,
+    );
+    let get_resp = app.clone().oneshot(get_req).await.unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+    let get_body = read_json_body(get_resp).await;
+
+    assert_eq!(get_body["data"]["config"]["candidate_prompt_count"], 5);
+    assert_eq!(
+        get_body["data"]["config"]["diversity_injection_threshold"],
+        3
+    );
+}
+
+#[tokio::test]
+async fn test_get_task_fills_default_for_new_fields_when_old_config_missing_them() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "opt_task_get_legacy_cfg", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let legacy_config = json!({
+        "schema_version": 1,
+        "initial_prompt": null,
+        "max_iterations": 10,
+        "pass_threshold_percent": 95,
+        "data_split": {
+            "train_percent": 80,
+            "validation_percent": 20,
+            "holdout_percent": 0
+        }
+    })
+    .to_string();
+
+    sqlx::query("UPDATE optimization_tasks SET config_json = ?1 WHERE id = ?2")
+        .bind(legacy_config)
+        .bind(&task_id)
+        .execute(&db)
+        .await
+        .expect("写入 legacy config_json 失败");
+
+    let get_req = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}",
+                workspace_id, task_id
+            ),
+        ),
+        &token,
+    );
+    let get_resp = app.clone().oneshot(get_req).await.unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+    let get_body = read_json_body(get_resp).await;
+
+    assert_eq!(get_body["data"]["config"]["candidate_prompt_count"], 5);
+    assert_eq!(
+        get_body["data"]["config"]["diversity_injection_threshold"],
+        3
+    );
+}
+
+#[tokio::test]
+async fn test_update_task_config_preserves_unknown_extra_fields_in_config_json() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "opt_task_cfg_preserve_extra", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let config_with_extra = json!({
+        "schema_version": 1,
+        "initial_prompt": null,
+        "max_iterations": 10,
+        "pass_threshold_percent": 95,
+        "candidate_prompt_count": 5,
+        "diversity_injection_threshold": 3,
+        "data_split": {
+            "train_percent": 80,
+            "validation_percent": 20,
+            "holdout_percent": 0
+        },
+        "future_field": 123
+    })
+    .to_string();
+
+    sqlx::query("UPDATE optimization_tasks SET config_json = ?1 WHERE id = ?2")
+        .bind(config_with_extra)
+        .bind(&task_id)
+        .execute(&db)
+        .await
+        .expect("写入 config_json 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 4,
+                "diversity_injection_threshold": 2,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["config"]["candidate_prompt_count"], 4);
+    assert_eq!(body["data"]["config"]["diversity_injection_threshold"], 2);
+
+    let updated_config_json: Option<String> =
+        sqlx::query_scalar("SELECT config_json FROM optimization_tasks WHERE id = ?1")
+            .bind(&task_id)
+            .fetch_optional(&db)
+            .await
+            .expect("查询 config_json 失败");
+    let updated_config_json = updated_config_json.expect("缺少 config_json");
+    let updated_value: Value =
+        serde_json::from_str(&updated_config_json).expect("解析更新后的 config_json 失败");
+    assert_eq!(updated_value["future_field"], 123);
+}
+
+#[tokio::test]
+async fn test_update_task_config_normalizes_empty_initial_prompt() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_cfg_empty_prompt", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": "",
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert!(body["data"]["config"]["initial_prompt"].is_null());
+    assert_eq!(body["data"]["config"]["max_iterations"], 10);
+    assert_eq!(body["data"]["config"]["pass_threshold_percent"], 95);
+    assert_eq!(body["data"]["config"]["candidate_prompt_count"], 5);
+    assert_eq!(body["data"]["config"]["diversity_injection_threshold"], 3);
+}
+
+#[tokio::test]
+async fn test_update_task_config_rejects_when_existing_config_json_invalid_to_avoid_data_loss() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "opt_task_cfg_bad_json", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    sqlx::query("UPDATE optimization_tasks SET config_json = ?1 WHERE id = ?2")
+        .bind("{not-json")
+        .bind(&task_id)
+        .execute(&db)
+        .await
+        .expect("写入 invalid config_json 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
+    let msg = body["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        msg.contains("任务配置解析失败"),
+        "期望错误消息包含“任务配置解析失败”，实际: {msg}"
+    );
+
+    let current_config_json: Option<String> =
+        sqlx::query_scalar("SELECT config_json FROM optimization_tasks WHERE id = ?1")
+            .bind(&task_id)
+            .fetch_optional(&db)
+            .await
+            .expect("查询 config_json 失败");
+    assert_eq!(
+        current_config_json.as_deref(),
+        Some("{not-json"),
+        "更新失败时不应覆盖既有 config_json"
+    );
+}
+
+#[tokio::test]
+async fn test_update_task_config_accepts_new_fields_boundary_values() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_cfg_new_fields_boundary", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 1,
+                "diversity_injection_threshold": 10,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["config"]["candidate_prompt_count"], 1);
+    assert_eq!(body["data"]["config"]["diversity_injection_threshold"], 10);
+}
+
+#[tokio::test]
+async fn test_update_task_config_rejects_out_of_range_values() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_cfg_invalid", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let invalid_payloads = vec![
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 0,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 101,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 70,
+            "validation_percent": 20
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 0,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 0,
+            "train_percent": 80,
+            "validation_percent": 20
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 11,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 11,
+            "train_percent": 80,
+            "validation_percent": 20
+        }),
+    ];
+
+    for payload in invalid_payloads {
+        let req = with_bearer(
+            build_json_request(
+                "PUT",
+                &format!(
+                    "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                    workspace_id, task_id
+                ),
+                payload,
+            ),
+            &token,
+        );
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = read_json_body(resp).await;
+        assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
+    }
+}
+
+#[tokio::test]
+async fn test_update_task_config_not_found() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_cfg_not_found", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, "missing-task"
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "OPTIMIZATION_TASK_NOT_FOUND");
+}
+
+#[tokio::test]
+async fn test_update_task_config_other_user_returns_workspace_not_found() {
+    let app = setup_test_app().await;
+
+    let token_a = register_user(&app, "opt_task_cfg_cross_user_a", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token_a).await;
+    let ts1 = create_test_set_with_cases(
+        &app,
+        &workspace_id,
+        &token_a,
+        "ts",
+        sample_exact_cases_json(),
+    )
+    .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token_a, "fixed", vec![ts1]).await;
+
+    let token_b = register_user(&app, "opt_task_cfg_cross_user_b", "TestPass123!").await;
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token_b,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "WORKSPACE_NOT_FOUND");
+}
+
+#[tokio::test]
+async fn test_update_task_config_rejects_too_large_initial_prompt_bytes() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_cfg_prompt_too_large", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let prompt = "a".repeat(20_001);
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": prompt,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
+}
+
+#[tokio::test]
+async fn test_update_task_config_rejects_oversize_config_json() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "opt_task_cfg_oversize_json", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    let extra_blob = "x".repeat(40_000);
+    let big_config = json!({
+        "schema_version": 1,
+        "initial_prompt": null,
+        "max_iterations": 10,
+        "pass_threshold_percent": 95,
+        "data_split": {
+            "train_percent": 80,
+            "validation_percent": 20,
+            "holdout_percent": 0
+        },
+        "extra_blob": extra_blob
+    })
+    .to_string();
+
+    sqlx::query("UPDATE optimization_tasks SET config_json = ?1 WHERE id = ?2")
+        .bind(big_config)
+        .bind(&task_id)
+        .execute(&db)
+        .await
+        .expect("写入 oversized config_json 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
+    let msg = body["error"]["message"].as_str().unwrap_or_default();
+    assert!(
+        msg.contains("任务配置过大"),
+        "期望错误消息包含“任务配置过大”，实际: {msg}"
     );
 }

@@ -2,6 +2,7 @@ import { UnauthorizedError, apiRequestWithAuth, isApiError } from '@/lib/api'
 import type { CreateOptimizationTaskRequest } from '@/types/generated/api/CreateOptimizationTaskRequest'
 import type { OptimizationTaskListItemResponse } from '@/types/generated/api/OptimizationTaskListItemResponse'
 import type { OptimizationTaskResponse } from '@/types/generated/api/OptimizationTaskResponse'
+import type { UpdateOptimizationTaskConfigRequest } from '@/types/generated/api/UpdateOptimizationTaskConfigRequest'
 
 export async function listOptimizationTasks(
   workspaceId: string,
@@ -68,3 +69,27 @@ export async function getOptimizationTask(
   return response.data
 }
 
+export async function updateOptimizationTaskConfig(
+  workspaceId: string,
+  taskId: string,
+  params: UpdateOptimizationTaskConfigRequest,
+  token: string
+): Promise<OptimizationTaskResponse> {
+  const response = await apiRequestWithAuth<OptimizationTaskResponse>(
+    `/workspaces/${workspaceId}/optimization-tasks/${taskId}/config`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(params),
+    },
+    token
+  )
+
+  if (isApiError(response)) {
+    if (response.error.code === 'UNAUTHORIZED') {
+      throw new UnauthorizedError(response.error.message)
+    }
+    throw new Error(response.error.message)
+  }
+
+  return response.data
+}

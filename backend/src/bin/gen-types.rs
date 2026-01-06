@@ -16,6 +16,7 @@ use prompt_faster::api::routes::generic::{
 use prompt_faster::api::routes::health::HealthResponse;
 use prompt_faster::api::routes::optimization_tasks::{
     CreateOptimizationTaskRequest, OptimizationTaskListItemResponse, OptimizationTaskResponse,
+    UpdateOptimizationTaskConfigRequest,
 };
 use prompt_faster::api::routes::test_set_templates::{
     SaveAsTemplateRequest, TestSetTemplateListItemResponse, TestSetTemplateResponse,
@@ -116,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     CreateOptimizationTaskRequest::export_all_to(&out_dir)?;
     OptimizationTaskResponse::export_all_to(&out_dir)?;
     OptimizationTaskListItemResponse::export_all_to(&out_dir)?;
+    UpdateOptimizationTaskConfigRequest::export_all_to(&out_dir)?;
 
     // 核心模型
     Workspace::export_all_to(&out_dir)?;

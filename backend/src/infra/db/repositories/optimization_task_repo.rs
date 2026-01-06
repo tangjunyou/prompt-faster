@@ -3,6 +3,10 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteRow;
 use thiserror::Error;
 
+use crate::domain::models::OptimizationTaskConfig;
+use crate::domain::models::optimization_task_config::{
+    OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES, serialize_config_with_existing_extra,
+};
 use crate::domain::models::{
     ExecutionTargetType, OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus,
 };
@@ -21,6 +25,9 @@ pub enum OptimizationTaskRepoError {
 
     #[error("优化任务未找到")]
     NotFound,
+
+    #[error("任务配置无效: {0}")]
+    InvalidConfig(String),
 }
 
 pub struct OptimizationTaskRepo;
@@ -302,6 +309,95 @@ impl OptimizationTaskRepo {
         .bind(task_id)
         .fetch_all(pool)
         .await?;
+
+        Ok(OptimizationTaskWithTestSets {
+            task,
+            test_set_ids: rels.into_iter().map(|(id,)| id).collect(),
+        })
+    }
+
+    pub async fn update_config_scoped(
+        pool: &SqlitePool,
+        user_id: &str,
+        workspace_id: &str,
+        task_id: &str,
+        config: OptimizationTaskConfig,
+    ) -> Result<OptimizationTaskWithTestSets, OptimizationTaskRepoError> {
+        let now = now_millis();
+        let mut tx = pool.begin().await?;
+
+        let workspace_exists =
+            sqlx::query_scalar::<_, i64>("SELECT 1 FROM workspaces WHERE id = ?1 AND user_id = ?2")
+                .bind(workspace_id)
+                .bind(user_id)
+                .fetch_optional(&mut *tx)
+                .await?
+                .is_some();
+        if !workspace_exists {
+            return Err(OptimizationTaskRepoError::WorkspaceNotFound);
+        }
+
+        let row = sqlx::query(
+            r#"
+            SELECT t.*
+            FROM optimization_tasks t
+            WHERE t.id = ?1 AND t.workspace_id = ?2
+            "#,
+        )
+        .bind(task_id)
+        .bind(workspace_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(row) = row else {
+            return Err(OptimizationTaskRepoError::NotFound);
+        };
+
+        let existing_config_json: Option<String> = row.try_get("config_json")?;
+        let config_json_bytes =
+            serialize_config_with_existing_extra(config, existing_config_json.as_deref())
+                .map_err(OptimizationTaskRepoError::InvalidConfig)?;
+        if config_json_bytes.len() > OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES {
+            return Err(OptimizationTaskRepoError::InvalidConfig(format!(
+                "任务配置过大（最大 {} bytes）",
+                OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES
+            )));
+        }
+        let config_json = String::from_utf8(config_json_bytes).map_err(|_| {
+            OptimizationTaskRepoError::InvalidConfig("任务配置编码失败".to_string())
+        })?;
+
+        sqlx::query(
+            r#"
+            UPDATE optimization_tasks
+            SET config_json = ?1, updated_at = ?2
+            WHERE id = ?3 AND workspace_id = ?4
+            "#,
+        )
+        .bind(&config_json)
+        .bind(now)
+        .bind(task_id)
+        .bind(workspace_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let mut task = row_to_entity(&row)?;
+        task.config_json = Some(config_json);
+        task.updated_at = now;
+
+        let rels = sqlx::query_as::<_, (String,)>(
+            r#"
+            SELECT test_set_id
+            FROM optimization_task_test_sets
+            WHERE optimization_task_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(task_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
 
         Ok(OptimizationTaskWithTestSets {
             task,
