@@ -47,7 +47,8 @@ const JSONL_FORMAT_HELP = {
   title: '导入格式（JSON Lines / JSONL）',
   description: '仅支持 txt（UTF-8），一行一个 TestCase JSON；空行会被跳过。',
   example: `{"id":"case-1","input":{"question":"你好，帮我写一段自我介绍"},"reference":{"Exact":{"expected":"（此处填写期望输出）"}}}
-{"id":"case-2","input":{"question":"用 JSON 输出一个用户对象"},"reference":{"Constrained":{"constraints":[{"name":"format","description":"必须是 JSON","weight":1.0}],"quality_dimensions":[{"name":"correctness","description":"字段合理且可解析","weight":1.0}]}}}`,
+{"id":"case-2","input":{"question":"用 JSON 输出一个用户对象"},"reference":{"Constrained":{"core_request":"必须是 JSON 且字段合理","constraints":[{"name":"format","description":"必须是 JSON","params":{"format":"json"},"weight":null}],"quality_dimensions":[]}}}
+{"id":"case-3","input":{"prompt":"写一段欢迎文案"},"reference":{"Constrained":{"core_request":"友好、简洁、鼓励探索","constraints":[{"name":"length","description":"长度限制","params":{"minChars":30,"maxChars":120},"weight":null}],"quality_dimensions":[]}}}`,
 } as const
 
 function validateCasesJson(parsed: unknown): string | null {
@@ -68,9 +69,46 @@ function validateCasesJson(parsed: unknown): string | null {
     if (typeof reference !== 'object' || reference === null || Array.isArray(reference)) {
       return `cases[${index}].reference 必须是对象`
     }
-    const refKeys = Object.keys(reference as Record<string, unknown>)
+
+    const refRecord = reference as Record<string, unknown>
+    const refKeys = Object.keys(refRecord)
     if (refKeys.length !== 1 || !['Exact', 'Constrained', 'Hybrid'].includes(refKeys[0]!)) {
       return `cases[${index}].reference 必须是 Exact / Constrained / Hybrid 之一`
+    }
+
+    const variant = refKeys[0]!
+    const payload = refRecord[variant]
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      return `cases[${index}].reference.${variant} 必须是对象`
+    }
+    const payloadRecord = payload as Record<string, unknown>
+
+    if (variant === 'Exact') {
+      if (typeof payloadRecord.expected !== 'string') {
+        return `cases[${index}].reference.Exact.expected 必须是字符串`
+      }
+    } else if (variant === 'Constrained') {
+      if (
+        'core_request' in payloadRecord &&
+        payloadRecord.core_request !== null &&
+        typeof payloadRecord.core_request !== 'string'
+      ) {
+        return `cases[${index}].reference.Constrained.core_request 必须是 string|null`
+      }
+      if (!Array.isArray(payloadRecord.constraints)) {
+        return `cases[${index}].reference.Constrained.constraints 必须是数组`
+      }
+      if (!Array.isArray(payloadRecord.quality_dimensions)) {
+        return `cases[${index}].reference.Constrained.quality_dimensions 必须是数组`
+      }
+    } else if (variant === 'Hybrid') {
+      const exactParts = payloadRecord.exact_parts
+      if (typeof exactParts !== 'object' || exactParts === null || Array.isArray(exactParts)) {
+        return `cases[${index}].reference.Hybrid.exact_parts 必须是对象`
+      }
+      if (!Array.isArray(payloadRecord.constraints)) {
+        return `cases[${index}].reference.Hybrid.constraints 必须是数组`
+      }
     }
   }
 
@@ -592,6 +630,185 @@ export function TestSetsView() {
         return prev
       }
     })
+  }
+
+  const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+
+  const parseOptionalNonNegativeInt = (raw: string): number | undefined => {
+    const trimmed = raw.trim()
+    if (!trimmed) return undefined
+    const num = Number(trimmed)
+    if (!Number.isFinite(num)) return undefined
+    const floored = Math.floor(num)
+    if (floored < 0) return undefined
+    return floored
+  }
+
+  const parseKeywords = (raw: string): string[] =>
+    raw
+      .split(/[\n,，]+/g)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+
+  const updateConstrainedAtIndex = (
+    index: number,
+    updater: (constrained: Record<string, unknown>) => Record<string, unknown>
+  ) => {
+    setCasesJson((prev) => {
+      try {
+        const parsed = JSON.parse(prev) as unknown
+        if (!Array.isArray(parsed)) return prev
+        if (index < 0 || index >= parsed.length) return prev
+
+        const next = parsed.map((item, i) => {
+          if (i !== index) return item
+          if (!isPlainObject(item)) return item
+          const reference = item.reference
+          if (!isPlainObject(reference)) return item
+
+          const constrained = reference.Constrained
+          if (!isPlainObject(constrained)) return item
+
+          return {
+            ...item,
+            reference: {
+              ...reference,
+              Constrained: updater(constrained),
+            },
+          }
+        })
+
+        return JSON.stringify(next, null, 2)
+      } catch {
+        return prev
+      }
+    })
+  }
+
+  const updateCoreRequestAtIndex = (index: number, coreRequest: string) => {
+    updateConstrainedAtIndex(index, (constrained) => {
+      const trimmed = coreRequest.trim()
+      if (!trimmed) {
+        const next = { ...constrained }
+        delete next.core_request
+        return next
+      }
+      return { ...constrained, core_request: coreRequest }
+    })
+  }
+
+  const updateConstraintAtIndex = (
+    index: number,
+    name: string,
+    description: string,
+    paramsUpdater: (prevParams: Record<string, unknown> | null) => Record<string, unknown> | null
+  ) => {
+    updateConstrainedAtIndex(index, (constrained) => {
+      const rawConstraints = constrained.constraints
+      const constraints = Array.isArray(rawConstraints) ? rawConstraints.slice() : []
+
+      const firstMatchIndex = constraints.findIndex(
+        (c) => isPlainObject(c) && c.name === name
+      )
+
+      const existing = firstMatchIndex >= 0 && isPlainObject(constraints[firstMatchIndex])
+        ? (constraints[firstMatchIndex] as Record<string, unknown>)
+        : null
+
+      const prevParamsRaw = existing?.params
+      const prevParams = isPlainObject(prevParamsRaw) ? (prevParamsRaw as Record<string, unknown>) : null
+      const nextParams = paramsUpdater(prevParams)
+
+      if (nextParams === null) {
+        if (firstMatchIndex >= 0) constraints.splice(firstMatchIndex, 1)
+        return { ...constrained, constraints }
+      }
+
+      const existingDescription =
+        typeof existing?.description === 'string' ? existing.description : undefined
+      const base = {
+        name,
+        description: existingDescription ?? description,
+        params: nextParams,
+      }
+
+      if (firstMatchIndex >= 0) {
+        if (existing) constraints[firstMatchIndex] = { ...existing, ...base }
+        return { ...constrained, constraints }
+      }
+
+      constraints.push({ ...base, weight: null })
+      return { ...constrained, constraints }
+    })
+  }
+
+  const updateLengthMinAtIndex = (index: number, raw: string) => {
+    const nextMin = parseOptionalNonNegativeInt(raw)
+    updateConstraintAtIndex(index, 'length', '长度限制', (prevParams) => {
+      const base = prevParams ? { ...prevParams } : {}
+      const prevMax = typeof base.maxChars === 'number' ? base.maxChars : undefined
+
+      if (nextMin === undefined) delete base.minChars
+      else base.minChars = nextMin
+
+      if (prevMax === undefined) delete base.maxChars
+      else base.maxChars = prevMax
+
+      const min = typeof base.minChars === 'number' ? base.minChars : undefined
+      const max = typeof base.maxChars === 'number' ? base.maxChars : undefined
+      if (min === undefined && max === undefined) return null
+      return base
+    })
+  }
+
+  const updateLengthMaxAtIndex = (index: number, raw: string) => {
+    const nextMax = parseOptionalNonNegativeInt(raw)
+    updateConstraintAtIndex(index, 'length', '长度限制', (prevParams) => {
+      const base = prevParams ? { ...prevParams } : {}
+      const prevMin = typeof base.minChars === 'number' ? base.minChars : undefined
+
+      if (prevMin === undefined) delete base.minChars
+      else base.minChars = prevMin
+
+      if (nextMax === undefined) delete base.maxChars
+      else base.maxChars = nextMax
+
+      const min = typeof base.minChars === 'number' ? base.minChars : undefined
+      const max = typeof base.maxChars === 'number' ? base.maxChars : undefined
+      if (min === undefined && max === undefined) return null
+      return base
+    })
+  }
+
+  const updateMustIncludeAtIndex = (index: number, raw: string) => {
+    const keywords = parseKeywords(raw)
+    updateConstraintAtIndex(
+      index,
+      'must_include',
+      '必含关键词',
+      (prevParams) => (keywords.length ? { ...(prevParams ?? {}), keywords } : null)
+    )
+  }
+
+  const updateMustExcludeAtIndex = (index: number, raw: string) => {
+    const keywords = parseKeywords(raw)
+    updateConstraintAtIndex(
+      index,
+      'must_exclude',
+      '禁止内容',
+      (prevParams) => (keywords.length ? { ...(prevParams ?? {}), keywords } : null)
+    )
+  }
+
+  const updateFormatAtIndex = (index: number, raw: string) => {
+    const trimmed = raw.trim()
+    updateConstraintAtIndex(
+      index,
+      'format',
+      '格式要求',
+      (prevParams) => (trimmed ? { ...(prevParams ?? {}), format: trimmed } : null)
+    )
   }
 
   const sampleInputKeys = useMemo(() => {
@@ -1180,6 +1397,221 @@ export function TestSetsView() {
                 </div>
               </div>
             )}
+
+            {casesForExpectedEditor &&
+              casesForExpectedEditor.some((c) => 'Constrained' in c.reference) && (
+                <div className="grid gap-3 rounded-md border border-input p-3">
+                  <div className="grid gap-1">
+                    <div className="text-sm font-medium">创意任务配置（Constrained）</div>
+                    <div className="text-xs text-muted-foreground">
+                      将写入{' '}
+                      <span className="font-mono">
+                        cases[*].reference.Constrained.core_request / constraints[*].params
+                      </span>
+                      （JSON 编辑仍为最终数据源）。
+                    </div>
+                  </div>
+                  <div className="grid gap-4">
+                    {casesForExpectedEditor.map((c, index) => {
+                      if (!('Constrained' in c.reference)) {
+                        return (
+                          <div key={c.id} className="grid gap-2">
+                            <div className="text-xs text-muted-foreground">{c.id}</div>
+                            <div className="text-xs text-muted-foreground">
+                              该用例 reference 不是 Constrained（不会修改）
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      const constrained = c.reference.Constrained as unknown as Record<string, unknown>
+                      const constraints = Array.isArray(constrained.constraints)
+                        ? (constrained.constraints as unknown[])
+                        : []
+
+                      const findConstraint = (name: string) =>
+                        constraints.find(
+                          (it) => isPlainObject(it) && it.name === name
+                        ) as Record<string, unknown> | undefined
+
+                      const getParamsRaw = (name: string) => findConstraint(name)?.params
+                      const getParamsObject = (name: string) => {
+                        const raw = getParamsRaw(name)
+                        return isPlainObject(raw) ? (raw as Record<string, unknown>) : null
+                      }
+                      const hasNonObjectParams = (name: string) => {
+                        const raw = getParamsRaw(name)
+                        return raw !== undefined && raw !== null && !isPlainObject(raw)
+                      }
+
+                      const confirmOverwriteNonObjectParams = (label: string) =>
+                        window.confirm(
+                          `检测到「${label}」的 params 不是对象（可能是数组/字符串）。继续编辑将覆盖原值并可能丢失数据。是否继续？`
+                        )
+
+                      const lengthHasNonObjectParams = hasNonObjectParams('length')
+                      const includeHasNonObjectParams = hasNonObjectParams('must_include')
+                      const excludeHasNonObjectParams = hasNonObjectParams('must_exclude')
+                      const formatHasNonObjectParams = hasNonObjectParams('format')
+
+                      const lengthParams = getParamsObject('length')
+                      const minChars =
+                        typeof lengthParams?.minChars === 'number'
+                          ? String(lengthParams.minChars)
+                          : ''
+                      const maxChars =
+                        typeof lengthParams?.maxChars === 'number'
+                          ? String(lengthParams.maxChars)
+                          : ''
+
+                      const includeParams = getParamsObject('must_include')
+                      const includeKeywords = Array.isArray(includeParams?.keywords)
+                        ? includeParams?.keywords.filter((k) => typeof k === 'string').join('\n')
+                        : ''
+
+                      const excludeParams = getParamsObject('must_exclude')
+                      const excludeKeywords = Array.isArray(excludeParams?.keywords)
+                        ? excludeParams?.keywords.filter((k) => typeof k === 'string').join('\n')
+                        : ''
+
+                      const formatParams = getParamsObject('format')
+                      const formatValue = typeof formatParams?.format === 'string' ? formatParams.format : ''
+
+                      const coreRequestValue =
+                        typeof constrained.core_request === 'string' ? constrained.core_request : ''
+
+                      return (
+                        <div key={c.id} className="grid gap-3 rounded-md border bg-muted/10 p-3">
+                          <div className="text-xs text-muted-foreground">{c.id}</div>
+
+                          <div className="grid gap-2">
+                            <Label htmlFor={`core-request-${c.id}`}>核心诉求</Label>
+                            <textarea
+                              id={`core-request-${c.id}`}
+                              className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              value={coreRequestValue}
+                              onChange={(e) => updateCoreRequestAtIndex(index, e.target.value)}
+                              placeholder="输入核心诉求（自然语言）"
+                            />
+                            <div className="text-xs text-muted-foreground">
+                              提示：trim 为空会删除 <span className="font-mono">core_request</span> 字段（不强制填写）。
+                            </div>
+                          </div>
+
+                          <div className="grid gap-3">
+                            <div className="text-sm font-medium">结构化约束</div>
+                            {(lengthHasNonObjectParams ||
+                              includeHasNonObjectParams ||
+                              excludeHasNonObjectParams ||
+                              formatHasNonObjectParams) && (
+                              <div className="rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-900">
+                                检测到部分约束的 <span className="font-mono">params</span> 不是对象（例如数组/字符串）。
+                                使用表单编辑这些约束时会提示是否覆盖原值。
+                              </div>
+                            )}
+
+                            <div className="grid gap-2">
+                              <div className="text-xs font-medium">长度限制</div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="grid gap-1">
+                                  <Label htmlFor={`min-chars-${c.id}`}>最小字符数</Label>
+                                  <Input
+                                    id={`min-chars-${c.id}`}
+                                    type="number"
+                                    value={minChars}
+                                    onChange={(e) => {
+                                      const nextMin = parseOptionalNonNegativeInt(e.target.value)
+                                      const curMax = parseOptionalNonNegativeInt(maxChars)
+                                      const willRemove = nextMin === undefined && curMax === undefined
+                                      if (!willRemove && lengthHasNonObjectParams) {
+                                        if (!confirmOverwriteNonObjectParams('长度限制')) return
+                                      }
+                                      updateLengthMinAtIndex(index, e.target.value)
+                                    }}
+                                    placeholder="例如 30"
+                                  />
+                                </div>
+                                <div className="grid gap-1">
+                                  <Label htmlFor={`max-chars-${c.id}`}>最大字符数</Label>
+                                  <Input
+                                    id={`max-chars-${c.id}`}
+                                    type="number"
+                                    value={maxChars}
+                                    onChange={(e) => {
+                                      const nextMax = parseOptionalNonNegativeInt(e.target.value)
+                                      const curMin = parseOptionalNonNegativeInt(minChars)
+                                      const willRemove = curMin === undefined && nextMax === undefined
+                                      if (!willRemove && lengthHasNonObjectParams) {
+                                        if (!confirmOverwriteNonObjectParams('长度限制')) return
+                                      }
+                                      updateLengthMaxAtIndex(index, e.target.value)
+                                    }}
+                                    placeholder="例如 120"
+                                  />
+                                </div>
+                              </div>
+                              <div className="text-xs text-muted-foreground">两项都清空时将移除 length 约束。</div>
+                            </div>
+
+                            <div className="grid gap-2">
+                              <Label htmlFor={`must-include-${c.id}`}>必含关键词（每行一个）</Label>
+                              <textarea
+                                id={`must-include-${c.id}`}
+                                className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                value={includeKeywords}
+                                onChange={(e) => {
+                                  const keywords = parseKeywords(e.target.value)
+                                  const willRemove = keywords.length === 0
+                                  if (!willRemove && includeHasNonObjectParams) {
+                                    if (!confirmOverwriteNonObjectParams('必含关键词')) return
+                                  }
+                                  updateMustIncludeAtIndex(index, e.target.value)
+                                }}
+                                placeholder="例如：欢迎\n一起"
+                              />
+                            </div>
+
+                            <div className="grid gap-2">
+                              <Label htmlFor={`must-exclude-${c.id}`}>禁止内容（每行一个）</Label>
+                              <textarea
+                                id={`must-exclude-${c.id}`}
+                                className="min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                value={excludeKeywords}
+                                onChange={(e) => {
+                                  const keywords = parseKeywords(e.target.value)
+                                  const willRemove = keywords.length === 0
+                                  if (!willRemove && excludeHasNonObjectParams) {
+                                    if (!confirmOverwriteNonObjectParams('禁止内容')) return
+                                  }
+                                  updateMustExcludeAtIndex(index, e.target.value)
+                                }}
+                                placeholder="例如：政治\n敏感"
+                              />
+                            </div>
+
+                            <div className="grid gap-2">
+                              <Label htmlFor={`format-${c.id}`}>格式要求</Label>
+                              <Input
+                                id={`format-${c.id}`}
+                                value={formatValue}
+                                onChange={(e) => {
+                                  const trimmed = e.target.value.trim()
+                                  const willRemove = trimmed.length === 0
+                                  if (!willRemove && formatHasNonObjectParams) {
+                                    if (!confirmOverwriteNonObjectParams('格式要求')) return
+                                  }
+                                  updateFormatAtIndex(index, e.target.value)
+                                }}
+                                placeholder="例如：json / markdown / plain_text"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
             {saveErrorMessage && (
               <div className="text-sm text-red-500">保存失败：{saveErrorMessage}</div>

@@ -36,8 +36,9 @@ function validateConstraintItem(item: unknown, index: number, path: string): str
   if (!isPlainObject(item)) return `${path}[${index}] 必须是对象`
   if (typeof item.name !== 'string') return `${path}[${index}].name 必须是字符串`
   if (typeof item.description !== 'string') return `${path}[${index}].description 必须是字符串`
-  if (!('weight' in item)) return `${path}[${index}].weight 必须存在（number|null）`
-  if (item.weight !== null && typeof item.weight !== 'number') return `${path}[${index}].weight 必须是 number|null`
+  if ('weight' in item && item.weight !== null && typeof item.weight !== 'number') {
+    return `${path}[${index}].weight 必须是 number|null`
+  }
   return null
 }
 
@@ -77,6 +78,9 @@ function validateReference(reference: unknown): string | null {
   }
 
   if (variant === 'Constrained') {
+    if ('core_request' in payload && payload.core_request !== null && typeof payload.core_request !== 'string') {
+      return 'reference.Constrained.core_request 必须是 string|null'
+    }
     if (!Array.isArray(payload.constraints)) return 'reference.Constrained.constraints 必须是数组'
     if (!Array.isArray(payload.quality_dimensions)) {
       return 'reference.Constrained.quality_dimensions 必须是数组'
