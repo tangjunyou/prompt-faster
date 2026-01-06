@@ -681,9 +681,14 @@ async fn test_update_task_config_other_user_returns_workspace_not_found() {
 
     let token_a = register_user(&app, "opt_task_cfg_cross_user_a", "TestPass123!").await;
     let workspace_id = create_workspace(&app, &token_a).await;
-    let ts1 =
-        create_test_set_with_cases(&app, &workspace_id, &token_a, "ts", sample_exact_cases_json())
-            .await;
+    let ts1 = create_test_set_with_cases(
+        &app,
+        &workspace_id,
+        &token_a,
+        "ts",
+        sample_exact_cases_json(),
+    )
+    .await;
     let task_id = create_optimization_task(&app, &workspace_id, &token_a, "fixed", vec![ts1]).await;
 
     let token_b = register_user(&app, "opt_task_cfg_cross_user_b", "TestPass123!").await;
