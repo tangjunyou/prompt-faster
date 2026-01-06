@@ -16,6 +16,12 @@ pub const OPTIMIZATION_TASK_CONFIG_MAX_ITERATIONS_MAX: u32 = 100;
 pub const OPTIMIZATION_TASK_CONFIG_PASS_THRESHOLD_MIN: u8 = 1;
 pub const OPTIMIZATION_TASK_CONFIG_PASS_THRESHOLD_MAX: u8 = 100;
 
+pub const OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MIN: u32 = 1;
+pub const OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MAX: u32 = 10;
+
+pub const OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MIN: u32 = 1;
+pub const OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MAX: u32 = 10;
+
 /// 防止 config_json 膨胀（未来可根据产品需要调整）
 pub const OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES: usize = 32 * 1024; // 32KB
 
@@ -50,6 +56,8 @@ pub struct OptimizationTaskConfig {
     pub initial_prompt: Option<String>,
     pub max_iterations: u32,
     pub pass_threshold_percent: u8,
+    pub candidate_prompt_count: u32,
+    pub diversity_injection_threshold: u32,
     pub data_split: DataSplitPercentConfig,
 }
 
@@ -60,6 +68,8 @@ impl Default for OptimizationTaskConfig {
             initial_prompt: None,
             max_iterations: 10,
             pass_threshold_percent: 95,
+            candidate_prompt_count: 5,
+            diversity_injection_threshold: 3,
             data_split: DataSplitPercentConfig::default(),
         }
     }
@@ -67,7 +77,7 @@ impl Default for OptimizationTaskConfig {
 
 impl OptimizationTaskConfig {
     pub fn normalized_from_config_json(raw: Option<&str>) -> Self {
-        OptimizationTaskConfigStorage::from_config_json(raw)
+        OptimizationTaskConfigStorage::from_config_json_lossy(raw)
             .into_public()
             .normalized()
     }
@@ -92,6 +102,28 @@ impl OptimizationTaskConfig {
             || self.pass_threshold_percent > OPTIMIZATION_TASK_CONFIG_PASS_THRESHOLD_MAX
         {
             return Err("通过率阈值仅允许 1-100%".to_string());
+        }
+
+        if self.candidate_prompt_count < OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MIN
+            || self.candidate_prompt_count > OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MAX
+        {
+            return Err(format!(
+                "候选 Prompt 生成数量仅允许 {}-{}",
+                OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MIN,
+                OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MAX
+            ));
+        }
+
+        if self.diversity_injection_threshold
+            < OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MIN
+            || self.diversity_injection_threshold
+                > OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MAX
+        {
+            return Err(format!(
+                "多样性注入阈值仅允许 {}-{}",
+                OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MIN,
+                OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MAX
+            ));
         }
 
         if let Some(p) = &self.initial_prompt {
@@ -128,6 +160,14 @@ fn normalize_initial_prompt(raw: Option<String>) -> Option<String> {
     })
 }
 
+fn default_candidate_prompt_count() -> u32 {
+    OptimizationTaskConfig::default().candidate_prompt_count
+}
+
+fn default_diversity_injection_threshold() -> u32 {
+    OptimizationTaskConfig::default().diversity_injection_threshold
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 struct OptimizationTaskConfigStorage {
@@ -135,6 +175,10 @@ struct OptimizationTaskConfigStorage {
     pub initial_prompt: Option<String>,
     pub max_iterations: u32,
     pub pass_threshold_percent: u8,
+    #[serde(default = "default_candidate_prompt_count")]
+    pub candidate_prompt_count: u32,
+    #[serde(default = "default_diversity_injection_threshold")]
+    pub diversity_injection_threshold: u32,
     pub data_split: DataSplitPercentConfig,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -148,6 +192,8 @@ impl Default for OptimizationTaskConfigStorage {
             initial_prompt: base.initial_prompt,
             max_iterations: base.max_iterations,
             pass_threshold_percent: base.pass_threshold_percent,
+            candidate_prompt_count: base.candidate_prompt_count,
+            diversity_injection_threshold: base.diversity_injection_threshold,
             data_split: base.data_split,
             extra: BTreeMap::new(),
         }
@@ -155,7 +201,7 @@ impl Default for OptimizationTaskConfigStorage {
 }
 
 impl OptimizationTaskConfigStorage {
-    fn from_config_json(raw: Option<&str>) -> Self {
+    fn from_config_json_lossy(raw: Option<&str>) -> Self {
         let Some(raw) = raw else {
             return Self::default();
         };
@@ -167,12 +213,26 @@ impl OptimizationTaskConfigStorage {
         serde_json::from_str::<Self>(raw).unwrap_or_else(|_| Self::default())
     }
 
+    fn try_from_config_json(raw: Option<&str>) -> Result<Self, String> {
+        let Some(raw) = raw else {
+            return Ok(Self::default());
+        };
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Ok(Self::default());
+        }
+
+        serde_json::from_str::<Self>(raw).map_err(|_| "任务配置解析失败（请尝试重置为默认配置后再更新）".to_string())
+    }
+
     fn into_public(self) -> OptimizationTaskConfig {
         OptimizationTaskConfig {
             schema_version: self.schema_version,
             initial_prompt: self.initial_prompt,
             max_iterations: self.max_iterations,
             pass_threshold_percent: self.pass_threshold_percent,
+            candidate_prompt_count: self.candidate_prompt_count,
+            diversity_injection_threshold: self.diversity_injection_threshold,
             data_split: self.data_split,
         }
     }
@@ -186,6 +246,8 @@ impl OptimizationTaskConfigStorage {
             initial_prompt: config.initial_prompt,
             max_iterations: config.max_iterations,
             pass_threshold_percent: config.pass_threshold_percent,
+            candidate_prompt_count: config.candidate_prompt_count,
+            diversity_injection_threshold: config.diversity_injection_threshold,
             data_split: config.data_split,
             extra: existing.extra,
         }
@@ -200,7 +262,7 @@ pub fn serialize_config_with_existing_extra(
     config: OptimizationTaskConfig,
     existing_raw: Option<&str>,
 ) -> Result<Vec<u8>, String> {
-    let existing = OptimizationTaskConfigStorage::from_config_json(existing_raw);
+    let existing = OptimizationTaskConfigStorage::try_from_config_json(existing_raw)?;
     let storage = OptimizationTaskConfigStorage::from_public_and_existing_extra(config, existing);
     storage
         .to_config_json_bytes()

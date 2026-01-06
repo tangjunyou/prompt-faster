@@ -75,6 +75,8 @@ pub struct UpdateOptimizationTaskConfigRequest {
     pub initial_prompt: Option<String>,
     pub max_iterations: u32,
     pub pass_threshold_percent: u8,
+    pub candidate_prompt_count: u32,
+    pub diversity_injection_threshold: u32,
     pub train_percent: u8,
     pub validation_percent: u8,
 }
@@ -582,6 +584,8 @@ pub(crate) async fn update_optimization_task_config(
         initial_prompt: req.initial_prompt,
         max_iterations: req.max_iterations,
         pass_threshold_percent: req.pass_threshold_percent,
+        candidate_prompt_count: req.candidate_prompt_count,
+        diversity_injection_threshold: req.diversity_injection_threshold,
         data_split: DataSplitPercentConfig {
             train_percent: req.train_percent,
             validation_percent: req.validation_percent,

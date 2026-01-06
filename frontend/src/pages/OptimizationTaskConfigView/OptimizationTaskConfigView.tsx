@@ -14,6 +14,25 @@ import type { OptimizationTaskResponse } from '@/types/generated/api/Optimizatio
 const EMPTY_INITIAL_PROMPT_HINT =
   '留空时，系统将在首次迭代中基于优化目标和测试集自动生成初始 Prompt'
 
+const CANDIDATE_PROMPT_COUNT_MIN = 1
+const CANDIDATE_PROMPT_COUNT_MAX = 10
+
+const DIVERSITY_INJECTION_THRESHOLD_MIN = 1
+const DIVERSITY_INJECTION_THRESHOLD_MAX = 10
+
+function validateIntegerInRange(value: number, min: number, max: number, label: string) {
+  if (!Number.isFinite(value)) {
+    return `${label}必须为数字`
+  }
+  if (!Number.isInteger(value)) {
+    return `${label}必须为整数`
+  }
+  if (value < min || value > max) {
+    return `${label}仅允许 ${min}-${max}`
+  }
+  return null
+}
+
 export function OptimizationTaskConfigView() {
   const workspaceId = useParams().id ?? ''
   const taskId = useParams().taskId ?? ''
@@ -33,7 +52,7 @@ export function OptimizationTaskConfigView() {
             任务配置{task?.name ? `：${task.name}` : ''}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            配置初始 Prompt 与迭代终止条件（最大轮数 / 通过率阈值 / 数据划分比例）。
+            配置初始 Prompt、迭代终止条件与算法参数（候选 Prompt 数量 / 多样性注入阈值）。
           </p>
         </div>
         <div className="shrink-0">
@@ -78,6 +97,10 @@ function OptimizationTaskConfigForm(props: {
   const [initialPrompt, setInitialPrompt] = useState(task.config.initial_prompt ?? '')
   const [maxIterations, setMaxIterations] = useState(task.config.max_iterations)
   const [passThresholdPercent, setPassThresholdPercent] = useState(task.config.pass_threshold_percent)
+  const [candidatePromptCount, setCandidatePromptCount] = useState(task.config.candidate_prompt_count)
+  const [diversityInjectionThreshold, setDiversityInjectionThreshold] = useState(
+    task.config.diversity_injection_threshold
+  )
   const [trainPercent, setTrainPercent] = useState(task.config.data_split.train_percent)
   const [validationPercent, setValidationPercent] = useState(task.config.data_split.validation_percent)
 
@@ -95,18 +118,73 @@ function OptimizationTaskConfigForm(props: {
     setLocalError(null)
     setSuccessMessage(null)
 
-    const sum = Number(trainPercent) + Number(validationPercent)
+    const maxIterationsValue = Number(maxIterations)
+    const passThresholdValue = Number(passThresholdPercent)
+    const candidatePromptCountValue = Number(candidatePromptCount)
+    const diversityInjectionThresholdValue = Number(diversityInjectionThreshold)
+    const trainPercentValue = Number(trainPercent)
+    const validationPercentValue = Number(validationPercent)
+
+    const maxIterationsError = validateIntegerInRange(maxIterationsValue, 1, 100, '最大迭代轮数')
+    if (maxIterationsError) {
+      setLocalError(maxIterationsError)
+      return
+    }
+
+    const passThresholdError = validateIntegerInRange(passThresholdValue, 1, 100, '通过率阈值（%）')
+    if (passThresholdError) {
+      setLocalError(passThresholdError)
+      return
+    }
+
+    const candidatePromptCountError = validateIntegerInRange(
+      candidatePromptCountValue,
+      CANDIDATE_PROMPT_COUNT_MIN,
+      CANDIDATE_PROMPT_COUNT_MAX,
+      '候选 Prompt 生成数量'
+    )
+    if (candidatePromptCountError) {
+      setLocalError(candidatePromptCountError)
+      return
+    }
+
+    const diversityInjectionThresholdError = validateIntegerInRange(
+      diversityInjectionThresholdValue,
+      DIVERSITY_INJECTION_THRESHOLD_MIN,
+      DIVERSITY_INJECTION_THRESHOLD_MAX,
+      '多样性注入阈值'
+    )
+    if (diversityInjectionThresholdError) {
+      setLocalError(diversityInjectionThresholdError)
+      return
+    }
+
+    const trainPercentError = validateIntegerInRange(trainPercentValue, 0, 100, 'Train%')
+    if (trainPercentError) {
+      setLocalError(trainPercentError)
+      return
+    }
+
+    const validationPercentError = validateIntegerInRange(validationPercentValue, 0, 100, 'Validation%')
+    if (validationPercentError) {
+      setLocalError(validationPercentError)
+      return
+    }
+
+    const sum = trainPercentValue + validationPercentValue
     if (sum !== 100) {
       setLocalError('Train% + Validation% 必须等于 100')
       return
     }
 
     const payload: UpdateOptimizationTaskConfigRequest = {
-      initial_prompt: initialPrompt,
-      max_iterations: Number(maxIterations),
-      pass_threshold_percent: Number(passThresholdPercent),
-      train_percent: Number(trainPercent),
-      validation_percent: Number(validationPercent),
+      initial_prompt: initialPrompt.trim() === '' ? null : initialPrompt.trim(),
+      max_iterations: maxIterationsValue,
+      pass_threshold_percent: passThresholdValue,
+      candidate_prompt_count: candidatePromptCountValue,
+      diversity_injection_threshold: diversityInjectionThresholdValue,
+      train_percent: trainPercentValue,
+      validation_percent: validationPercentValue,
     }
 
     try {
@@ -114,6 +192,8 @@ function OptimizationTaskConfigForm(props: {
       setInitialPrompt(updated.config.initial_prompt ?? '')
       setMaxIterations(updated.config.max_iterations)
       setPassThresholdPercent(updated.config.pass_threshold_percent)
+      setCandidatePromptCount(updated.config.candidate_prompt_count)
+      setDiversityInjectionThreshold(updated.config.diversity_injection_threshold)
       setTrainPercent(updated.config.data_split.train_percent)
       setValidationPercent(updated.config.data_split.validation_percent)
       setSuccessMessage('保存成功')
@@ -123,7 +203,7 @@ function OptimizationTaskConfigForm(props: {
   }
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+    <form className="flex flex-col gap-4" noValidate onSubmit={handleSubmit}>
       <div className="grid gap-2">
         <Label htmlFor="initial-prompt">初始 Prompt（可空）</Label>
         <textarea
@@ -162,6 +242,36 @@ function OptimizationTaskConfigForm(props: {
         />
         <div className="text-xs text-muted-foreground">
           当 Validation 通过率达到该阈值时，认为已达标并停止迭代（默认推荐值：95%）。
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="candidate-prompt-count">候选 Prompt 生成数量</Label>
+        <Input
+          id="candidate-prompt-count"
+          type="number"
+          min={CANDIDATE_PROMPT_COUNT_MIN}
+          max={CANDIDATE_PROMPT_COUNT_MAX}
+          value={candidatePromptCount}
+          onChange={(e) => setCandidatePromptCount(Number(e.target.value))}
+        />
+        <div className="text-xs text-muted-foreground">
+          每轮迭代将生成多个候选 Prompt 供评估与选择；数量越多探索更充分，但耗时/成本更高（推荐 3-5，默认 5）。
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="diversity-injection-threshold">多样性注入阈值（连续失败次数）</Label>
+        <Input
+          id="diversity-injection-threshold"
+          type="number"
+          min={DIVERSITY_INJECTION_THRESHOLD_MIN}
+          max={DIVERSITY_INJECTION_THRESHOLD_MAX}
+          value={diversityInjectionThreshold}
+          onChange={(e) => setDiversityInjectionThreshold(Number(e.target.value))}
+        />
+        <div className="text-xs text-muted-foreground">
+          当连续失败达到该次数后触发多样性注入，用于跳出“卡住”状态并扩大探索空间（默认推荐值：3）。
         </div>
       </div>
 

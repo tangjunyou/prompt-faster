@@ -14,6 +14,7 @@ import type { UpdateOptimizationTaskConfigRequest } from '@/types/generated/api/
 const API_BASE = 'http://localhost:3000/api/v1'
 
 let task: OptimizationTaskResponse | null = null
+let putCallCount = 0
 
 const server = setupServer(
   http.get(`${API_BASE}/workspaces/:workspaceId/optimization-tasks/:taskId`, ({ request, params }) => {
@@ -41,6 +42,7 @@ const server = setupServer(
   http.put(
     `${API_BASE}/workspaces/:workspaceId/optimization-tasks/:taskId/config`,
     async ({ request }) => {
+      putCallCount += 1
       const auth = request.headers.get('authorization')
       if (auth !== 'Bearer test-token') {
         return HttpResponse.json(
@@ -64,6 +66,8 @@ const server = setupServer(
             initial_prompt: normalizedInitialPrompt,
             max_iterations: body.max_iterations,
             pass_threshold_percent: body.pass_threshold_percent,
+            candidate_prompt_count: body.candidate_prompt_count,
+            diversity_injection_threshold: body.diversity_injection_threshold,
             data_split: {
               train_percent: body.train_percent,
               validation_percent: body.validation_percent,
@@ -104,6 +108,7 @@ describe('OptimizationTaskConfigView', () => {
   afterAll(() => server.close())
 
   beforeEach(() => {
+    putCallCount = 0
     const currentUser: UserInfo = { id: 'u1', username: 'user1' }
     useAuthStore.setState({
       authStatus: 'authenticated',
@@ -127,6 +132,8 @@ describe('OptimizationTaskConfigView', () => {
         initial_prompt: null,
         max_iterations: 10,
         pass_threshold_percent: 95,
+        candidate_prompt_count: 5,
+        diversity_injection_threshold: 3,
         data_split: { train_percent: 80, validation_percent: 20, holdout_percent: 0 },
       },
       created_at: 1700000000000,
@@ -144,6 +151,8 @@ describe('OptimizationTaskConfigView', () => {
 
     expect(screen.getByLabelText('最大迭代轮数')).toHaveValue(10)
     expect(screen.getByLabelText('通过率阈值（%）')).toHaveValue(95)
+    expect(screen.getByLabelText('候选 Prompt 生成数量')).toHaveValue(5)
+    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(3)
     expect(screen.getByLabelText('Train%')).toHaveValue(80)
     expect(screen.getByLabelText('Validation%')).toHaveValue(20)
   })
@@ -152,6 +161,9 @@ describe('OptimizationTaskConfigView', () => {
     renderPage('/workspaces/ws-1/tasks/task-1')
 
     await screen.findByText('任务配置：任务 1')
+
+    fireEvent.change(screen.getByLabelText('候选 Prompt 生成数量'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('多样性注入阈值（连续失败次数）'), { target: { value: '2' } })
 
     fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
 
@@ -162,6 +174,9 @@ describe('OptimizationTaskConfigView', () => {
     expect(
       screen.getByText('留空时，系统将在首次迭代中基于优化目标和测试集自动生成初始 Prompt')
     ).toBeInTheDocument()
+
+    expect(screen.getByLabelText('候选 Prompt 生成数量')).toHaveValue(4)
+    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(2)
   })
 
   it('保存失败时仅展示 message（不展示 details）', async () => {
@@ -183,5 +198,37 @@ describe('OptimizationTaskConfigView', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
 
     expect(await screen.findByText('保存失败：最大迭代轮数仅允许 1-100')).toBeInTheDocument()
+  })
+
+  it('候选 Prompt 生成数量为小数时应本地拦截且不发送请求', async () => {
+    renderPage('/workspaces/ws-1/tasks/task-1')
+
+    await screen.findByText('任务配置：任务 1')
+
+    const candidateInput = screen.getByLabelText('候选 Prompt 生成数量')
+    fireEvent.change(candidateInput, { target: { value: '4.5' } })
+    await waitFor(() => {
+      expect(candidateInput).toHaveValue(4.5)
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+
+    expect(await screen.findByText('候选 Prompt 生成数量必须为整数')).toBeInTheDocument()
+    expect(putCallCount).toBe(0)
+  })
+
+  it('多样性注入阈值越界时应本地拦截且不发送请求', async () => {
+    renderPage('/workspaces/ws-1/tasks/task-1')
+
+    await screen.findByText('任务配置：任务 1')
+
+    const thresholdInput = screen.getByLabelText('多样性注入阈值（连续失败次数）')
+    fireEvent.change(thresholdInput, { target: { value: '11' } })
+    await waitFor(() => {
+      expect(thresholdInput).toHaveValue(11)
+    })
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+
+    expect(await screen.findByText('多样性注入阈值仅允许 1-10')).toBeInTheDocument()
+    expect(putCallCount).toBe(0)
   })
 })

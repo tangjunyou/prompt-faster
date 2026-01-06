@@ -4,6 +4,9 @@ _bmad-user-memory/
 # Only ignore sprint artifacts, keep other docs
 docs/sprint-artifacts/
 
+# Generated validation reports (keep story docs tracked)
+docs/implementation-artifacts/validation-report-*.md
+
 # IDE and editor files
 .vscode/
 .idea/
