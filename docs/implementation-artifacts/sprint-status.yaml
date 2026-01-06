@@ -61,14 +61,14 @@ development_status:
   # Epic 2: 测试集管理
   # FRs: FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
   # ============================================
-  epic-2: in-progress
+  epic-2: done
   2-1-test-set-data-model-and-basic-crud: done
   2-2-test-set-batch-import: done
   2-3-test-set-template-save-and-reuse: done
   2-4-dify-variable-parsing-and-prompt-variable-designation: done
   2-5-generic-api-custom-variables-and-fixed-task-answers: done
   2-6-creative-task-configuration: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   # ============================================
   # Epic 3: 优化任务配置与工作区

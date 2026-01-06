@@ -495,5 +495,5 @@ async fn test_cross_user_refresh_returns_404() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let body = read_json_body(resp).await;
-    assert_eq!(body["error"]["code"], "TEST_SET_NOT_FOUND");
+    assert_eq!(body["error"]["code"], "WORKSPACE_NOT_FOUND");
 }

@@ -7,6 +7,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use ts_rs::TS;
+use url::Url;
 use utoipa::ToSchema;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, TS)]
@@ -82,7 +83,7 @@ pub enum ConnectionError {
 #[derive(Debug, Deserialize)]
 struct DifyParametersRaw {
     #[serde(default)]
-    user_input_form: Vec<HashMap<String, DifyUserInputFieldRaw>>,
+    user_input_form: Vec<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,7 +101,19 @@ struct DifyUserInputFieldRaw {
 }
 
 fn normalize_base_url_for_parameters(base_url: &str) -> String {
-    let mut base = base_url.trim_end_matches('/').to_string();
+    let trimmed = base_url.trim();
+    if let Ok(mut url) = Url::parse(trimmed) {
+        let path = url.path().trim_end_matches('/');
+        if path == "/v1" {
+            url.set_path("/");
+        }
+        url.set_query(None);
+        url.set_fragment(None);
+        return url.to_string().trim_end_matches('/').to_string();
+    }
+
+    // Fallback：保持旧行为（避免因 URL 非法导致功能不可用）
+    let mut base = trimmed.trim_end_matches('/').to_string();
     if base.ends_with("/v1") {
         base.truncate(base.len().saturating_sub(3));
         base = base.trim_end_matches('/').to_string();
@@ -135,7 +148,9 @@ fn parse_parameters_variables(
     let mut seen: HashSet<String> = HashSet::new();
 
     for group in raw.user_input_form {
-        for (component, field) in group {
+        for (component, field_value) in group {
+            let field = serde_json::from_value::<DifyUserInputFieldRaw>(field_value.clone())
+                .map_err(|e| ConnectionError::ParseError(format!("字段结构解析失败: {}", e)))?;
             let name = field
                 .variable
                 .clone()
@@ -167,7 +182,7 @@ fn parse_parameters_variables(
                 required: field.required.unwrap_or(false),
                 required_known: field.required.is_some(),
                 default_value,
-                raw: Some(serde_json::json!({ component: field })),
+                raw: Some(serde_json::json!({ (component.clone()): field_value })),
             });
         }
     }

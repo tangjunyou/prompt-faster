@@ -428,7 +428,7 @@ async fn test_cross_user_get_returns_test_set_not_found() {
     let resp_b = app.clone().oneshot(get_req_b).await.unwrap();
     assert_eq!(resp_b.status(), StatusCode::NOT_FOUND);
     let resp_body = read_json_body(resp_b).await;
-    assert_eq!(resp_body["error"]["code"], "TEST_SET_NOT_FOUND");
+    assert_eq!(resp_body["error"]["code"], "WORKSPACE_NOT_FOUND");
 }
 
 #[tokio::test]
@@ -465,7 +465,7 @@ async fn test_cross_user_update_returns_test_set_not_found() {
     let resp_b = app.clone().oneshot(update_req_b).await.unwrap();
     assert_eq!(resp_b.status(), StatusCode::NOT_FOUND);
     let resp_body = read_json_body(resp_b).await;
-    assert_eq!(resp_body["error"]["code"], "TEST_SET_NOT_FOUND");
+    assert_eq!(resp_body["error"]["code"], "WORKSPACE_NOT_FOUND");
 }
 
 #[tokio::test]
@@ -585,7 +585,7 @@ async fn test_cross_user_delete_returns_test_set_not_found() {
     let resp_b = app.clone().oneshot(delete_req_b).await.unwrap();
     assert_eq!(resp_b.status(), StatusCode::NOT_FOUND);
     let resp_body = read_json_body(resp_b).await;
-    assert_eq!(resp_body["error"]["code"], "TEST_SET_NOT_FOUND");
+    assert_eq!(resp_body["error"]["code"], "WORKSPACE_NOT_FOUND");
 }
 
 #[tokio::test]

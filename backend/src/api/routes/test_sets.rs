@@ -113,6 +113,25 @@ fn test_set_not_found<T: Serialize>() -> ApiResponse<T> {
     )
 }
 
+async fn ensure_workspace_exists<T: Serialize>(
+    state: &AppState,
+    workspace_id: &str,
+    user_id: &str,
+) -> Result<(), ApiResponse<T>> {
+    match WorkspaceRepo::find_by_id(&state.db, workspace_id, user_id).await {
+        Ok(_) => Ok(()),
+        Err(WorkspaceRepoError::NotFound) => Err(workspace_not_found()),
+        Err(e) => {
+            warn!(error = %e, "查询工作区失败");
+            Err(ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::DATABASE_ERROR,
+                "查询工作区失败",
+            ))
+        }
+    }
+}
+
 fn parse_dify_config(dify_config_json: Option<String>) -> Result<Option<DifyConfig>, String> {
     let Some(json) = dify_config_json else {
         return Ok(None);
@@ -229,6 +248,29 @@ fn validate_dify_config_request<T: Serialize>(
     // 必填变量校验：仅在有 snapshot 时启用（用户可通过 refresh 更新 snapshot）
     if let Some(existing) = snapshot {
         if let Some(vars) = existing.parameters_snapshot.as_ref() {
+            let names: HashSet<&str> = vars.iter().map(|v| v.name.as_str()).collect();
+
+            if !names.contains(target) {
+                return Err(ApiResponse::err(
+                    StatusCode::BAD_REQUEST,
+                    error_codes::VALIDATION_ERROR,
+                    "targetPromptVariable 不存在于当前 variables 快照中，请先刷新变量列表",
+                ));
+            }
+
+            for name in req.bindings.keys() {
+                if !names.contains(name.as_str()) {
+                    return Err(ApiResponse::err(
+                        StatusCode::BAD_REQUEST,
+                        error_codes::VALIDATION_ERROR,
+                        format!(
+                            "bindings 中的变量 {} 不存在于当前 variables 快照中，请先刷新变量列表",
+                            name
+                        ),
+                    ));
+                }
+            }
+
             for v in vars {
                 if !v.required_known || !v.required {
                     continue;
@@ -254,6 +296,7 @@ fn validate_dify_config_request<T: Serialize>(
 }
 
 const GENERIC_CONFIG_JSON_MAX_BYTES: usize = 32 * 1024;
+const DIFY_CONFIG_JSON_MAX_BYTES: usize = 32 * 1024;
 
 fn validate_generic_config_request<T: Serialize>(
     req: &SaveGenericConfigRequest,
@@ -358,6 +401,12 @@ pub(crate) async fn refresh_dify_variables(
             );
         }
     };
+
+    if let Err(err) =
+        ensure_workspace_exists::<DifyVariablesResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
 
     let loaded =
         match TestSetRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &test_set_id).await
@@ -470,14 +519,25 @@ pub(crate) async fn refresh_dify_variables(
                 .collect(),
         );
         if let Ok(cfg_json) = serde_json::to_string(&cfg) {
-            let _ = TestSetRepo::update_dify_config_json_scoped(
-                &state.db,
-                user_id,
-                &workspace_id,
-                &test_set_id,
-                Some(&cfg_json),
-            )
-            .await;
+            if cfg_json.len() <= DIFY_CONFIG_JSON_MAX_BYTES {
+                let _ = TestSetRepo::update_dify_config_json_scoped(
+                    &state.db,
+                    user_id,
+                    &workspace_id,
+                    &test_set_id,
+                    Some(&cfg_json),
+                )
+                .await;
+            } else {
+                warn!(
+                    correlation_id = %correlation_id,
+                    user_id = %user_id,
+                    workspace_id = %workspace_id,
+                    test_set_id = %test_set_id,
+                    size_bytes = cfg_json.len(),
+                    "dify_config_json 过大，跳过 parametersSnapshot 缓存"
+                );
+            }
         }
     }
 
@@ -513,6 +573,12 @@ pub(crate) async fn save_dify_config(
     let user_id = &current_user.user_id;
 
     info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "保存 Dify 配置");
+
+    if let Err(err) =
+        ensure_workspace_exists::<SaveDifyConfigResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
 
     let loaded =
         match TestSetRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &test_set_id).await
@@ -615,6 +681,12 @@ pub(crate) async fn save_generic_config(
 
     info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "保存通用 API 自定义变量配置");
 
+    if let Err(err) =
+        ensure_workspace_exists::<SaveGenericConfigResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
+
     match TestSetRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &test_set_id).await {
         Ok(_) => {}
         Err(TestSetRepoError::NotFound) => return test_set_not_found(),
@@ -704,6 +776,12 @@ pub(crate) async fn delete_generic_config(
     let user_id = &current_user.user_id;
 
     info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "清空通用 API 自定义变量配置");
+
+    if let Err(err) =
+        ensure_workspace_exists::<DeleteGenericConfigResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
 
     match TestSetRepo::update_generic_config_json_scoped(
         &state.db,
@@ -966,6 +1044,12 @@ pub(crate) async fn get_test_set(
 
     info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "获取测试集");
 
+    if let Err(err) =
+        ensure_workspace_exists::<TestSetResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
+
     let loaded =
         match TestSetRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &test_set_id).await
         {
@@ -1038,6 +1122,12 @@ pub(crate) async fn update_test_set(
     }
 
     info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "更新测试集");
+
+    if let Err(err) =
+        ensure_workspace_exists::<TestSetResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
 
     let cases = match parse_cases::<TestSetResponse>(req.cases) {
         Ok(c) => c,
@@ -1117,6 +1207,12 @@ pub(crate) async fn delete_test_set(
     let user_id = &current_user.user_id;
 
     info!(correlation_id = %correlation_id, user_id = %user_id, workspace_id = %workspace_id, test_set_id = %test_set_id, "删除测试集");
+
+    if let Err(err) =
+        ensure_workspace_exists::<DeleteTestSetResponse>(&state, &workspace_id, user_id).await
+    {
+        return err;
+    }
 
     match TestSetRepo::delete_scoped(&state.db, user_id, &workspace_id, &test_set_id).await {
         Ok(true) => ApiResponse::ok(DeleteTestSetResponse {
