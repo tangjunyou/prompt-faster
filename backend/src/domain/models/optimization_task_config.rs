@@ -222,7 +222,8 @@ impl OptimizationTaskConfigStorage {
             return Ok(Self::default());
         }
 
-        serde_json::from_str::<Self>(raw).map_err(|_| "任务配置解析失败（请尝试重置为默认配置后再更新）".to_string())
+        serde_json::from_str::<Self>(raw)
+            .map_err(|_| "任务配置解析失败（请尝试重置为默认配置后再更新）".to_string())
     }
 
     fn into_public(self) -> OptimizationTaskConfig {
