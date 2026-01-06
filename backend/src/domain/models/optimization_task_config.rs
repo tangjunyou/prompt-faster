@@ -95,7 +95,7 @@ impl OptimizationTaskConfig {
         }
 
         if let Some(p) = &self.initial_prompt {
-            if p.as_bytes().len() > OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES {
+            if p.len() > OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES {
                 return Err(format!(
                     "初始 Prompt 过长（最多 {} bytes）",
                     OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES
