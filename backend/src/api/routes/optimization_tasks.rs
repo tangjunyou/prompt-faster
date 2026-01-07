@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use tracing::{info, warn};
 use ts_rs::TS;
 use utoipa::ToSchema;
@@ -14,8 +15,9 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::domain::models::{
-    DataSplitPercentConfig, ExecutionTargetType, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION,
-    OptimizationTaskConfig, OptimizationTaskMode, OptimizationTaskStatus, TaskReference,
+    AdvancedDataSplitConfig, DataSplitPercentConfig, EvaluatorConfig, ExecutionTargetType,
+    OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OptimizationTaskMode,
+    OptimizationTaskStatus, OutputConfig, TaskReference,
 };
 use crate::infra::db::repositories::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TestSetRepo,
@@ -79,6 +81,9 @@ pub struct UpdateOptimizationTaskConfigRequest {
     pub diversity_injection_threshold: u32,
     pub train_percent: u8,
     pub validation_percent: u8,
+    pub output_config: OutputConfig,
+    pub evaluator_config: EvaluatorConfig,
+    pub advanced_data_split: AdvancedDataSplitConfig,
 }
 
 fn extract_correlation_id(headers: &HeaderMap) -> String {
@@ -87,6 +92,32 @@ fn extract_correlation_id(headers: &HeaderMap) -> String {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown")
         .to_string()
+}
+
+fn warn_if_invalid_config_json(
+    correlation_id: &str,
+    user_id: &str,
+    workspace_id: &str,
+    task_id: &str,
+    raw: Option<&str>,
+) {
+    let Some(raw) = raw else {
+        return;
+    };
+    if raw.trim().is_empty() {
+        return;
+    }
+    if let Err(e) = serde_json::from_str::<JsonValue>(raw) {
+        warn!(
+            correlation_id = %correlation_id,
+            user_id = %user_id,
+            workspace_id = %workspace_id,
+            task_id = %task_id,
+            config_json_len = raw.len(),
+            error = %e,
+            "检测到 optimization_tasks.config_json 非法 JSON（回显将回退为默认配置）"
+        );
+    }
 }
 
 fn workspace_not_found<T: Serialize>() -> ApiResponse<T> {
@@ -507,22 +538,31 @@ pub(crate) async fn get_optimization_task(
 
     match OptimizationTaskRepo::find_by_id_scoped(&state.db, user_id, &workspace_id, &task_id).await
     {
-        Ok(task) => ApiResponse::ok(OptimizationTaskResponse {
-            config: OptimizationTaskConfig::normalized_from_config_json(
+        Ok(task) => {
+            warn_if_invalid_config_json(
+                &correlation_id,
+                user_id,
+                &workspace_id,
+                &task_id,
                 task.task.config_json.as_deref(),
-            ),
-            id: task.task.id,
-            workspace_id: task.task.workspace_id,
-            name: task.task.name,
-            description: task.task.description,
-            goal: task.task.goal,
-            execution_target_type: task.task.execution_target_type,
-            task_mode: task.task.task_mode,
-            status: task.task.status,
-            test_set_ids: task.test_set_ids,
-            created_at: task.task.created_at,
-            updated_at: task.task.updated_at,
-        }),
+            );
+            ApiResponse::ok(OptimizationTaskResponse {
+                config: OptimizationTaskConfig::normalized_from_config_json(
+                    task.task.config_json.as_deref(),
+                ),
+                id: task.task.id,
+                workspace_id: task.task.workspace_id,
+                name: task.task.name,
+                description: task.task.description,
+                goal: task.task.goal,
+                execution_target_type: task.task.execution_target_type,
+                task_mode: task.task.task_mode,
+                status: task.task.status,
+                test_set_ids: task.test_set_ids,
+                created_at: task.task.created_at,
+                updated_at: task.task.updated_at,
+            })
+        }
         Err(OptimizationTaskRepoError::NotFound) => optimization_task_not_found(),
         Err(OptimizationTaskRepoError::WorkspaceNotFound) => workspace_not_found(),
         Err(e) => {
@@ -591,6 +631,9 @@ pub(crate) async fn update_optimization_task_config(
             validation_percent: req.validation_percent,
             holdout_percent: 0,
         },
+        output_config: req.output_config,
+        evaluator_config: req.evaluator_config,
+        advanced_data_split: req.advanced_data_split,
     }
     .normalized();
 
@@ -607,22 +650,31 @@ pub(crate) async fn update_optimization_task_config(
     )
     .await
     {
-        Ok(updated) => ApiResponse::ok(OptimizationTaskResponse {
-            config: OptimizationTaskConfig::normalized_from_config_json(
+        Ok(updated) => {
+            warn_if_invalid_config_json(
+                &correlation_id,
+                user_id,
+                &workspace_id,
+                &task_id,
                 updated.task.config_json.as_deref(),
-            ),
-            id: updated.task.id,
-            workspace_id: updated.task.workspace_id,
-            name: updated.task.name,
-            description: updated.task.description,
-            goal: updated.task.goal,
-            execution_target_type: updated.task.execution_target_type,
-            task_mode: updated.task.task_mode,
-            status: updated.task.status,
-            test_set_ids: updated.test_set_ids,
-            created_at: updated.task.created_at,
-            updated_at: updated.task.updated_at,
-        }),
+            );
+            ApiResponse::ok(OptimizationTaskResponse {
+                config: OptimizationTaskConfig::normalized_from_config_json(
+                    updated.task.config_json.as_deref(),
+                ),
+                id: updated.task.id,
+                workspace_id: updated.task.workspace_id,
+                name: updated.task.name,
+                description: updated.task.description,
+                goal: updated.task.goal,
+                execution_target_type: updated.task.execution_target_type,
+                task_mode: updated.task.task_mode,
+                status: updated.task.status,
+                test_set_ids: updated.test_set_ids,
+                created_at: updated.task.created_at,
+                updated_at: updated.task.updated_at,
+            })
+        }
         Err(OptimizationTaskRepoError::NotFound) => optimization_task_not_found(),
         Err(OptimizationTaskRepoError::WorkspaceNotFound) => workspace_not_found(),
         Err(OptimizationTaskRepoError::InvalidConfig(msg)) => {

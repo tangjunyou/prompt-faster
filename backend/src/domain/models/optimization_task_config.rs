@@ -22,11 +22,174 @@ pub const OPTIMIZATION_TASK_CONFIG_CANDIDATE_PROMPT_COUNT_MAX: u32 = 10;
 pub const OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MIN: u32 = 1;
 pub const OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MAX: u32 = 10;
 
+pub const OPTIMIZATION_TASK_CONFIG_CONFLICT_ALERT_THRESHOLD_MIN: u32 = 1;
+pub const OPTIMIZATION_TASK_CONFIG_CONFLICT_ALERT_THRESHOLD_MAX: u32 = 10;
+
+pub const OPTIMIZATION_TASK_CONFIG_K_FOLD_FOLDS_MIN: u8 = 2;
+pub const OPTIMIZATION_TASK_CONFIG_K_FOLD_FOLDS_MAX: u8 = 10;
+
+pub const OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MIN: u8 = 1;
+pub const OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MAX: u8 = 100;
+
+pub const OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MIN: u32 = 1;
+pub const OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MAX: u32 = 5;
+
 /// 防止 config_json 膨胀（未来可根据产品需要调整）
 pub const OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES: usize = 32 * 1024; // 32KB
 
 /// 避免把大段 Prompt 原文写入 DB / 错误信息
 pub const OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES: usize = 20_000;
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum OutputStrategy {
+    #[default]
+    Single,
+    Adaptive,
+    Multi,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct OutputConfig {
+    pub strategy: OutputStrategy,
+    pub conflict_alert_threshold: u32,
+    pub auto_recommend: bool,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            strategy: OutputStrategy::Single,
+            conflict_alert_threshold: 3,
+            auto_recommend: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum EvaluatorType {
+    #[default]
+    Auto,
+    ExactMatch,
+    SemanticSimilarity,
+    ConstraintCheck,
+    TeacherModel,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct ExactMatchEvaluatorConfig {
+    pub case_sensitive: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct SemanticSimilarityEvaluatorConfig {
+    pub threshold_percent: u8,
+}
+
+impl Default for SemanticSimilarityEvaluatorConfig {
+    fn default() -> Self {
+        Self {
+            threshold_percent: 85,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct ConstraintCheckEvaluatorConfig {
+    pub strict: bool,
+}
+
+impl Default for ConstraintCheckEvaluatorConfig {
+    fn default() -> Self {
+        Self { strict: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct TeacherModelEvaluatorConfig {
+    pub llm_judge_samples: u32,
+}
+
+impl Default for TeacherModelEvaluatorConfig {
+    fn default() -> Self {
+        Self {
+            llm_judge_samples: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct EvaluatorConfig {
+    pub evaluator_type: EvaluatorType,
+    pub exact_match: ExactMatchEvaluatorConfig,
+    pub semantic_similarity: SemanticSimilarityEvaluatorConfig,
+    pub constraint_check: ConstraintCheckEvaluatorConfig,
+    pub teacher_model: TeacherModelEvaluatorConfig,
+}
+
+impl Default for EvaluatorConfig {
+    fn default() -> Self {
+        Self {
+            evaluator_type: EvaluatorType::Auto,
+            exact_match: ExactMatchEvaluatorConfig::default(),
+            semantic_similarity: SemanticSimilarityEvaluatorConfig::default(),
+            constraint_check: ConstraintCheckEvaluatorConfig::default(),
+            teacher_model: TeacherModelEvaluatorConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum AdvancedDataSplitStrategy {
+    #[default]
+    Percent,
+    KFold,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum SamplingStrategy {
+    #[default]
+    Random,
+    Stratified,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct AdvancedDataSplitConfig {
+    pub strategy: AdvancedDataSplitStrategy,
+    pub k_fold_folds: u8,
+    pub sampling_strategy: SamplingStrategy,
+}
+
+impl Default for AdvancedDataSplitConfig {
+    fn default() -> Self {
+        Self {
+            strategy: AdvancedDataSplitStrategy::Percent,
+            k_fold_folds: 5,
+            sampling_strategy: SamplingStrategy::Random,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -59,6 +222,9 @@ pub struct OptimizationTaskConfig {
     pub candidate_prompt_count: u32,
     pub diversity_injection_threshold: u32,
     pub data_split: DataSplitPercentConfig,
+    pub output_config: OutputConfig,
+    pub evaluator_config: EvaluatorConfig,
+    pub advanced_data_split: AdvancedDataSplitConfig,
 }
 
 impl Default for OptimizationTaskConfig {
@@ -71,6 +237,9 @@ impl Default for OptimizationTaskConfig {
             candidate_prompt_count: 5,
             diversity_injection_threshold: 3,
             data_split: DataSplitPercentConfig::default(),
+            output_config: OutputConfig::default(),
+            evaluator_config: EvaluatorConfig::default(),
+            advanced_data_split: AdvancedDataSplitConfig::default(),
         }
     }
 }
@@ -145,6 +314,64 @@ impl OptimizationTaskConfig {
             return Err("数据划分比例要求 Train% + Validation% = 100%".to_string());
         }
 
+        if self.output_config.conflict_alert_threshold
+            < OPTIMIZATION_TASK_CONFIG_CONFLICT_ALERT_THRESHOLD_MIN
+            || self.output_config.conflict_alert_threshold
+                > OPTIMIZATION_TASK_CONFIG_CONFLICT_ALERT_THRESHOLD_MAX
+        {
+            return Err(format!(
+                "冲突告警阈值仅允许 {}-{}",
+                OPTIMIZATION_TASK_CONFIG_CONFLICT_ALERT_THRESHOLD_MIN,
+                OPTIMIZATION_TASK_CONFIG_CONFLICT_ALERT_THRESHOLD_MAX
+            ));
+        }
+
+        match self.advanced_data_split.strategy {
+            AdvancedDataSplitStrategy::Percent => {}
+            AdvancedDataSplitStrategy::KFold => {
+                if self.advanced_data_split.k_fold_folds < OPTIMIZATION_TASK_CONFIG_K_FOLD_FOLDS_MIN
+                    || self.advanced_data_split.k_fold_folds
+                        > OPTIMIZATION_TASK_CONFIG_K_FOLD_FOLDS_MAX
+                {
+                    return Err(format!(
+                        "交叉验证折数仅允许 {}-{}",
+                        OPTIMIZATION_TASK_CONFIG_K_FOLD_FOLDS_MIN,
+                        OPTIMIZATION_TASK_CONFIG_K_FOLD_FOLDS_MAX
+                    ));
+                }
+            }
+        }
+
+        match self.evaluator_config.evaluator_type {
+            EvaluatorType::Auto | EvaluatorType::ExactMatch | EvaluatorType::ConstraintCheck => {}
+            EvaluatorType::SemanticSimilarity => {
+                let v = self.evaluator_config.semantic_similarity.threshold_percent;
+                if !(OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MIN
+                    ..=OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MAX)
+                    .contains(&v)
+                {
+                    return Err(format!(
+                        "语义相似度阈值仅允许 {}-{}",
+                        OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MIN,
+                        OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MAX
+                    ));
+                }
+            }
+            EvaluatorType::TeacherModel => {
+                let v = self.evaluator_config.teacher_model.llm_judge_samples;
+                if !(OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MIN
+                    ..=OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MAX)
+                    .contains(&v)
+                {
+                    return Err(format!(
+                        "老师模型采样数仅允许 {}-{}",
+                        OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MIN,
+                        OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MAX
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -180,6 +407,9 @@ struct OptimizationTaskConfigStorage {
     #[serde(default = "default_diversity_injection_threshold")]
     pub diversity_injection_threshold: u32,
     pub data_split: DataSplitPercentConfig,
+    pub output_config: OutputConfig,
+    pub evaluator_config: EvaluatorConfig,
+    pub advanced_data_split: AdvancedDataSplitConfig,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -195,6 +425,9 @@ impl Default for OptimizationTaskConfigStorage {
             candidate_prompt_count: base.candidate_prompt_count,
             diversity_injection_threshold: base.diversity_injection_threshold,
             data_split: base.data_split,
+            output_config: base.output_config,
+            evaluator_config: base.evaluator_config,
+            advanced_data_split: base.advanced_data_split,
             extra: BTreeMap::new(),
         }
     }
@@ -235,6 +468,9 @@ impl OptimizationTaskConfigStorage {
             candidate_prompt_count: self.candidate_prompt_count,
             diversity_injection_threshold: self.diversity_injection_threshold,
             data_split: self.data_split,
+            output_config: self.output_config,
+            evaluator_config: self.evaluator_config,
+            advanced_data_split: self.advanced_data_split,
         }
     }
 
@@ -250,6 +486,9 @@ impl OptimizationTaskConfigStorage {
             candidate_prompt_count: config.candidate_prompt_count,
             diversity_injection_threshold: config.diversity_injection_threshold,
             data_split: config.data_split,
+            output_config: config.output_config,
+            evaluator_config: config.evaluator_config,
+            advanced_data_split: config.advanced_data_split,
             extra: existing.extra,
         }
     }

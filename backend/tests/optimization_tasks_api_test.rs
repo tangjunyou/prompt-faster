@@ -207,6 +207,32 @@ fn sample_hybrid_cases_json() -> Value {
     ])
 }
 
+fn default_output_config_json() -> Value {
+    json!({
+        "strategy": "single",
+        "conflict_alert_threshold": 3,
+        "auto_recommend": true
+    })
+}
+
+fn default_evaluator_config_json() -> Value {
+    json!({
+        "evaluator_type": "auto",
+        "exact_match": { "case_sensitive": false },
+        "semantic_similarity": { "threshold_percent": 85 },
+        "constraint_check": { "strict": true },
+        "teacher_model": { "llm_judge_samples": 1 }
+    })
+}
+
+fn default_advanced_data_split_json() -> Value {
+    json!({
+        "strategy": "percent",
+        "k_fold_folds": 5,
+        "sampling_strategy": "random"
+    })
+}
+
 async fn create_test_set_with_cases(
     app: &Router,
     workspace_id: &str,
@@ -588,6 +614,18 @@ async fn test_get_task_returns_normalized_default_config_includes_new_fields_whe
         get_body["data"]["config"]["diversity_injection_threshold"],
         3
     );
+    assert_eq!(
+        get_body["data"]["config"]["output_config"],
+        default_output_config_json()
+    );
+    assert_eq!(
+        get_body["data"]["config"]["evaluator_config"],
+        default_evaluator_config_json()
+    );
+    assert_eq!(
+        get_body["data"]["config"]["advanced_data_split"],
+        default_advanced_data_split_json()
+    );
 }
 
 #[tokio::test]
@@ -639,6 +677,18 @@ async fn test_get_task_fills_default_for_new_fields_when_old_config_missing_them
         get_body["data"]["config"]["diversity_injection_threshold"],
         3
     );
+    assert_eq!(
+        get_body["data"]["config"]["output_config"],
+        default_output_config_json()
+    );
+    assert_eq!(
+        get_body["data"]["config"]["evaluator_config"],
+        default_evaluator_config_json()
+    );
+    assert_eq!(
+        get_body["data"]["config"]["advanced_data_split"],
+        default_advanced_data_split_json()
+    );
 }
 
 #[tokio::test]
@@ -688,7 +738,10 @@ async fn test_update_task_config_preserves_unknown_extra_fields_in_config_json()
                 "candidate_prompt_count": 4,
                 "diversity_injection_threshold": 2,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token,
@@ -735,7 +788,10 @@ async fn test_update_task_config_normalizes_empty_initial_prompt() {
                 "candidate_prompt_count": 5,
                 "diversity_injection_threshold": 3,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token,
@@ -781,7 +837,10 @@ async fn test_update_task_config_rejects_when_existing_config_json_invalid_to_av
                 "candidate_prompt_count": 5,
                 "diversity_injection_threshold": 3,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token,
@@ -833,7 +892,24 @@ async fn test_update_task_config_accepts_new_fields_boundary_values() {
                 "candidate_prompt_count": 1,
                 "diversity_injection_threshold": 10,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": {
+                  "strategy": "multi",
+                  "conflict_alert_threshold": 10,
+                  "auto_recommend": false
+                },
+                "evaluator_config": {
+                  "evaluator_type": "teacher_model",
+                  "exact_match": { "case_sensitive": false },
+                  "semantic_similarity": { "threshold_percent": 85 },
+                  "constraint_check": { "strict": true },
+                  "teacher_model": { "llm_judge_samples": 5 }
+                },
+                "advanced_data_split": {
+                  "strategy": "k_fold",
+                  "k_fold_folds": 10,
+                  "sampling_strategy": "stratified"
+                }
             }),
         ),
         &token,
@@ -843,6 +919,31 @@ async fn test_update_task_config_accepts_new_fields_boundary_values() {
     let body = read_json_body(resp).await;
     assert_eq!(body["data"]["config"]["candidate_prompt_count"], 1);
     assert_eq!(body["data"]["config"]["diversity_injection_threshold"], 10);
+    assert_eq!(body["data"]["config"]["output_config"]["strategy"], "multi");
+    assert_eq!(
+        body["data"]["config"]["output_config"]["conflict_alert_threshold"],
+        10
+    );
+    assert_eq!(
+        body["data"]["config"]["output_config"]["auto_recommend"],
+        false
+    );
+    assert_eq!(
+        body["data"]["config"]["evaluator_config"]["evaluator_type"],
+        "teacher_model"
+    );
+    assert_eq!(
+        body["data"]["config"]["evaluator_config"]["teacher_model"]["llm_judge_samples"],
+        5
+    );
+    assert_eq!(
+        body["data"]["config"]["advanced_data_split"]["strategy"],
+        "k_fold"
+    );
+    assert_eq!(
+        body["data"]["config"]["advanced_data_split"]["k_fold_folds"],
+        10
+    );
 }
 
 #[tokio::test]
@@ -863,7 +964,10 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 5,
             "diversity_injection_threshold": 3,
             "train_percent": 80,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
         }),
         json!({
             "initial_prompt": null,
@@ -872,7 +976,10 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 5,
             "diversity_injection_threshold": 3,
             "train_percent": 80,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
         }),
         json!({
             "initial_prompt": null,
@@ -881,7 +988,10 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 5,
             "diversity_injection_threshold": 3,
             "train_percent": 70,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
         }),
         json!({
             "initial_prompt": null,
@@ -890,7 +1000,10 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 0,
             "diversity_injection_threshold": 3,
             "train_percent": 80,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
         }),
         json!({
             "initial_prompt": null,
@@ -899,7 +1012,10 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 5,
             "diversity_injection_threshold": 0,
             "train_percent": 80,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
         }),
         json!({
             "initial_prompt": null,
@@ -908,7 +1024,10 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 11,
             "diversity_injection_threshold": 3,
             "train_percent": 80,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
         }),
         json!({
             "initial_prompt": null,
@@ -917,7 +1036,78 @@ async fn test_update_task_config_rejects_out_of_range_values() {
             "candidate_prompt_count": 5,
             "diversity_injection_threshold": 11,
             "train_percent": 80,
-            "validation_percent": 20
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20,
+            "output_config": {
+                "strategy": "single",
+                "conflict_alert_threshold": 0,
+                "auto_recommend": true
+            },
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": default_advanced_data_split_json()
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": {
+                "evaluator_type": "semantic_similarity",
+                "exact_match": { "case_sensitive": false },
+                "semantic_similarity": { "threshold_percent": 101 },
+                "constraint_check": { "strict": true },
+                "teacher_model": { "llm_judge_samples": 1 }
+            },
+            "advanced_data_split": default_advanced_data_split_json()
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": {
+                "evaluator_type": "teacher_model",
+                "exact_match": { "case_sensitive": false },
+                "semantic_similarity": { "threshold_percent": 85 },
+                "constraint_check": { "strict": true },
+                "teacher_model": { "llm_judge_samples": 0 }
+            },
+            "advanced_data_split": default_advanced_data_split_json()
+        }),
+        json!({
+            "initial_prompt": null,
+            "max_iterations": 10,
+            "pass_threshold_percent": 95,
+            "candidate_prompt_count": 5,
+            "diversity_injection_threshold": 3,
+            "train_percent": 80,
+            "validation_percent": 20,
+            "output_config": default_output_config_json(),
+            "evaluator_config": default_evaluator_config_json(),
+            "advanced_data_split": {
+                "strategy": "k_fold",
+                "k_fold_folds": 1,
+                "sampling_strategy": "random"
+            }
         }),
     ];
 
@@ -960,7 +1150,10 @@ async fn test_update_task_config_not_found() {
                 "candidate_prompt_count": 5,
                 "diversity_injection_threshold": 3,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token,
@@ -1003,7 +1196,10 @@ async fn test_update_task_config_other_user_returns_workspace_not_found() {
                 "candidate_prompt_count": 5,
                 "diversity_injection_threshold": 3,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token_b,
@@ -1040,7 +1236,10 @@ async fn test_update_task_config_rejects_too_large_initial_prompt_bytes() {
                 "candidate_prompt_count": 5,
                 "diversity_injection_threshold": 3,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token,
@@ -1097,7 +1296,10 @@ async fn test_update_task_config_rejects_oversize_config_json() {
                 "candidate_prompt_count": 5,
                 "diversity_injection_threshold": 3,
                 "train_percent": 80,
-                "validation_percent": 20
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "advanced_data_split": default_advanced_data_split_json()
             }),
         ),
         &token,
