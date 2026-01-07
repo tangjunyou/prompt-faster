@@ -11,25 +11,9 @@ import { useCreateWorkspace, useWorkspaces } from '@/features/workspace/hooks/us
 import { getOptimizationTasksQueryOptions } from '@/features/task-config/hooks/useOptimizationTasks'
 import { getTestSetsQueryOptions } from '@/features/test-set-manager/hooks/useTestSets'
 import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
+import { getWorkspaceIdFromPathname, getWorkspaceSwitchTargetPath } from '@/features/workspace/utils/workspaceRouting'
 
 const EMPTY_WORKSPACES: WorkspaceResponse[] = []
-
-function getWorkspaceIdFromPath(pathname: string): string | null {
-  const match = pathname.match(/^\/workspaces\/([^/]+)(?:\/|$)/)
-  return match?.[1] ?? null
-}
-
-function getWorkspaceSwitchTargetPath(pathname: string, workspaceId: string): string {
-  const match = pathname.match(/^\/workspaces\/[^/]+\/(test-sets|tasks)(?:\/([^/]+))?$/)
-  if (match) {
-    const section = match[1]
-    const tail = match[2]
-    if (section === 'test-sets') return `/workspaces/${workspaceId}/test-sets`
-    if (section === 'tasks' && tail) return `/workspaces/${workspaceId}/tasks/${tail}`
-    if (section === 'tasks') return `/workspaces/${workspaceId}/tasks`
-  }
-  return `/workspaces/${workspaceId}/tasks`
-}
 
 export function WorkspaceSelector() {
   const navigate = useNavigate()
@@ -60,7 +44,7 @@ export function WorkspaceSelector() {
   } = useCreateWorkspace()
 
   const userId = currentUser?.id ?? null
-  const workspaceIdFromPath = getWorkspaceIdFromPath(location.pathname)
+  const workspaceIdFromPath = getWorkspaceIdFromPathname(location.pathname)
 
   useEffect(() => {
     if (!userId || !workspaceIdFromPath) return

@@ -22,6 +22,7 @@ fn normalize_sqlite_url(database_url: &str) -> String {
 /// 创建 SQLite 连接池
 pub async fn create_pool(database_url: &str) -> anyhow::Result<SqlitePool> {
     let database_url = normalize_sqlite_url(database_url);
+    let is_in_memory = database_url.contains(":memory:");
 
     let options = SqliteConnectOptions::from_str(&database_url)?
         .journal_mode(SqliteJournalMode::Wal)
@@ -31,7 +32,8 @@ pub async fn create_pool(database_url: &str) -> anyhow::Result<SqlitePool> {
         .create_if_missing(true);
 
     let pool = SqlitePoolOptions::new()
-        .max_connections(5)
+        // sqlite::memory: is per-connection; use a single connection to avoid tests becoming flaky.
+        .max_connections(if is_in_memory { 1 } else { 5 })
         .connect_with(options)
         .await?;
 

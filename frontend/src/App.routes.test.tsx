@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 import { MemoryRouter } from 'react-router'
@@ -17,6 +17,7 @@ const API_BASE = 'http://localhost:3000/api/v1'
 let workspaces: WorkspaceResponse[] = []
 let tasksByWorkspace: Record<string, OptimizationTaskListItemResponse[]> = {}
 let testSetsByWorkspace: Record<string, TestSetListItemResponse[]> = {}
+let deleteWorkspaceCalls = 0
 
 const server = setupServer(
   http.get(`${API_BASE}/auth/status`, () => {
@@ -53,6 +54,33 @@ const server = setupServer(
     }
     workspaces = [created, ...workspaces]
     return HttpResponse.json({ data: created })
+  }),
+
+  http.delete(`${API_BASE}/workspaces/:workspaceId`, ({ request, params }) => {
+    deleteWorkspaceCalls += 1
+
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+
+    const workspaceId = String(params.workspaceId)
+    const exists = workspaces.some((ws) => ws.id === workspaceId)
+    if (!exists) {
+      return HttpResponse.json(
+        { error: { code: 'WORKSPACE_NOT_FOUND', message: '工作区不存在' } },
+        { status: 404 }
+      )
+    }
+
+    workspaces = workspaces.filter((ws) => ws.id !== workspaceId)
+    delete tasksByWorkspace[workspaceId]
+    delete testSetsByWorkspace[workspaceId]
+
+    return HttpResponse.json({ data: { message: '删除成功' } })
   }),
 
   http.get(`${API_BASE}/workspaces/:workspaceId/optimization-tasks`, ({ request, params }) => {
@@ -180,6 +208,7 @@ describe('App routes', () => {
         },
       ],
     }
+    deleteWorkspaceCalls = 0
   })
 
   it('渲染 /run 路由', () => {
@@ -397,5 +426,202 @@ describe('App routes', () => {
     await waitFor(() => {
       expect(trigger).toHaveTextContent('工作区 1')
     })
+  })
+
+  it('Workspace View 中点击删除 → 弹出确认对话框', async () => {
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+
+    renderWithProviders('/workspace')
+    expect(await within(screen.getByTestId('workspace-view')).findByText('工作区 1')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-delete-ws-1'))
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('删除工作区')).toBeInTheDocument()
+  })
+
+  it('取消删除 → 不触发删除请求', async () => {
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+
+    renderWithProviders('/workspace')
+    expect(await within(screen.getByTestId('workspace-view')).findByText('工作区 1')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-delete-ws-1'))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('workspace-delete-cancel'))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(deleteWorkspaceCalls).toBe(0)
+  })
+
+  it('确认删除成功 → 列表刷新且移除该工作区', async () => {
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+
+    renderWithProviders('/workspace')
+
+    const view = within(screen.getByTestId('workspace-view'))
+    expect(await view.findByText('工作区 1')).toBeInTheDocument()
+    expect(view.getByText('工作区 2')).toBeInTheDocument()
+
+    fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
+    fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
+
+    await waitFor(() => {
+      expect(view.queryByText('工作区 1')).not.toBeInTheDocument()
+    })
+    expect(view.getByText('工作区 2')).toBeInTheDocument()
+    expect(view.getByText('已删除工作区：工作区 1')).toBeInTheDocument()
+  })
+
+  it('删除当前工作区时 → 自动导航到其它 workspace', async () => {
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+    useWorkspaceStore.getState().setLastWorkspaceId('u1', 'ws-1')
+
+    renderWithProviders('/workspace')
+
+    const view = within(screen.getByTestId('workspace-view'))
+    expect(await view.findByText('工作区 1')).toBeInTheDocument()
+
+    fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
+    fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
+
+    expect(await screen.findByTestId('optimization-tasks-view')).toBeInTheDocument()
+    expect(await screen.findByText('已删除工作区：工作区 1')).toBeInTheDocument()
+    expect(await screen.findByText('任务 ws-2')).toBeInTheDocument()
+  })
+
+  it('删除失败 → 仅展示 error.message（不展示 error.details）', async () => {
+    server.use(
+      http.delete(`${API_BASE}/workspaces/:workspaceId`, ({ request }) => {
+        const auth = request.headers.get('authorization')
+        if (auth !== 'Bearer test-token') {
+          return HttpResponse.json(
+            { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+            { status: 401 }
+          )
+        }
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'DATABASE_ERROR',
+              message: '删除失败：数据库错误',
+              details: { internal: 'do-not-leak' },
+            },
+          },
+          { status: 500 }
+        )
+      })
+    )
+
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+
+    renderWithProviders('/workspace')
+
+    const view = within(screen.getByTestId('workspace-view'))
+    expect(await view.findByText('工作区 1')).toBeInTheDocument()
+
+    fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
+    fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
+
+    expect(await screen.findByText('删除失败：数据库错误')).toBeInTheDocument()
+    expect(screen.queryByText('do-not-leak')).not.toBeInTheDocument()
+  })
+
+  it('确认按钮 loading 禁用：快速连续点击不会触发重复请求', async () => {
+    server.use(
+      http.delete(`${API_BASE}/workspaces/:workspaceId`, async ({ request, params }) => {
+        deleteWorkspaceCalls += 1
+
+        const auth = request.headers.get('authorization')
+        if (auth !== 'Bearer test-token') {
+          return HttpResponse.json(
+            { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+            { status: 401 }
+          )
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50))
+
+        const workspaceId = String(params.workspaceId)
+        workspaces = workspaces.filter((ws) => ws.id !== workspaceId)
+        return HttpResponse.json({ data: { message: '删除成功' } })
+      })
+    )
+
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+
+    renderWithProviders('/workspace')
+
+    const view = within(screen.getByTestId('workspace-view'))
+    expect(await view.findByText('工作区 1')).toBeInTheDocument()
+
+    fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
+
+    const confirm = await screen.findByTestId('workspace-delete-confirm')
+    fireEvent.click(confirm)
+    fireEvent.click(confirm)
+
+    await waitFor(() => {
+      expect(deleteWorkspaceCalls).toBe(1)
+    })
+  })
+
+  it('删除最后一个工作区：仍停留在 /workspace 并看到“创建工作区”入口（不出现空白页）', async () => {
+    useAuthStore.setState({
+      authStatus: 'authenticated',
+      sessionToken: 'test-token',
+      currentUser: { id: 'u1', username: 'user1' },
+      requiresRegistration: null,
+    })
+    useWorkspaceStore.getState().setLastWorkspaceId('u1', 'ws-1')
+
+    workspaces = [{ id: 'ws-1', name: '工作区 1', description: null, created_at: 1, updated_at: 1 }]
+    tasksByWorkspace = { 'ws-1': [] }
+    testSetsByWorkspace = { 'ws-1': [] }
+
+    renderWithProviders('/workspace')
+
+    const view = within(screen.getByTestId('workspace-view'))
+    expect(await view.findByText('工作区 1')).toBeInTheDocument()
+
+    fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
+    fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
+
+    expect(await screen.findByTestId('workspace-view')).toBeInTheDocument()
+    expect(await view.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
+    expect(view.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
   })
 })
