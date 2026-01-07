@@ -1131,6 +1131,199 @@ async fn test_update_task_config_rejects_out_of_range_values() {
 }
 
 #[tokio::test]
+async fn test_teacher_llm_model_is_task_scoped_and_list_includes_display_name() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_teacher_llm_scoped", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+
+    let task_a = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1.clone()]).await;
+    let task_b = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    // Update task A teacher_llm
+    let update_req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_a
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "teacher_llm": { "model_id": "  gpt-4  " },
+                "advanced_data_split": default_advanced_data_split_json()
+            }),
+        ),
+        &token,
+    );
+    let update_resp = app.clone().oneshot(update_req).await.unwrap();
+    assert_eq!(update_resp.status(), StatusCode::OK);
+    let update_body = read_json_body(update_resp).await;
+    assert_eq!(
+        update_body["data"]["config"]["teacher_llm"]["model_id"].as_str(),
+        Some("gpt-4")
+    );
+
+    // GET task should also reflect normalized value
+    let get_req = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}",
+                workspace_id, task_a
+            ),
+        ),
+        &token,
+    );
+    let get_resp = app.clone().oneshot(get_req).await.unwrap();
+    assert_eq!(get_resp.status(), StatusCode::OK);
+    let get_body = read_json_body(get_resp).await;
+    assert_eq!(
+        get_body["data"]["config"]["teacher_llm"]["model_id"].as_str(),
+        Some("gpt-4")
+    );
+
+    // List should include display name without extra calls (computed server-side)
+    let list_req = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!("/api/v1/workspaces/{}/optimization-tasks", workspace_id),
+        ),
+        &token,
+    );
+    let list_resp = app.clone().oneshot(list_req).await.unwrap();
+    assert_eq!(list_resp.status(), StatusCode::OK);
+    let body = read_json_body(list_resp).await;
+    let items = body["data"].as_array().expect("data 不是数组");
+
+    let mut by_id = std::collections::HashMap::new();
+    for item in items {
+        let id = item["id"].as_str().unwrap_or_default().to_string();
+        by_id.insert(id, item.clone());
+    }
+
+    assert_eq!(
+        by_id[&task_a]["teacher_model_display_name"].as_str(),
+        Some("gpt-4")
+    );
+    assert_eq!(
+        by_id[&task_b]["teacher_model_display_name"].as_str(),
+        Some("系统默认")
+    );
+}
+
+#[tokio::test]
+async fn test_teacher_llm_model_id_validation_and_normalization() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "opt_task_teacher_llm_validation", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let ts1 =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+
+    let task_id = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
+
+    // model_id with control character should be rejected (trim does not remove \u0007)
+    let invalid_control = "gpt\u{0007}-4";
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "teacher_llm": { "model_id": invalid_control },
+                "advanced_data_split": default_advanced_data_split_json()
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
+
+    // model_id too long should be rejected
+    let long_id = "a".repeat(129);
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "teacher_llm": { "model_id": long_id },
+                "advanced_data_split": default_advanced_data_split_json()
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["error"]["code"], "VALIDATION_ERROR");
+
+    // model_id whitespace should normalize to null (system default)
+    let req = with_bearer(
+        build_json_request(
+            "PUT",
+            &format!(
+                "/api/v1/workspaces/{}/optimization-tasks/{}/config",
+                workspace_id, task_id
+            ),
+            json!({
+                "initial_prompt": null,
+                "max_iterations": 10,
+                "pass_threshold_percent": 95,
+                "candidate_prompt_count": 5,
+                "diversity_injection_threshold": 3,
+                "train_percent": 80,
+                "validation_percent": 20,
+                "output_config": default_output_config_json(),
+                "evaluator_config": default_evaluator_config_json(),
+                "teacher_llm": { "model_id": "   " },
+                "advanced_data_split": default_advanced_data_split_json()
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["config"]["teacher_llm"]["model_id"], serde_json::Value::Null);
+}
+
+#[tokio::test]
 async fn test_update_task_config_not_found() {
     let app = setup_test_app().await;
     let token = register_user(&app, "opt_task_cfg_not_found", "TestPass123!").await;

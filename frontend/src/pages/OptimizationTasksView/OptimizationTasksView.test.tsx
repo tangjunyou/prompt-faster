@@ -61,6 +61,7 @@ const server = setupServer(
       execution_target_type: (body.execution_target_type as 'dify' | 'generic') ?? 'dify',
       task_mode: (body.task_mode as 'fixed' | 'creative') ?? 'fixed',
       status: 'draft',
+      teacher_model_display_name: '系统默认',
       created_at: now,
       updated_at: now,
     }
@@ -155,6 +156,7 @@ describe('OptimizationTasksView', () => {
         execution_target_type: 'dify',
         task_mode: 'fixed',
         status: 'draft',
+        teacher_model_display_name: '系统默认',
         created_at: 10,
         updated_at: 11,
       },
@@ -181,6 +183,7 @@ describe('OptimizationTasksView', () => {
     renderPage('/workspaces/ws-1/tasks')
 
     expect(await screen.findByText('已有任务')).toBeInTheDocument()
+    expect(screen.getByText('老师模型：系统默认')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('任务名称 *'), { target: { value: '新任务' } })
     fireEvent.change(screen.getByLabelText('优化目标 *'), { target: { value: '新目标' } })
@@ -193,6 +196,7 @@ describe('OptimizationTasksView', () => {
     await waitFor(() => {
       expect(screen.getByText('新任务')).toBeInTheDocument()
     })
+    expect(screen.getAllByText('老师模型：系统默认').length).toBeGreaterThan(0)
   })
 
   it('后端模式校验错误应展示 message（不展示 details）', async () => {

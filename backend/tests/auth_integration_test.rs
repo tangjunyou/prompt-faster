@@ -9,6 +9,8 @@ use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower::ServiceExt;
+use wiremock::matchers::{header, header_exists, method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
@@ -117,6 +119,105 @@ fn with_bearer(mut req: Request<Body>, token: &str) -> Request<Body> {
         format!("Bearer {}", token).parse().unwrap(),
     );
     req
+}
+
+#[tokio::test]
+async fn test_list_generic_llm_models_returns_empty_when_not_configured() {
+    let app = setup_test_app().await;
+
+    let username = "test_user_models_empty";
+    let password = "TestPass123!";
+
+    let register_req = build_json_request(
+        "POST",
+        "/api/v1/auth/register",
+        json!({"username": username, "password": password}),
+    );
+    let register_resp = app.clone().oneshot(register_req).await.unwrap();
+    assert_eq!(register_resp.status(), StatusCode::OK);
+    let register_json = read_json_body(register_resp).await;
+    let token = register_json["data"]["session_token"]
+        .as_str()
+        .expect("缺少 session_token");
+
+    let req = with_bearer(
+        Request::builder()
+            .method("GET")
+            .uri("/api/v1/auth/generic-llm/models")
+            .body(Body::empty())
+            .unwrap(),
+        token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["models"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn test_list_generic_llm_models_returns_models_when_configured() {
+    let app = setup_test_app().await;
+
+    let username = "test_user_models_ok";
+    let password = "TestPass123!";
+
+    let register_req = build_json_request(
+        "POST",
+        "/api/v1/auth/register",
+        json!({"username": username, "password": password}),
+    );
+    let register_resp = app.clone().oneshot(register_req).await.unwrap();
+    assert_eq!(register_resp.status(), StatusCode::OK);
+    let register_json = read_json_body(register_resp).await;
+    let token = register_json["data"]["session_token"]
+        .as_str()
+        .expect("缺少 session_token")
+        .to_string();
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .and(header("Authorization", "Bearer test-api-key"))
+        .and(header_exists("X-Correlation-Id"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "data": [
+                { "id": "gpt-4" },
+                { "id": "gpt-3.5-turbo" }
+            ]
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let save_req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/auth/config",
+            json!({
+                "dify": { "base_url": "https://api.dify.ai", "api_key": "sk-dify-test" },
+                "generic_llm": { "provider": "siliconflow", "base_url": mock_server.uri(), "api_key": "test-api-key" },
+                "teacher_settings": { "temperature": 0.7, "top_p": 0.9, "max_tokens": 2048 }
+            }),
+        ),
+        &token,
+    );
+    let save_resp = app.clone().oneshot(save_req).await.unwrap();
+    assert_eq!(save_resp.status(), StatusCode::OK);
+
+    let req = with_bearer(
+        Request::builder()
+            .method("GET")
+            .uri("/api/v1/auth/generic-llm/models")
+            .body(Body::empty())
+            .unwrap(),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    let models = body["data"]["models"].as_array().unwrap();
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0].as_str(), Some("gpt-4"));
+    assert_eq!(models[1].as_str(), Some("gpt-3.5-turbo"));
 }
 
 #[tokio::test]

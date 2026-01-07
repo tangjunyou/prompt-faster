@@ -294,6 +294,7 @@ export function OptimizationTasksView() {
                     <div className="text-muted-foreground">
                       执行目标：{task.execution_target_type} · 模式：{task.task_mode} · 状态：{task.status}
                     </div>
+                    <div className="text-muted-foreground">老师模型：{task.teacher_model_display_name}</div>
                     <div className="text-muted-foreground">
                       创建：{formatTime(task.created_at)} · 更新：{formatTime(task.updated_at)}
                     </div>

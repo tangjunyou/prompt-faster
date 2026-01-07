@@ -81,7 +81,7 @@ development_status:
   3-4-core-algorithm-parameters-and-default-config: done
   3-5-workspace-creation-and-switching: done
   3-6-workspace-deletion-and-data-isolation: done
-  3-7-multi-teacher-model-switching: backlog
+  3-7-multi-teacher-model-switching: done
   epic-3-retrospective: optional
 
   # ============================================

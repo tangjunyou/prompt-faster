@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use prompt_faster::api::response::{ApiError, ApiSuccess, ErrorDetail, PaginationMeta};
 use prompt_faster::api::routes::auth::{
-    ConfigResponse, CredentialInput, GenericLlmCredentialInput, SaveConfigRequest,
-    SaveConfigResponse, TeacherSettingsInput, TeacherSettingsResponse, TestDifyConnectionRequest,
-    TestGenericLlmConnectionRequest,
+    ConfigResponse, CredentialInput, GenericLlmCredentialInput, GenericLlmModelsResponse,
+    SaveConfigRequest, SaveConfigResponse, TeacherSettingsInput, TeacherSettingsResponse,
+    TestDifyConnectionRequest, TestGenericLlmConnectionRequest,
 };
 use prompt_faster::api::routes::dify::{
     DifyBinding, DifyBindingSource, DifyConfig, SaveDifyConfigRequest, SaveDifyConfigResponse,
@@ -80,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ConfigResponse::export_all_to(&out_dir)?;
     TeacherSettingsResponse::export_all_to(&out_dir)?;
     SaveConfigResponse::export_all_to(&out_dir)?;
+    GenericLlmModelsResponse::export_all_to(&out_dir)?;
 
     // 工作区
     CreateWorkspaceRequest::export_all_to(&out_dir)?;

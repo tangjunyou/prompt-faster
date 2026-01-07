@@ -34,6 +34,8 @@ pub const OPTIMIZATION_TASK_CONFIG_SEMANTIC_SIMILARITY_THRESHOLD_MAX: u8 = 100;
 pub const OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MIN: u32 = 1;
 pub const OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MAX: u32 = 5;
 
+pub const OPTIMIZATION_TASK_CONFIG_TEACHER_LLM_MODEL_ID_MAX_LEN: usize = 128;
+
 /// 防止 config_json 膨胀（未来可根据产品需要调整）
 pub const OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES: usize = 32 * 1024; // 32KB
 
@@ -154,6 +156,23 @@ impl Default for EvaluatorConfig {
     }
 }
 
+/// 老师模型（通用大模型）配置
+///
+/// 注意：与 EvaluatorConfig.teacher_model 不同，本配置用于“为任务覆盖老师模型 model_id”。
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(default, rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub struct TeacherLlmConfig {
+    /// 覆盖老师模型的 model_id；None 表示系统默认（不覆盖）
+    pub model_id: Option<String>,
+}
+
+impl Default for TeacherLlmConfig {
+    fn default() -> Self {
+        Self { model_id: None }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
 #[ts(export_to = "models/")]
@@ -224,6 +243,8 @@ pub struct OptimizationTaskConfig {
     pub data_split: DataSplitPercentConfig,
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
+    #[serde(default)]
+    pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
 }
 
@@ -239,6 +260,7 @@ impl Default for OptimizationTaskConfig {
             data_split: DataSplitPercentConfig::default(),
             output_config: OutputConfig::default(),
             evaluator_config: EvaluatorConfig::default(),
+            teacher_llm: TeacherLlmConfig::default(),
             advanced_data_split: AdvancedDataSplitConfig::default(),
         }
     }
@@ -253,6 +275,7 @@ impl OptimizationTaskConfig {
 
     pub fn normalized(mut self) -> Self {
         self.initial_prompt = normalize_initial_prompt(self.initial_prompt);
+        self.teacher_llm.model_id = normalize_teacher_llm_model_id(self.teacher_llm.model_id);
         self
     }
 
@@ -372,11 +395,37 @@ impl OptimizationTaskConfig {
             }
         }
 
+        if let Some(model_id) = &self.teacher_llm.model_id {
+            if model_id.chars().any(|c| c.is_control()) {
+                return Err("老师模型 model_id 不允许包含控制字符".to_string());
+            }
+            if model_id.chars().count() > OPTIMIZATION_TASK_CONFIG_TEACHER_LLM_MODEL_ID_MAX_LEN {
+                return Err(format!(
+                    "老师模型 model_id 过长（最多 {} 字符）",
+                    OPTIMIZATION_TASK_CONFIG_TEACHER_LLM_MODEL_ID_MAX_LEN
+                ));
+            }
+            if model_id.trim().is_empty() {
+                return Err("老师模型 model_id 不能为空".to_string());
+            }
+        }
+
         Ok(())
     }
 }
 
 fn normalize_initial_prompt(raw: Option<String>) -> Option<String> {
+    raw.and_then(|s| {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn normalize_teacher_llm_model_id(raw: Option<String>) -> Option<String> {
     raw.and_then(|s| {
         let trimmed = s.trim();
         if trimmed.is_empty() {
@@ -409,6 +458,8 @@ struct OptimizationTaskConfigStorage {
     pub data_split: DataSplitPercentConfig,
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
+    #[serde(default)]
+    pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
@@ -427,6 +478,7 @@ impl Default for OptimizationTaskConfigStorage {
             data_split: base.data_split,
             output_config: base.output_config,
             evaluator_config: base.evaluator_config,
+            teacher_llm: base.teacher_llm,
             advanced_data_split: base.advanced_data_split,
             extra: BTreeMap::new(),
         }
@@ -470,6 +522,7 @@ impl OptimizationTaskConfigStorage {
             data_split: self.data_split,
             output_config: self.output_config,
             evaluator_config: self.evaluator_config,
+            teacher_llm: self.teacher_llm,
             advanced_data_split: self.advanced_data_split,
         }
     }
@@ -488,6 +541,7 @@ impl OptimizationTaskConfigStorage {
             data_split: config.data_split,
             output_config: config.output_config,
             evaluator_config: config.evaluator_config,
+            teacher_llm: config.teacher_llm,
             advanced_data_split: config.advanced_data_split,
             extra: existing.extra,
         }

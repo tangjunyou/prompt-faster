@@ -21,6 +21,7 @@ pub use optimization_task_config::{
     DataSplitPercentConfig, EvaluatorConfig, EvaluatorType, ExactMatchEvaluatorConfig,
     OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OutputConfig, OutputStrategy,
     SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherModelEvaluatorConfig,
+    TeacherLlmConfig,
 };
 pub use test_set::TestSet;
 pub use user::User;

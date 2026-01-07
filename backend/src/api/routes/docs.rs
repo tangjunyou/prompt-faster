@@ -53,6 +53,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::auth::test_generic_llm_connection,
         crate::api::routes::auth::save_config,
         crate::api::routes::auth::get_config,
+        crate::api::routes::auth::list_generic_llm_models,
         crate::api::routes::user_auth::get_system_status,
         crate::api::routes::user_auth::register,
         crate::api::routes::user_auth::login,
@@ -93,6 +94,7 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::api::routes::auth::ConfigResponse,
             crate::api::routes::auth::TeacherSettingsResponse,
             crate::api::routes::auth::SaveConfigResponse,
+            crate::api::routes::auth::GenericLlmModelsResponse,
             // User Auth
             crate::api::routes::user_auth::RegisterRequest,
             crate::api::routes::user_auth::LoginRequest,

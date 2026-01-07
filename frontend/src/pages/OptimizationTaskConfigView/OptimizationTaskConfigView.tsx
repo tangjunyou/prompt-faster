@@ -8,6 +8,7 @@ import {
   useOptimizationTask,
   useUpdateOptimizationTaskConfig,
 } from '@/features/task-config/hooks/useOptimizationTasks'
+import { useTeacherModels } from '@/features/task-config/hooks/useTeacherModels'
 import type { UpdateOptimizationTaskConfigRequest } from '@/types/generated/api/UpdateOptimizationTaskConfigRequest'
 import type { OptimizationTaskResponse } from '@/types/generated/api/OptimizationTaskResponse'
 import type { AdvancedDataSplitStrategy } from '@/types/generated/models/AdvancedDataSplitStrategy'
@@ -142,6 +143,17 @@ function OptimizationTaskConfigForm(props: {
     task.config.advanced_data_split.sampling_strategy
   )
 
+  const [initialTeacherModelId, setInitialTeacherModelId] = useState(task.config.teacher_llm?.model_id ?? '')
+  const [teacherModelId, setTeacherModelId] = useState(task.config.teacher_llm?.model_id ?? '')
+  const {
+    data: teacherModelsData,
+    isLoading: isLoadingTeacherModels,
+    error: teacherModelsError,
+  } = useTeacherModels()
+  const teacherModels = teacherModelsData ?? []
+  const teacherModelsErrorMessage =
+    teacherModelsError instanceof Error ? teacherModelsError.message : teacherModelsError ? '加载失败' : null
+
   const [localError, setLocalError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
@@ -167,6 +179,8 @@ function OptimizationTaskConfigForm(props: {
     setSemanticThresholdPercent(config.evaluator_config.semantic_similarity.threshold_percent)
     setConstraintStrict(config.evaluator_config.constraint_check.strict)
     setLlmJudgeSamples(config.evaluator_config.teacher_model.llm_judge_samples)
+    setInitialTeacherModelId(config.teacher_llm?.model_id ?? '')
+    setTeacherModelId(config.teacher_llm?.model_id ?? '')
     setAdvancedDataSplitStrategy(config.advanced_data_split.strategy)
     setKFoldFolds(config.advanced_data_split.k_fold_folds)
     setSamplingStrategy(config.advanced_data_split.sampling_strategy)
@@ -187,6 +201,20 @@ function OptimizationTaskConfigForm(props: {
     const semanticThresholdValue = Number(semanticThresholdPercent)
     const llmJudgeSamplesValue = Number(llmJudgeSamples)
     const kFoldFoldsValue = Number(kFoldFolds)
+
+    const initialTeacherModelIdNormalized =
+      initialTeacherModelId.trim() === '' ? null : initialTeacherModelId.trim()
+    const teacherModelIdNormalized = teacherModelId.trim() === '' ? null : teacherModelId.trim()
+    const teacherOverrideChanged = initialTeacherModelIdNormalized !== teacherModelIdNormalized
+    const teacherModelsUnavailable =
+      !isLoadingTeacherModels && (teacherModelsErrorMessage !== null || teacherModels.length === 0)
+
+    if (teacherOverrideChanged && teacherModelIdNormalized !== null && teacherModelsUnavailable) {
+      setLocalError(
+        '当前无法获取老师模型列表，暂不支持设置老师模型覆盖；请先前往 /settings/api 配置通用大模型，或稍后重试。'
+      )
+      return
+    }
 
     const maxIterationsError = validateIntegerInRange(maxIterationsValue, 1, 100, '最大迭代轮数')
     if (maxIterationsError) {
@@ -310,6 +338,9 @@ function OptimizationTaskConfigForm(props: {
         constraint_check: { strict: constraintStrict },
         teacher_model: { llm_judge_samples: llmJudgeSamplesValue },
       },
+      teacher_llm: {
+        model_id: teacherModelIdNormalized,
+      },
       advanced_data_split: {
         strategy: advancedDataSplitStrategy,
         k_fold_folds: kFoldFoldsValue,
@@ -345,6 +376,7 @@ function OptimizationTaskConfigForm(props: {
     const defaultConstraintStrict = true
     const defaultLlmJudgeSamples = 1
 
+    const resetTeacherModelIdNormalized = null
     const defaultAdvancedDataSplitStrategy: AdvancedDataSplitStrategy = 'percent'
     const defaultKFoldFolds = 5
     const defaultSamplingStrategy: SamplingStrategy = 'random'
@@ -368,6 +400,9 @@ function OptimizationTaskConfigForm(props: {
         semantic_similarity: { threshold_percent: defaultSemanticThresholdPercent },
         constraint_check: { strict: defaultConstraintStrict },
         teacher_model: { llm_judge_samples: defaultLlmJudgeSamples },
+      },
+      teacher_llm: {
+        model_id: resetTeacherModelIdNormalized,
       },
       advanced_data_split: {
         strategy: defaultAdvancedDataSplitStrategy,
@@ -493,6 +528,60 @@ function OptimizationTaskConfigForm(props: {
       <details className="rounded-md border p-4">
         <summary className="cursor-pointer text-sm font-medium">高级配置</summary>
         <div className="mt-4 grid gap-6">
+          <div className="grid gap-3">
+            <div className="text-sm font-medium">老师模型（仅影响该任务）</div>
+            <div className="grid gap-2">
+              <Label htmlFor="teacher-llm-model">老师模型</Label>
+              <select
+                id="teacher-llm-model"
+                className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                value={teacherModelId}
+                onChange={(e) => setTeacherModelId(e.target.value)}
+                disabled={isLoadingTeacherModels}
+              >
+                <option value="">系统默认（不覆盖）</option>
+                {(() => {
+                  const current = teacherModelId.trim()
+                  const options = [...teacherModels]
+                  if (current && !options.includes(current)) {
+                    options.unshift(current)
+                  }
+                  return options.map((modelId) => (
+                    <option key={modelId} value={modelId}>
+                      {modelId}
+                    </option>
+                  ))
+                })()}
+              </select>
+
+              {isLoadingTeacherModels && (
+                <div className="text-xs text-muted-foreground">加载模型列表中...</div>
+              )}
+
+              {!isLoadingTeacherModels && teacherModelsErrorMessage && (
+                <div className="text-xs text-red-500">
+                  加载模型列表失败：{teacherModelsErrorMessage}。请前往{' '}
+                  <Link to="/settings/api" className="underline">
+                    /settings/api
+                  </Link>{' '}
+                  检查配置后重试。
+                </div>
+              )}
+
+              {!isLoadingTeacherModels && !teacherModelsErrorMessage && teacherModels.length === 0 && (
+                <div className="text-xs text-muted-foreground">
+                  未检测到通用大模型配置或无法获取模型列表，请前往{' '}
+                  <Link to="/settings/api" className="underline">
+                    /settings/api
+                  </Link>{' '}
+                  配置后重试。
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground">选择“系统默认”表示不覆盖，全局配置将生效。</div>
+            </div>
+          </div>
+
           <div className="grid gap-3">
             <div className="text-sm font-medium">OutputConfig（输出配置）</div>
             <div className="grid gap-2">
@@ -668,7 +757,7 @@ function OptimizationTaskConfigForm(props: {
 
           <div className="flex items-center justify-between gap-4">
             <div className="text-xs text-muted-foreground">
-              “重置为默认值”仅作用于高级配置（OutputConfig / EvaluatorConfig / AdvancedDataSplitConfig）。
+              “重置为默认值”仅作用于高级配置（老师模型 / OutputConfig / EvaluatorConfig / AdvancedDataSplitConfig）。
             </div>
             <Button type="button" variant="outline" onClick={resetAdvancedToDefaults} disabled={isSaving}>
               重置为默认值

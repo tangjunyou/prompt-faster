@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 use ts_rs::TS;
 use utoipa::ToSchema;
+use zeroize::Zeroizing;
 
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
@@ -361,9 +362,7 @@ impl ConnectionErrorMapping for LlmConnectionError {
 }
 
 /// 统一的连接错误映射函数
-fn map_connection_error_impl<E: ConnectionErrorMapping>(
-    error: E,
-) -> ApiResponse<TestConnectionResult> {
+fn map_connection_error_impl<E: ConnectionErrorMapping, T: Serialize>(error: E) -> ApiResponse<T> {
     if error.is_invalid_credentials() {
         return ApiResponse::err(
             StatusCode::UNAUTHORIZED,
@@ -435,6 +434,10 @@ fn map_connection_error(error: ConnectionError) -> ApiResponse<TestConnectionRes
 
 /// 映射 LLM 连接错误到 API 响应
 fn map_llm_connection_error(error: LlmConnectionError) -> ApiResponse<TestConnectionResult> {
+    map_connection_error_impl(error)
+}
+
+fn map_llm_connection_error_generic<T: Serialize>(error: LlmConnectionError) -> ApiResponse<T> {
     map_connection_error_impl(error)
 }
 
@@ -516,6 +519,13 @@ pub struct TeacherSettingsResponse {
 #[ts(export_to = "api/")]
 pub struct SaveConfigResponse {
     pub message: String,
+}
+
+/// 通用大模型可用模型列表响应
+#[derive(Debug, Serialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
+pub struct GenericLlmModelsResponse {
+    pub models: Vec<String>,
 }
 
 /// 验证老师模型参数
@@ -884,6 +894,133 @@ pub(crate) async fn get_config(
     })
 }
 
+/// 获取通用大模型可用模型列表
+///
+/// GET /api/v1/auth/generic-llm/models
+///
+/// # 鉴权
+/// 此接口需要登录
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/generic-llm/models",
+    responses(
+        (status = 200, description = "查询成功", body = ApiSuccess<GenericLlmModelsResponse>),
+        (status = 401, description = "未授权", body = ApiError),
+        (status = 403, description = "访问被拒绝", body = ApiError),
+        (status = 502, description = "上游错误", body = ApiError),
+        (status = 500, description = "服务器错误", body = ApiError)
+    ),
+    tag = "auth"
+)]
+pub(crate) async fn list_generic_llm_models(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    current_user: CurrentUser,
+) -> ApiResponse<GenericLlmModelsResponse> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = &current_user.user_id;
+    info!(correlation_id = %correlation_id, user_id = %user_id, "获取通用大模型可用模型列表");
+
+    let user_password = match current_user.unlock_context.as_ref() {
+        Some(ctx) => ctx.password_bytes(),
+        None => {
+            return ApiResponse::err(
+                StatusCode::UNAUTHORIZED,
+                error_codes::UNAUTHORIZED,
+                "会话已过期，请重新登录",
+            );
+        }
+    };
+
+    let cred = match CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::GenericLlm)
+        .await
+    {
+        Ok(c) => c,
+        Err(crate::infra::db::repositories::CredentialRepoError::NotFound { .. }) => {
+            return ApiResponse::ok(GenericLlmModelsResponse { models: vec![] });
+        }
+        Err(e) => {
+            warn!(error = %e, "查询通用大模型凭证失败");
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::DATABASE_ERROR,
+                "查询通用大模型凭证失败",
+            );
+        }
+    };
+
+    let provider = match cred.provider.as_deref() {
+        Some(p) if !p.trim().is_empty() => p.trim(),
+        _ => {
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::AUTH_INTERNAL_ERROR,
+                "通用大模型配置不完整，请重新保存",
+            );
+        }
+    };
+
+    let base_url = normalize_base_url_for_docker(&cred.base_url, state.config.is_docker);
+    let base_url_opts = BaseUrlValidationOptions {
+        allow_http: state.config.allow_http_base_url,
+        allow_localhost: state.config.allow_localhost_base_url,
+        allow_private_network: state.config.allow_private_network_base_url,
+    };
+    if let Err(e) = validate_base_url_with_options(&base_url, base_url_opts) {
+        warn!(error = %e, "通用大模型 Base URL 验证失败");
+        return ApiResponse::err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            error_codes::AUTH_VALIDATION_ERROR,
+            "通用大模型 Base URL 配置无效，请前往设置重新保存",
+        );
+    }
+
+    let encrypted = EncryptedApiKey {
+        ciphertext: cred.encrypted_api_key,
+        nonce: cred.nonce,
+        salt: cred.salt,
+    };
+
+    let api_key_bytes = match state.api_key_manager.decrypt_bytes(user_password, &encrypted) {
+        Ok(v) => Zeroizing::new(v),
+        Err(e) => {
+            warn!(error = %e, "解密通用大模型 API Key 失败");
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::ENCRYPTION_ERROR,
+                "解密通用大模型 API Key 失败",
+            );
+        }
+    };
+
+    let api_key = match std::str::from_utf8(api_key_bytes.as_slice()) {
+        Ok(v) => v,
+        Err(_) => {
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::AUTH_INTERNAL_ERROR,
+                "通用大模型 API Key 解码失败",
+            );
+        }
+    };
+
+    match llm_client::list_models(
+        &state.http_client,
+        &base_url,
+        api_key,
+        provider,
+        &correlation_id,
+    )
+    .await
+    {
+        Ok(models) => ApiResponse::ok(GenericLlmModelsResponse { models }),
+        Err(e) => {
+            warn!(error = %e, "获取通用大模型模型列表失败");
+            map_llm_connection_error_generic(e)
+        }
+    }
+}
+
 /// 解密 API Key 并脱敏
 ///
 /// # 安全说明
@@ -933,6 +1070,7 @@ pub fn protected_router() -> Router<AppState> {
     Router::new()
         .route("/config", post(save_config))
         .route("/config", get(get_config))
+        .route("/generic-llm/models", get(list_generic_llm_models))
 }
 
 /// 创建认证路由（向后兼容，包含所有路由）
@@ -947,4 +1085,5 @@ pub fn router() -> Router<AppState> {
         )
         .route("/config", post(save_config))
         .route("/config", get(get_config))
+        .route("/generic-llm/models", get(list_generic_llm_models))
 }

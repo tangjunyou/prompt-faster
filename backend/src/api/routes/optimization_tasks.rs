@@ -17,7 +17,7 @@ use crate::api::state::AppState;
 use crate::domain::models::{
     AdvancedDataSplitConfig, DataSplitPercentConfig, EvaluatorConfig, ExecutionTargetType,
     OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OptimizationTaskMode,
-    OptimizationTaskStatus, OutputConfig, TaskReference,
+    OptimizationTaskStatus, OutputConfig, TaskReference, TeacherLlmConfig,
 };
 use crate::infra::db::repositories::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TestSetRepo,
@@ -65,6 +65,7 @@ pub struct OptimizationTaskListItemResponse {
     pub execution_target_type: ExecutionTargetType,
     pub task_mode: OptimizationTaskMode,
     pub status: OptimizationTaskStatus,
+    pub teacher_model_display_name: String,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]
@@ -83,6 +84,8 @@ pub struct UpdateOptimizationTaskConfigRequest {
     pub validation_percent: u8,
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
+    #[serde(default)]
+    pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
 }
 
@@ -479,16 +482,36 @@ pub(crate) async fn list_optimization_tasks(
     match OptimizationTaskRepo::list_by_workspace_scoped(&state.db, user_id, &workspace_id).await {
         Ok(list) => ApiResponse::ok(
             list.into_iter()
-                .map(|item| OptimizationTaskListItemResponse {
-                    id: item.task.id,
-                    workspace_id: item.task.workspace_id,
-                    name: item.task.name,
-                    goal: item.task.goal,
-                    execution_target_type: item.task.execution_target_type,
-                    task_mode: item.task.task_mode,
-                    status: item.task.status,
-                    created_at: item.task.created_at,
-                    updated_at: item.task.updated_at,
+                .map(|item| {
+                    warn_if_invalid_config_json(
+                        &correlation_id,
+                        user_id,
+                        &workspace_id,
+                        &item.task.id,
+                        item.task.config_json.as_deref(),
+                    );
+
+                    let config =
+                        OptimizationTaskConfig::normalized_from_config_json(item.task.config_json.as_deref());
+
+                    let teacher_model_display_name = config
+                        .teacher_llm
+                        .model_id
+                        .clone()
+                        .unwrap_or_else(|| "系统默认".to_string());
+
+                    OptimizationTaskListItemResponse {
+                        id: item.task.id,
+                        workspace_id: item.task.workspace_id,
+                        name: item.task.name,
+                        goal: item.task.goal,
+                        execution_target_type: item.task.execution_target_type,
+                        task_mode: item.task.task_mode,
+                        status: item.task.status,
+                        teacher_model_display_name,
+                        created_at: item.task.created_at,
+                        updated_at: item.task.updated_at,
+                    }
                 })
                 .collect(),
         ),
@@ -633,6 +656,7 @@ pub(crate) async fn update_optimization_task_config(
         },
         output_config: req.output_config,
         evaluator_config: req.evaluator_config,
+        teacher_llm: req.teacher_llm,
         advanced_data_split: req.advanced_data_split,
     }
     .normalized();

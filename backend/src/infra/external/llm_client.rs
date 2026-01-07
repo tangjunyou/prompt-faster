@@ -93,6 +93,25 @@ pub async fn test_connection(
     provider: &str,
     correlation_id: &str,
 ) -> Result<TestConnectionResult, LlmConnectionError> {
+    let model_ids = list_models(client, base_url, api_key, provider, correlation_id).await?;
+    let model_count = model_ids.len();
+
+    Ok(TestConnectionResult {
+        message: format!("连接成功，可用模型: {}", model_count),
+        models: Some(model_ids),
+    })
+}
+
+/// 获取通用大模型可用模型列表
+///
+/// 调用 OpenAI 兼容的 `/v1/models` 端点。
+pub async fn list_models(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+    provider: &str,
+    correlation_id: &str,
+) -> Result<Vec<String>, LlmConnectionError> {
     // 验证 provider
     validate_provider(provider)?;
 
@@ -119,19 +138,12 @@ pub async fn test_connection(
                 .await
                 .map_err(|e| LlmConnectionError::ParseError(format!("解析模型列表失败: {}", e)))?;
 
-            let model_ids: Vec<String> = models.data.iter().map(|m| m.id.clone()).collect();
-            let model_count = model_ids.len();
-
-            Ok(TestConnectionResult {
-                message: format!("连接成功，可用模型: {}", model_count),
-                models: Some(model_ids),
-            })
+            Ok(models.data.into_iter().map(|m| m.id).collect())
         }
         401 => Err(LlmConnectionError::InvalidCredentials),
         403 => Err(LlmConnectionError::Forbidden),
         status => {
             let body = response.text().await.unwrap_or_default();
-            // 截断错误消息，防止泄露敏感信息
             Err(LlmConnectionError::UpstreamError(format!(
                 "HTTP {} - {}",
                 status,

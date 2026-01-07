@@ -3,4 +3,4 @@ import type { ExecutionTargetType } from "../models/ExecutionTargetType";
 import type { OptimizationTaskMode } from "../models/OptimizationTaskMode";
 import type { OptimizationTaskStatus } from "../models/OptimizationTaskStatus";
 
-export type OptimizationTaskListItemResponse = { id: string, workspace_id: string, name: string, goal: string, execution_target_type: ExecutionTargetType, task_mode: OptimizationTaskMode, status: OptimizationTaskStatus, created_at: number, updated_at: number, };
+export type OptimizationTaskListItemResponse = { id: string, workspace_id: string, name: string, goal: string, execution_target_type: ExecutionTargetType, task_mode: OptimizationTaskMode, status: OptimizationTaskStatus, teacher_model_display_name: string, created_at: number, updated_at: number, };

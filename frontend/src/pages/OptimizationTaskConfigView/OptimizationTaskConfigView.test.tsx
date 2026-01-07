@@ -15,8 +15,21 @@ const API_BASE = 'http://localhost:3000/api/v1'
 
 let task: OptimizationTaskResponse | null = null
 let putCallCount = 0
+let lastPutBody: UpdateOptimizationTaskConfigRequest | null = null
 
 const server = setupServer(
+  http.get(`${API_BASE}/auth/generic-llm/models`, ({ request }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+
+    return HttpResponse.json({ data: { models: ['gpt-4', 'gpt-3.5-turbo'] } })
+  }),
+
   http.get(`${API_BASE}/workspaces/:workspaceId/optimization-tasks/:taskId`, ({ request, params }) => {
     const auth = request.headers.get('authorization')
     if (auth !== 'Bearer test-token') {
@@ -43,6 +56,7 @@ const server = setupServer(
     `${API_BASE}/workspaces/:workspaceId/optimization-tasks/:taskId/config`,
     async ({ request }) => {
       putCallCount += 1
+      lastPutBody = null
       const auth = request.headers.get('authorization')
       if (auth !== 'Bearer test-token') {
         return HttpResponse.json(
@@ -52,6 +66,7 @@ const server = setupServer(
       }
 
       const body = (await request.json()) as UpdateOptimizationTaskConfigRequest
+      lastPutBody = body
 
       const normalizedInitialPrompt =
         body.initial_prompt && body.initial_prompt.trim() ? body.initial_prompt.trim() : null
@@ -75,6 +90,7 @@ const server = setupServer(
             },
             output_config: body.output_config,
             evaluator_config: body.evaluator_config,
+            teacher_llm: body.teacher_llm,
             advanced_data_split: body.advanced_data_split,
           },
           updated_at: now,
@@ -112,6 +128,7 @@ describe('OptimizationTaskConfigView', () => {
 
   beforeEach(() => {
     putCallCount = 0
+    lastPutBody = null
     const currentUser: UserInfo = { id: 'u1', username: 'user1' }
     useAuthStore.setState({
       authStatus: 'authenticated',
@@ -146,6 +163,7 @@ describe('OptimizationTaskConfigView', () => {
           constraint_check: { strict: true },
           teacher_model: { llm_judge_samples: 1 },
         },
+        teacher_llm: { model_id: null },
         advanced_data_split: { strategy: 'percent', k_fold_folds: 5, sampling_strategy: 'random' },
       },
       created_at: 1700000000000,
@@ -217,6 +235,79 @@ describe('OptimizationTaskConfigView', () => {
 
     expect(screen.getByLabelText('评估器类型')).toHaveValue('semantic_similarity')
     expect(screen.getByLabelText('语义相似度阈值（%）')).toHaveValue(90)
+  })
+
+  it('默认应选中“系统默认（不覆盖）”', async () => {
+    renderPage('/workspaces/ws-1/tasks/task-1')
+
+    await screen.findByText('任务配置：任务 1')
+
+    expect(screen.getByLabelText('老师模型')).toHaveValue('')
+    expect(screen.getByRole('option', { name: '系统默认（不覆盖）' })).toBeInTheDocument()
+  })
+
+  it('模型列表加载后可选择老师模型并在保存 payload 中包含 teacher_llm', async () => {
+    renderPage('/workspaces/ws-1/tasks/task-1')
+
+    await screen.findByText('任务配置：任务 1')
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'gpt-4' })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByLabelText('老师模型'), { target: { value: 'gpt-4' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('保存成功')).toBeInTheDocument()
+    })
+
+    expect(lastPutBody?.teacher_llm?.model_id).toBe('gpt-4')
+    expect(screen.getByLabelText('老师模型')).toHaveValue('gpt-4')
+  })
+
+  it('当模型列表为空时应显示引导到 /settings/api', async () => {
+    server.use(
+      http.get(`${API_BASE}/auth/generic-llm/models`, () => {
+        return HttpResponse.json({ data: { models: [] } })
+      })
+    )
+
+    renderPage('/workspaces/ws-1/tasks/task-1')
+
+    await screen.findByText('任务配置：任务 1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/未检测到通用大模型配置或无法获取模型列表/)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('link', { name: '/settings/api' })).toBeInTheDocument()
+  })
+
+  it('当模型列表加载失败时应只显示 message，并提供 /settings/api 入口', async () => {
+    server.use(
+      http.get(`${API_BASE}/auth/generic-llm/models`, () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: 'AUTH_UPSTREAM_ERROR',
+              message: '上游服务不可用',
+              details: { leaked: 'sk-should-not-appear' },
+            },
+          },
+          { status: 502 }
+        )
+      })
+    )
+
+    renderPage('/workspaces/ws-1/tasks/task-1')
+
+    await screen.findByText('任务配置：任务 1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/加载模型列表失败：上游服务不可用/)).toBeInTheDocument()
+    })
+    expect(screen.queryByText('sk-should-not-appear')).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '/settings/api' })).toBeInTheDocument()
   })
 
   it('点击“重置为默认值”确认后应持久化并回显默认高级配置（不影响基础字段）', async () => {

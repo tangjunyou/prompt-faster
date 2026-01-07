@@ -2,5 +2,6 @@
 import type { AdvancedDataSplitConfig } from "../models/AdvancedDataSplitConfig";
 import type { EvaluatorConfig } from "../models/EvaluatorConfig";
 import type { OutputConfig } from "../models/OutputConfig";
+import type { TeacherLlmConfig } from "../models/TeacherLlmConfig";
 
-export type UpdateOptimizationTaskConfigRequest = { initial_prompt: string | null, max_iterations: number, pass_threshold_percent: number, candidate_prompt_count: number, diversity_injection_threshold: number, train_percent: number, validation_percent: number, output_config: OutputConfig, evaluator_config: EvaluatorConfig, advanced_data_split: AdvancedDataSplitConfig, };
+export type UpdateOptimizationTaskConfigRequest = { initial_prompt: string | null, max_iterations: number, pass_threshold_percent: number, candidate_prompt_count: number, diversity_injection_threshold: number, train_percent: number, validation_percent: number, output_config: OutputConfig, evaluator_config: EvaluatorConfig, teacher_llm: TeacherLlmConfig, advanced_data_split: AdvancedDataSplitConfig, };
