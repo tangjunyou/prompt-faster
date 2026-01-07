@@ -1,5 +1,5 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -22,7 +22,17 @@ function formatTime(ts: number) {
 }
 
 export function OptimizationTasksView() {
+  const navigate = useNavigate()
+  const location = useLocation()
   const workspaceId = useParams().id ?? ''
+  const initialFlashMessage = (location.state as { flashMessage?: string } | null)?.flashMessage ?? null
+  const [flashMessage, setFlashMessage] = useState<string | null>(initialFlashMessage)
+
+  useEffect(() => {
+    if (!initialFlashMessage) return
+    // Clear one-time flash message from history state.
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null })
+  }, [initialFlashMessage, location.pathname, location.search, navigate])
 
   const {
     data: tasksData,
@@ -123,6 +133,19 @@ export function OptimizationTasksView() {
           创建优化任务并完成最小可用的基础配置（执行目标/任务模式/优化目标/关联测试集）。
         </p>
       </div>
+
+      {flashMessage && (
+        <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+          {flashMessage}
+          <button
+            type="button"
+            className="ml-3 text-xs underline"
+            onClick={() => setFlashMessage(null)}
+          >
+            关闭
+          </button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

@@ -1,6 +1,6 @@
 # Story 3.5: 工作区创建与切换
 
-Status: review
+Status: done
 
 Story Key: `3-5-workspace-creation-and-switching`
 

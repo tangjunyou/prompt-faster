@@ -79,8 +79,8 @@ development_status:
   3-2-initial-prompt-and-iteration-termination-conditions: done
   3-3-candidate-generation-and-diversity-injection-config: done
   3-4-core-algorithm-parameters-and-default-config: done
-  3-5-workspace-creation-and-switching: review
-  3-6-workspace-deletion-and-data-isolation: backlog
+  3-5-workspace-creation-and-switching: done
+  3-6-workspace-deletion-and-data-isolation: done
   3-7-multi-teacher-model-switching: backlog
   epic-3-retrospective: optional
 
