@@ -932,22 +932,23 @@ pub(crate) async fn list_generic_llm_models(
         }
     };
 
-    let cred = match CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::GenericLlm)
-        .await
-    {
-        Ok(c) => c,
-        Err(crate::infra::db::repositories::CredentialRepoError::NotFound { .. }) => {
-            return ApiResponse::ok(GenericLlmModelsResponse { models: vec![] });
-        }
-        Err(e) => {
-            warn!(error = %e, "查询通用大模型凭证失败");
-            return ApiResponse::err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error_codes::DATABASE_ERROR,
-                "查询通用大模型凭证失败",
-            );
-        }
-    };
+    let cred =
+        match CredentialRepo::find_by_user_and_type(&state.db, user_id, CredentialType::GenericLlm)
+            .await
+        {
+            Ok(c) => c,
+            Err(crate::infra::db::repositories::CredentialRepoError::NotFound { .. }) => {
+                return ApiResponse::ok(GenericLlmModelsResponse { models: vec![] });
+            }
+            Err(e) => {
+                warn!(error = %e, "查询通用大模型凭证失败");
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询通用大模型凭证失败",
+                );
+            }
+        };
 
     let provider = match cred.provider.as_deref() {
         Some(p) if !p.trim().is_empty() => p.trim(),
@@ -981,7 +982,10 @@ pub(crate) async fn list_generic_llm_models(
         salt: cred.salt,
     };
 
-    let api_key_bytes = match state.api_key_manager.decrypt_bytes(user_password, &encrypted) {
+    let api_key_bytes = match state
+        .api_key_manager
+        .decrypt_bytes(user_password, &encrypted)
+    {
         Ok(v) => Zeroizing::new(v),
         Err(e) => {
             warn!(error = %e, "解密通用大模型 API Key 失败");

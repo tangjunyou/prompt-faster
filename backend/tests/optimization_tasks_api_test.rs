@@ -1139,7 +1139,8 @@ async fn test_teacher_llm_model_is_task_scoped_and_list_includes_display_name() 
         create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
             .await;
 
-    let task_a = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1.clone()]).await;
+    let task_a =
+        create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1.clone()]).await;
     let task_b = create_optimization_task(&app, &workspace_id, &token, "fixed", vec![ts1]).await;
 
     // Update task A teacher_llm
@@ -1320,7 +1321,10 @@ async fn test_teacher_llm_model_id_validation_and_normalization() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_json_body(resp).await;
-    assert_eq!(body["data"]["config"]["teacher_llm"]["model_id"], serde_json::Value::Null);
+    assert_eq!(
+        body["data"]["config"]["teacher_llm"]["model_id"],
+        serde_json::Value::Null
+    );
 }
 
 #[tokio::test]

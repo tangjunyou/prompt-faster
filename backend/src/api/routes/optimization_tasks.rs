@@ -491,8 +491,9 @@ pub(crate) async fn list_optimization_tasks(
                         item.task.config_json.as_deref(),
                     );
 
-                    let config =
-                        OptimizationTaskConfig::normalized_from_config_json(item.task.config_json.as_deref());
+                    let config = OptimizationTaskConfig::normalized_from_config_json(
+                        item.task.config_json.as_deref(),
+                    );
 
                     let teacher_model_display_name = config
                         .teacher_llm

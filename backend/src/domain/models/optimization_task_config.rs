@@ -159,18 +159,12 @@ impl Default for EvaluatorConfig {
 /// 老师模型（通用大模型）配置
 ///
 /// 注意：与 EvaluatorConfig.teacher_model 不同，本配置用于“为任务覆盖老师模型 model_id”。
-#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema, Default)]
 #[serde(default, rename_all = "snake_case")]
 #[ts(export_to = "models/")]
 pub struct TeacherLlmConfig {
     /// 覆盖老师模型的 model_id；None 表示系统默认（不覆盖）
     pub model_id: Option<String>,
-}
-
-impl Default for TeacherLlmConfig {
-    fn default() -> Self {
-        Self { model_id: None }
-    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]

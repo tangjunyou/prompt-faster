@@ -20,8 +20,8 @@ pub use optimization_task_config::{
     AdvancedDataSplitConfig, AdvancedDataSplitStrategy, ConstraintCheckEvaluatorConfig,
     DataSplitPercentConfig, EvaluatorConfig, EvaluatorType, ExactMatchEvaluatorConfig,
     OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OutputConfig, OutputStrategy,
-    SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherModelEvaluatorConfig,
-    TeacherLlmConfig,
+    SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherLlmConfig,
+    TeacherModelEvaluatorConfig,
 };
 pub use test_set::TestSet;
 pub use user::User;
