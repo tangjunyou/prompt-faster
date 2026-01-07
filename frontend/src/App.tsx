@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import './App.css'
 import { ApiConfigPage, FocusView, OptimizationTaskConfigView, OptimizationTasksView, RunView, TestSetsView, WorkspaceView } from './pages'
 import { LoginPage } from './features/auth/components/LoginPage'
@@ -9,10 +10,13 @@ import { useAuthStore } from './stores/useAuthStore'
 import { logout as logoutRequest } from './features/auth/services/authService'
 import { Button } from './components/ui/button'
 import { ViewSwitcher } from './components/common/ViewSwitcher'
+import { WorkspaceSelector } from './components/common/WorkspaceSelector'
+import { useWorkspaceStore } from './stores/useWorkspaceStore'
 
 function App() {
   const navigate = useNavigate()
   const location = useLocation()
+  const queryClient = useQueryClient()
   const logout = useAuthStore((state) => state.logout)
   const sessionToken = useAuthStore((state) => state.sessionToken)
   const currentUser = useAuthStore((state) => state.currentUser)
@@ -21,15 +25,18 @@ function App() {
 
   useEffect(() => {
     registerUnauthorizedHandler(() => {
+      queryClient.clear()
+      useWorkspaceStore.getState().reset()
       logout()
       navigate('/login', { replace: true })
     })
-  }, [logout, navigate])
+  }, [logout, navigate, queryClient])
 
   const showHeader = location.pathname !== '/login'
 
   const handleLogout = async () => {
     if (!sessionToken) {
+      queryClient.clear()
       logout()
       navigate('/login', { replace: true })
       return
@@ -40,6 +47,7 @@ function App() {
       await logoutRequest(sessionToken)
     } finally {
       setIsLoggingOut(false)
+      queryClient.clear()
       logout()
       navigate('/login', { replace: true })
     }
@@ -55,6 +63,7 @@ function App() {
               Prompt Faster
               </Link>
               <ViewSwitcher />
+              {authStatus === 'authenticated' && <WorkspaceSelector />}
             </div>
             <div className="flex items-center gap-3" data-testid="user-menu">
               {authStatus === 'authenticated' && currentUser ? (

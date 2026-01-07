@@ -4,7 +4,7 @@
  * - 使用 TanStack Query 管理缓存
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { CreateOptimizationTaskRequest } from '@/types/generated/api/CreateOptimizationTaskRequest'
 import {
@@ -15,7 +15,18 @@ import {
 } from '../services/optimizationTaskService'
 import type { UpdateOptimizationTaskConfigRequest } from '@/types/generated/api/UpdateOptimizationTaskConfigRequest'
 
-const OPTIMIZATION_TASKS_QUERY_KEY = ['optimizationTasks'] as const
+export const OPTIMIZATION_TASKS_QUERY_KEY = ['optimizationTasks'] as const
+
+export function getOptimizationTasksQueryKey(workspaceId: string) {
+  return [...OPTIMIZATION_TASKS_QUERY_KEY, workspaceId] as const
+}
+
+export function getOptimizationTasksQueryOptions(workspaceId: string, sessionToken: string) {
+  return {
+    queryKey: getOptimizationTasksQueryKey(workspaceId),
+    queryFn: () => listOptimizationTasks(workspaceId, sessionToken),
+  }
+}
 
 export function useOptimizationTasks(workspaceId: string) {
   const sessionToken = useAuthStore((state) => state.sessionToken)
@@ -23,9 +34,9 @@ export function useOptimizationTasks(workspaceId: string) {
   const isAuthenticated = authStatus === 'authenticated' && !!sessionToken
 
   return useQuery({
-    queryKey: [...OPTIMIZATION_TASKS_QUERY_KEY, workspaceId],
-    queryFn: () => listOptimizationTasks(workspaceId, sessionToken!),
+    ...getOptimizationTasksQueryOptions(workspaceId, sessionToken!),
     enabled: isAuthenticated && !!workspaceId,
+    placeholderData: keepPreviousData,
   })
 }
 

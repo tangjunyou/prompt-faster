@@ -24,10 +24,20 @@ function formatTime(ts: number) {
 export function OptimizationTasksView() {
   const workspaceId = useParams().id ?? ''
 
-  const { data: tasksData, isLoading: isLoadingTasks, error: tasksError } = useOptimizationTasks(workspaceId)
+  const {
+    data: tasksData,
+    isLoading: isLoadingTasks,
+    isFetching: isFetchingTasks,
+    error: tasksError,
+  } = useOptimizationTasks(workspaceId)
   const tasks: OptimizationTaskListItemResponse[] = tasksData ?? []
 
-  const { data: testSetsData, isLoading: isLoadingTestSets, error: testSetsError } = useTestSets(workspaceId)
+  const {
+    data: testSetsData,
+    isLoading: isLoadingTestSets,
+    isFetching: isFetchingTestSets,
+    error: testSetsError,
+  } = useTestSets(workspaceId)
   const testSets: TestSetListItemResponse[] = testSetsData ?? []
 
   const {
@@ -181,6 +191,9 @@ export function OptimizationTasksView() {
 
             <div className="grid gap-2">
               <Label>关联测试集 *</Label>
+              {!isLoadingTestSets && isFetchingTestSets && testSets.length > 0 && (
+                <div className="text-xs text-muted-foreground">加载中...</div>
+              )}
               {isLoadingTestSets && <div className="text-sm text-muted-foreground">加载测试集...</div>}
               {testSetsError && (
                 <div className="text-sm text-red-500">加载测试集失败：{testSetsErrorMessage}</div>
@@ -230,6 +243,9 @@ export function OptimizationTasksView() {
           <CardDescription>至少包含：名称、优化目标摘要、执行目标类型、任务模式、创建/更新时间。</CardDescription>
         </CardHeader>
         <CardContent>
+          {!isLoadingTasks && isFetchingTasks && tasks.length > 0 && (
+            <div className="text-xs text-muted-foreground">加载中...</div>
+          )}
           {isLoadingTasks && <div className="text-sm text-muted-foreground">加载中...</div>}
 
           {tasksError && (

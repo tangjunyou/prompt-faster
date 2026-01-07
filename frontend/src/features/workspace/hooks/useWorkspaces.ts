@@ -13,7 +13,14 @@ import {
 } from '../services/workspaceService'
 import type { CreateWorkspaceRequest } from '@/types/generated/api/CreateWorkspaceRequest'
 
-const WORKSPACES_QUERY_KEY = ['workspaces'] as const
+export const WORKSPACES_QUERY_KEY = ['workspaces'] as const
+
+export function getWorkspacesQueryOptions(sessionToken: string) {
+  return {
+    queryKey: WORKSPACES_QUERY_KEY,
+    queryFn: () => listWorkspaces(sessionToken),
+  }
+}
 
 /**
  * 获取当前用户的工作区列表
@@ -24,7 +31,7 @@ const WORKSPACES_QUERY_KEY = ['workspaces'] as const
  * const { data: workspaces, isLoading } = useWorkspaces()
  * ```
  */
-export function useWorkspaces() {
+export function useWorkspaces(options?: { enabled?: boolean }) {
   const sessionToken = useAuthStore((state) => state.sessionToken)
   const authStatus = useAuthStore((state) => state.authStatus)
   const isAuthenticated = authStatus === 'authenticated' && !!sessionToken
@@ -32,7 +39,7 @@ export function useWorkspaces() {
   return useQuery({
     queryKey: WORKSPACES_QUERY_KEY,
     queryFn: () => listWorkspaces(sessionToken!),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && (options?.enabled ?? true),
   })
 }
 
@@ -46,7 +53,7 @@ export function useWorkspaces() {
  * const { data: workspace } = useWorkspace('workspace-id')
  * ```
  */
-export function useWorkspace(id: string) {
+export function useWorkspace(id: string, options?: { enabled?: boolean }) {
   const sessionToken = useAuthStore((state) => state.sessionToken)
   const authStatus = useAuthStore((state) => state.authStatus)
   const isAuthenticated = authStatus === 'authenticated' && !!sessionToken
@@ -54,7 +61,7 @@ export function useWorkspace(id: string) {
   return useQuery({
     queryKey: [...WORKSPACES_QUERY_KEY, id],
     queryFn: () => getWorkspace(id, sessionToken!),
-    enabled: isAuthenticated && !!id,
+    enabled: isAuthenticated && !!id && (options?.enabled ?? true),
   })
 }
 

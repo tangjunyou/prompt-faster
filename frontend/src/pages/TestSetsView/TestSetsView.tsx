@@ -126,7 +126,7 @@ export function TestSetsView() {
   const params = useParams()
   const workspaceId = params.id ?? ''
 
-  const { data, isLoading, error } = useTestSets(workspaceId)
+  const { data, isLoading, isFetching, error } = useTestSets(workspaceId)
   const testSets: TestSetListItemResponse[] = data ?? []
 
   const [isSaveAsTemplateOpen, setIsSaveAsTemplateOpen] = useState(false)
@@ -1014,6 +1014,9 @@ export function TestSetsView() {
 
   return (
     <section className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6" data-testid="test-sets-view">
+      {!isLoading && isFetching && testSets.length > 0 && (
+        <div className="text-xs text-muted-foreground">加载中...</div>
+      )}
       {isSaveAsTemplateOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"

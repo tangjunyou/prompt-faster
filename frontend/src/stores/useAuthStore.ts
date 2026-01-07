@@ -9,6 +9,7 @@
 
 import { create } from 'zustand'
 import { isApiError, isApiSuccess, type ApiResponse } from '@/lib/api'
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import {
   getMe as getMeRequest,
   login as loginRequest,
@@ -118,12 +119,14 @@ export const useAuthStore = create<AuthState & AuthActions>((set, get) => ({
     return response
   },
 
-  logout: () =>
+  logout: () => {
+    useWorkspaceStore.getState().reset()
     set({
       authStatus: 'unauthenticated',
       sessionToken: null,
       currentUser: null,
-    }),
+    })
+  },
 
   loadMe: async () => {
     const token = get().sessionToken

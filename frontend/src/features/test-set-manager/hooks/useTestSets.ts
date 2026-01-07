@@ -4,7 +4,7 @@
  * - 使用 TanStack Query 管理缓存
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { CreateTestSetRequest } from '@/types/generated/api/CreateTestSetRequest'
 import type { UpdateTestSetRequest } from '@/types/generated/api/UpdateTestSetRequest'
@@ -16,7 +16,18 @@ import {
   updateTestSet,
 } from '../services/testSetService'
 
-const TEST_SETS_QUERY_KEY = ['testSets'] as const
+export const TEST_SETS_QUERY_KEY = ['testSets'] as const
+
+export function getTestSetsQueryKey(workspaceId: string) {
+  return [...TEST_SETS_QUERY_KEY, workspaceId] as const
+}
+
+export function getTestSetsQueryOptions(workspaceId: string, sessionToken: string) {
+  return {
+    queryKey: getTestSetsQueryKey(workspaceId),
+    queryFn: () => listTestSets(workspaceId, sessionToken),
+  }
+}
 
 export function useTestSets(workspaceId: string) {
   const sessionToken = useAuthStore((state) => state.sessionToken)
@@ -24,9 +35,9 @@ export function useTestSets(workspaceId: string) {
   const isAuthenticated = authStatus === 'authenticated' && !!sessionToken
 
   return useQuery({
-    queryKey: [...TEST_SETS_QUERY_KEY, workspaceId],
-    queryFn: () => listTestSets(workspaceId, sessionToken!),
+    ...getTestSetsQueryOptions(workspaceId, sessionToken!),
     enabled: isAuthenticated && !!workspaceId,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -96,4 +107,3 @@ export function useDeleteTestSet(workspaceId: string) {
     },
   })
 }
-
