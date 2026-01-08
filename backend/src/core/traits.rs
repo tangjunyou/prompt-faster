@@ -1,13 +1,40 @@
 //! 7 Trait 定义
 //! 核心算法接口，支持 Mock 替换
 
+use crate::core::rule_engine::RuleEngineError;
+use crate::domain::models::{EvaluationResult, Rule, RuleConflict, TestCase};
+use crate::domain::types::OptimizationContext;
 use async_trait::async_trait;
 
 /// 规律引擎 Trait
 #[async_trait]
 pub trait RuleEngine: Send + Sync {
     /// 从测试用例中提取规律
-    async fn extract_rules(&self, test_cases: &[TestCase]) -> anyhow::Result<Vec<Rule>>;
+    async fn extract_rules(
+        &self,
+        ctx: &OptimizationContext,
+        test_cases: &[TestCase],
+    ) -> Result<Vec<Rule>, RuleEngineError>;
+
+    async fn detect_conflicts(
+        &self,
+        ctx: &OptimizationContext,
+        rules: &[Rule],
+    ) -> Result<Vec<RuleConflict>, RuleEngineError>;
+
+    async fn resolve_conflict(
+        &self,
+        ctx: &OptimizationContext,
+        conflict: &RuleConflict,
+    ) -> Result<Rule, RuleEngineError>;
+
+    async fn merge_similar_rules(
+        &self,
+        ctx: &OptimizationContext,
+        rules: &[Rule],
+    ) -> Result<Vec<Rule>, RuleEngineError>;
+
+    fn name(&self) -> &str;
 }
 
 /// Prompt 生成器 Trait
@@ -71,8 +98,4 @@ pub trait ExecutionTarget: Send + Sync {
 }
 
 // 占位类型定义（将在 domain 模块中完善）
-pub struct TestCase;
-pub struct Rule;
-pub struct OptimizationContext;
-pub struct EvaluationResult;
 pub struct AggregatedFeedback;
