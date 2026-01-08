@@ -47,7 +47,7 @@ impl Default for ExecutionTargetConfig {
 }
 
 /// 优化配置（用户可调整的算法参数）
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OptimizationConfig {
     pub output: OutputConfig,
     pub minibatch: MinibatchConfig,
@@ -58,22 +58,6 @@ pub struct OptimizationConfig {
     pub evaluator: EvaluatorConfig,
     pub budget: BudgetConfig,
     pub racing: RacingConfig,
-}
-
-impl Default for OptimizationConfig {
-    fn default() -> Self {
-        Self {
-            output: OutputConfig::default(),
-            minibatch: MinibatchConfig::default(),
-            oscillation: OscillationConfig::default(),
-            rule: RuleConfig::default(),
-            iteration: IterationConfig::default(),
-            data_split: DataSplitConfig::default(),
-            evaluator: EvaluatorConfig::default(),
-            budget: BudgetConfig::default(),
-            racing: RacingConfig::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

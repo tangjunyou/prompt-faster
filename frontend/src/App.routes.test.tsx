@@ -616,14 +616,14 @@ describe('App routes', () => {
 
     renderWithProviders('/workspace')
 
-    const view = within(screen.getByTestId('workspace-view'))
+    const view = within(await screen.findByTestId('workspace-view'))
     expect(await view.findByText('工作区 1')).toBeInTheDocument()
 
     fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
     fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
 
-    expect(await screen.findByTestId('workspace-view')).toBeInTheDocument()
-    expect(await view.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
-    expect(view.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
+    const updatedView = within(await screen.findByTestId('workspace-view'))
+    expect(await updatedView.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
+    expect(updatedView.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
   })
 })
