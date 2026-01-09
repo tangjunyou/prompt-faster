@@ -622,7 +622,15 @@ describe('App routes', () => {
     fireEvent.click(view.getByTestId('workspace-delete-ws-1'))
     fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
 
+    // 等待删除请求真正完成（避免在 CI + coverage 下出现时序抖动）
+    await waitFor(() => {
+      expect(workspaces).toHaveLength(0)
+    })
+
     const updatedView = within(await screen.findByTestId('workspace-view'))
+    await waitFor(() => {
+      expect(updatedView.queryByText('工作区 1')).not.toBeInTheDocument()
+    })
     expect(await updatedView.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
     expect(updatedView.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
   })
