@@ -1,6 +1,7 @@
 //! 7 Trait 定义
 //! 核心算法接口，支持 Mock 替换
 
+use crate::core::prompt_generator::GeneratorError;
 use crate::core::rule_engine::RuleEngineError;
 use crate::domain::models::{EvaluationResult, Rule, RuleConflict, TestCase};
 use crate::domain::types::OptimizationContext;
@@ -40,12 +41,11 @@ pub trait RuleEngine: Send + Sync {
 /// Prompt 生成器 Trait
 #[async_trait]
 pub trait PromptGenerator: Send + Sync {
-    /// 基于规律生成候选 Prompt
-    async fn generate(
-        &self,
-        rules: &[Rule],
-        context: &OptimizationContext,
-    ) -> anyhow::Result<Vec<String>>;
+    /// 基于规律体系生成 Prompt
+    async fn generate(&self, ctx: &OptimizationContext) -> Result<String, GeneratorError>;
+
+    /// 生成器名称
+    fn name(&self) -> &str;
 }
 
 /// 评估器 Trait
