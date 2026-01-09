@@ -704,11 +704,22 @@ fn summarize_test_cases(test_cases: &[TestCase]) -> String {
 }
 
 fn join_set(set: &BTreeSet<String>) -> String {
-    set.iter().cloned().collect::<Vec<_>>().join("、")
+    join_str_iter(set.iter().map(|s| s.as_str()))
 }
 
 fn join_vec(vec: &[String]) -> String {
-    vec.iter().cloned().collect::<Vec<_>>().join("、")
+    join_str_iter(vec.iter().map(|s| s.as_str()))
+}
+
+fn join_str_iter<'a>(iter: impl IntoIterator<Item = &'a str>) -> String {
+    let mut out = String::new();
+    for (i, s) in iter.into_iter().enumerate() {
+        if i > 0 {
+            out.push('、');
+        }
+        out.push_str(s);
+    }
+    out
 }
 
 #[cfg(test)]
