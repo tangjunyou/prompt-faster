@@ -272,13 +272,7 @@ fn clamp_01(v: f64) -> f64 {
     if !v.is_finite() {
         return 0.0;
     }
-    if v < 0.0 {
-        0.0
-    } else if v > 1.0 {
-        1.0
-    } else {
-        v
-    }
+    v.clamp(0.0, 1.0)
 }
 
 fn read_task_evaluator_config(
@@ -621,8 +615,7 @@ fn aggregate_ensemble(
         0.0
     } else {
         let mu = mean_score;
-        let v = scores.iter().map(|s| (s - mu) * (s - mu)).sum::<f64>() / scores.len() as f64;
-        v
+        scores.iter().map(|s| (s - mu) * (s - mu)).sum::<f64>() / scores.len() as f64
     };
 
     let agreement_score = 1.0 - clamp_01(variance);
@@ -735,9 +728,9 @@ async fn evaluate_constraint_check(
     output: &str,
 ) -> Result<EvaluationResult, EvaluatorError> {
     let strict = task_cfg.constraint_check.strict;
-    let constraints: Vec<&Constraint> = match &test_case.reference {
-        TaskReference::Constrained { constraints, .. } => constraints.iter().collect(),
-        TaskReference::Hybrid { constraints, .. } => constraints.iter().collect(),
+    let constraints: &[Constraint] = match &test_case.reference {
+        TaskReference::Constrained { constraints, .. } => constraints,
+        TaskReference::Hybrid { constraints, .. } => constraints,
         TaskReference::Exact { .. } => {
             return Err(EvaluatorError::InvalidInput(
                 "ConstraintCheckEvaluator 不支持 TaskReference::Exact".to_string(),
@@ -762,8 +755,8 @@ async fn evaluate_constraint_check(
     let mut failure_points = Vec::new();
     let mut passed_count = 0usize;
 
-    for c in &constraints {
-        let (ok, fp_dim, details) = evaluate_constraint(*c, output)?;
+    for c in constraints {
+        let (ok, fp_dim, details) = evaluate_constraint(c, output)?;
         if ok {
             passed_count += 1;
         } else {
@@ -781,7 +774,7 @@ async fn evaluate_constraint_check(
             DimensionScore {
                 score: if ok { 1.0 } else { 0.0 },
                 passed: ok,
-                weight: (*c).weight,
+                weight: c.weight,
                 details: Some(details),
             },
         );
@@ -1242,14 +1235,12 @@ fn parse_teacher_judge_response(raw: &str) -> Result<TeacherJudgeResponse, Evalu
 
 fn truncate(s: &str, max_chars: usize) -> String {
     let mut out = String::new();
-    let mut n = 0usize;
-    for ch in s.chars() {
+    for (n, ch) in s.chars().enumerate() {
         if n >= max_chars {
-            out.push_str("…");
+            out.push('…');
             break;
         }
         out.push(ch);
-        n += 1;
     }
     out
 }
@@ -1264,7 +1255,7 @@ fn extract_json_object(raw: &str) -> Option<&str> {
             let inner = inner.trim_start();
             let inner = inner
                 .strip_prefix("json")
-                .map(|s| s.trim_start_matches(|c: char| c == '\n' || c == '\r'))
+                .map(|s| s.trim_start_matches(['\n', '\r']))
                 .unwrap_or(inner);
             if inner.trim_start().starts_with('{') {
                 // fallthrough to brace scan on inner slice
