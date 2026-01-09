@@ -12,6 +12,7 @@ import {
   listWorkspaces,
 } from '../services/workspaceService'
 import type { CreateWorkspaceRequest } from '@/types/generated/api/CreateWorkspaceRequest'
+import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
 
 export const WORKSPACES_QUERY_KEY = ['workspaces'] as const
 
@@ -119,7 +120,12 @@ export function useDeleteWorkspace() {
       }
       return deleteWorkspace(workspaceId, sessionToken)
     },
-    onSuccess: () => {
+    onSuccess: (_data, workspaceId) => {
+      // 先就地更新列表缓存，避免 UI 等待 invalidate/refetch 的窗口期渲染旧列表（CI 下尤其容易触发）。
+      queryClient.setQueryData<WorkspaceResponse[]>(WORKSPACES_QUERY_KEY, (prev) => {
+        const current = prev ?? []
+        return current.filter((ws) => ws.id !== workspaceId)
+      })
       queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
     },
   })
