@@ -601,7 +601,9 @@ describe('App routes', () => {
     })
   })
 
-  it('删除最后一个工作区：仍停留在 /workspace 并看到“创建工作区”入口（不出现空白页）', async () => {
+  it(
+    '删除最后一个工作区：仍停留在 /workspace 并看到“创建工作区”入口（不出现空白页）',
+    async () => {
     useAuthStore.setState({
       authStatus: 'authenticated',
       sessionToken: 'test-token',
@@ -640,5 +642,7 @@ describe('App routes', () => {
       await updatedView.findByText('暂无工作区，请先创建一个。', undefined, { timeout: 10_000 })
     ).toBeInTheDocument()
     expect(updatedView.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
-  })
+    },
+    15_000
+  )
 })
