@@ -92,7 +92,7 @@ development_status:
   4-1-pattern-extraction-layer: done
   4-2-prompt-generation-layer: done
   4-3-quality-assessment-layer: done
-  4-4-reflection-iteration-layer: backlog
+  4-4-reflection-iteration-layer: review
   4-5-execution-mode-and-parallel-scheduling: backlog
   4-6-failure-archive-and-diversity-injection: backlog
   4-7-extension-templates-and-docs: backlog

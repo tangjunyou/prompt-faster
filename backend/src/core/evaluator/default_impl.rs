@@ -10,7 +10,7 @@ use crate::domain::models::{
 };
 use crate::domain::types::OptimizationContext;
 use async_trait::async_trait;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -141,7 +141,7 @@ pub struct EvaluationStats {
     pub mean_score: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandidateRankingEntry {
     pub candidate_index: usize,
     pub pass_rate: f64,
@@ -203,7 +203,6 @@ pub fn build_evaluations_by_test_case_id(
     Ok(map)
 }
 
-#[allow(dead_code)]
 pub fn split_filter_for_stats(ctx: &OptimizationContext) -> SplitFilter {
     if ctx.config.data_split.enabled {
         SplitFilter::ValidationAndUnassigned
@@ -212,7 +211,6 @@ pub fn split_filter_for_stats(ctx: &OptimizationContext) -> SplitFilter {
     }
 }
 
-#[allow(dead_code)]
 pub fn summarize_for_stats(
     filter: SplitFilter,
     results: &[(TestCase, String)],
@@ -256,7 +254,6 @@ pub fn summarize_for_stats(
     })
 }
 
-#[allow(dead_code)]
 fn split_allowed(filter: SplitFilter, split: DataSplit) -> bool {
     match filter {
         SplitFilter::All => true,

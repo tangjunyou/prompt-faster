@@ -3,6 +3,7 @@
 pub mod algorithm;
 pub mod optimization_task;
 pub mod optimization_task_config;
+pub mod reflection;
 pub mod test_set;
 pub mod user;
 pub mod workspace;
@@ -22,6 +23,11 @@ pub use optimization_task_config::{
     OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OutputConfig, OutputStrategy,
     SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherLlmConfig,
     TeacherModelEvaluatorConfig,
+};
+pub use reflection::{
+    ArbitrationMethod, ArbitrationResult, CandidateSource, ConflictType, FailureType,
+    OptimizationResult, PromptCandidate, RecommendedAction, ReflectionResult, Suggestion,
+    SuggestionConflict, SuggestionType, TerminationReason, UnifiedReflection, UnifiedSuggestion,
 };
 pub use test_set::TestSet;
 pub use user::User;

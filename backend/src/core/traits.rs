@@ -2,9 +2,14 @@
 //! 核心算法接口，支持 Mock 替换
 
 use crate::core::evaluator::EvaluatorError;
+use crate::core::feedback_aggregator::AggregatorError;
+use crate::core::optimizer::OptimizerError;
 use crate::core::prompt_generator::GeneratorError;
 use crate::core::rule_engine::RuleEngineError;
-use crate::domain::models::{EvaluationResult, Rule, RuleConflict, TestCase};
+use crate::domain::models::{
+    ArbitrationResult, EvaluationResult, OptimizationResult, ReflectionResult, Rule, RuleConflict,
+    SuggestionConflict, TerminationReason, TestCase, UnifiedReflection,
+};
 use crate::domain::types::OptimizationContext;
 use async_trait::async_trait;
 
@@ -74,19 +79,41 @@ pub trait Evaluator: Send + Sync {
 /// 反馈聚合器 Trait
 #[async_trait]
 pub trait FeedbackAggregator: Send + Sync {
-    /// 聚合评估反馈
-    async fn aggregate(&self, results: &[EvaluationResult]) -> anyhow::Result<AggregatedFeedback>;
+    /// 聚合反思结果
+    async fn aggregate(
+        &self,
+        ctx: &OptimizationContext,
+        reflections: &[ReflectionResult],
+    ) -> Result<UnifiedReflection, AggregatorError>;
+
+    /// 仲裁冲突的建议
+    async fn arbitrate(
+        &self,
+        ctx: &OptimizationContext,
+        conflicts: &[SuggestionConflict],
+    ) -> Result<ArbitrationResult, AggregatorError>;
+
+    fn name(&self) -> &str;
 }
 
 /// 优化器 Trait
 #[async_trait]
 pub trait Optimizer: Send + Sync {
-    /// 执行优化步骤
-    async fn optimize(
+    /// 基于统一反馈执行一步优化
+    async fn optimize_step(
         &self,
-        feedback: &AggregatedFeedback,
-        context: &OptimizationContext,
-    ) -> anyhow::Result<String>;
+        ctx: &OptimizationContext,
+        unified_reflection: &UnifiedReflection,
+    ) -> Result<OptimizationResult, OptimizerError>;
+
+    /// 判断是否应该终止迭代
+    fn should_terminate(
+        &self,
+        ctx: &OptimizationContext,
+        history: &[OptimizationResult],
+    ) -> Option<TerminationReason>;
+
+    fn name(&self) -> &str;
 }
 
 /// 老师模型 Trait
@@ -108,6 +135,3 @@ pub trait ExecutionTarget: Send + Sync {
     /// 执行 Prompt 并获取结果
     async fn execute(&self, prompt: &str, input: &serde_json::Value) -> anyhow::Result<String>;
 }
-
-// 占位类型定义（将在 domain 模块中完善）
-pub struct AggregatedFeedback;
