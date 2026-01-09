@@ -1,6 +1,7 @@
 //! 7 Trait 定义
 //! 核心算法接口，支持 Mock 替换
 
+use crate::core::evaluator::EvaluatorError;
 use crate::core::prompt_generator::GeneratorError;
 use crate::core::rule_engine::RuleEngineError;
 use crate::domain::models::{EvaluationResult, Rule, RuleConflict, TestCase};
@@ -51,12 +52,23 @@ pub trait PromptGenerator: Send + Sync {
 /// 评估器 Trait
 #[async_trait]
 pub trait Evaluator: Send + Sync {
-    /// 评估 Prompt 效果
+    /// 评估单个测试用例的输出
     async fn evaluate(
         &self,
-        prompt: &str,
-        test_cases: &[TestCase],
-    ) -> anyhow::Result<EvaluationResult>;
+        ctx: &OptimizationContext,
+        test_case: &TestCase,
+        output: &str,
+    ) -> Result<EvaluationResult, EvaluatorError>;
+
+    /// 批量评估（results 不应在 Evaluator 内被过滤/重排）
+    async fn evaluate_batch(
+        &self,
+        ctx: &OptimizationContext,
+        results: &[(TestCase, String)],
+    ) -> Result<Vec<EvaluationResult>, EvaluatorError>;
+
+    /// 评估器名称
+    fn name(&self) -> &str;
 }
 
 /// 反馈聚合器 Trait
