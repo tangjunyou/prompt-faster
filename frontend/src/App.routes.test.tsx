@@ -631,8 +631,8 @@ describe('App routes', () => {
 
     await waitFor(
       () => {
-        const updatedView = within(screen.getByTestId('workspace-view'))
-        expect(updatedView.queryByText('工作区 1')).not.toBeInTheDocument()
+        // 只验证“可删除的工作区条目”已移除，避免误匹配顶部的 workspace selector 文案
+        expect(screen.queryByTestId('workspace-delete-ws-1')).not.toBeInTheDocument()
       },
       { timeout: 10_000 }
     )
