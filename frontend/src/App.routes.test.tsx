@@ -627,8 +627,18 @@ describe('App routes', () => {
       expect(workspaces).toHaveLength(0)
     })
 
-    const updatedView = within(await screen.findByTestId('workspace-view'))
-    expect(await updatedView.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
+    await waitFor(
+      () => {
+        const updatedView = within(screen.getByTestId('workspace-view'))
+        expect(updatedView.queryByText('工作区 1')).not.toBeInTheDocument()
+      },
+      { timeout: 10_000 }
+    )
+
+    const updatedView = within(screen.getByTestId('workspace-view'))
+    expect(
+      await updatedView.findByText('暂无工作区，请先创建一个。', undefined, { timeout: 10_000 })
+    ).toBeInTheDocument()
     expect(updatedView.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
   })
 })
