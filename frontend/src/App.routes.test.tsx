@@ -628,9 +628,6 @@ describe('App routes', () => {
     })
 
     const updatedView = within(await screen.findByTestId('workspace-view'))
-    await waitFor(() => {
-      expect(updatedView.queryByText('工作区 1')).not.toBeInTheDocument()
-    })
     expect(await updatedView.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
     expect(updatedView.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
   })

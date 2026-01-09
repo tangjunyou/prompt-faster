@@ -3,7 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import { useCreateWorkspace, useDeleteWorkspace, useWorkspaces } from '@/features/workspace/hooks/useWorkspaces'
+import {
+  WORKSPACES_QUERY_KEY,
+  useCreateWorkspace,
+  useDeleteWorkspace,
+  useWorkspaces,
+} from '@/features/workspace/hooks/useWorkspaces'
 import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -134,6 +139,9 @@ export function WorkspaceView() {
       const userId = currentUser?.id ?? null
       const remaining = workspaces.filter((ws) => ws.id !== deletedId)
       const nextId = remaining[0]?.id ?? null
+
+      // 立即更新 workspaces 列表缓存，避免等待 invalidate/refetch 的时间窗口导致 UI 渲染旧列表（CI 下尤其容易触发）。
+      queryClient.setQueryData<WorkspaceResponse[]>(WORKSPACES_QUERY_KEY, remaining)
 
       // 必须在导航前清理缓存（避免短时间窗口渲染旧缓存）
       removeWorkspaceScopedCache(deletedId)
