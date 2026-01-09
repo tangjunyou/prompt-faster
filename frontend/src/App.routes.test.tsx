@@ -601,7 +601,9 @@ describe('App routes', () => {
     })
   })
 
-  it('删除最后一个工作区：仍停留在 /workspace 并看到“创建工作区”入口（不出现空白页）', async () => {
+  it(
+    '删除最后一个工作区：仍停留在 /workspace 并看到“创建工作区”入口（不出现空白页）',
+    async () => {
     useAuthStore.setState({
       authStatus: 'authenticated',
       sessionToken: 'test-token',
@@ -627,8 +629,20 @@ describe('App routes', () => {
       expect(workspaces).toHaveLength(0)
     })
 
-    const updatedView = within(await screen.findByTestId('workspace-view'))
-    expect(await updatedView.findByText('暂无工作区，请先创建一个。')).toBeInTheDocument()
+    await waitFor(
+      () => {
+        // 只验证“可删除的工作区条目”已移除，避免误匹配顶部的 workspace selector 文案
+        expect(screen.queryByTestId('workspace-delete-ws-1')).not.toBeInTheDocument()
+      },
+      { timeout: 10_000 }
+    )
+
+    const updatedView = within(screen.getByTestId('workspace-view'))
+    expect(
+      await updatedView.findByText('暂无工作区，请先创建一个。', undefined, { timeout: 10_000 })
+    ).toBeInTheDocument()
     expect(updatedView.getByRole('button', { name: '创建工作区' })).toBeInTheDocument()
-  })
+    },
+    15_000
+  )
 })
