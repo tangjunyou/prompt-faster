@@ -541,7 +541,10 @@ async fn evaluate_with_ensemble(
 
     if let Some(tm) = teacher_model {
         selected.push("teacher_model");
-        thresholds.insert("llm_judge_samples".to_string(), json!(llm_judge_samples(ctx, task_cfg)));
+        thresholds.insert(
+            "llm_judge_samples".to_string(),
+            json!(llm_judge_samples(ctx, task_cfg)),
+        );
         parts.push(evaluate_teacher_model(ctx, task_cfg, test_case, output, tm).await?);
     } else {
         // TeacherModel 是可选依赖：未注入时允许降级，但必须可诊断。
@@ -1644,7 +1647,12 @@ mod tests {
     #[tokio::test]
     async fn missing_task_evaluator_config_returns_invalid_input() {
         let tc = make_exact_case("tc1", "OK");
-        let mut ctx = make_ctx(vec![tc.clone()], task_cfg(EvaluatorType::ExactMatch), false, 0.95);
+        let mut ctx = make_ctx(
+            vec![tc.clone()],
+            task_cfg(EvaluatorType::ExactMatch),
+            false,
+            0.95,
+        );
         ctx.extensions.clear();
 
         let err = DefaultEvaluator::new(None)
@@ -1659,7 +1667,8 @@ mod tests {
 
     #[tokio::test]
     async fn summarize_for_stats_total_zero_returns_invalid_input() {
-        let tc_train = make_constrained_case("train", Some(DataSplit::Train), vec![c_length(1, 10)]);
+        let tc_train =
+            make_constrained_case("train", Some(DataSplit::Train), vec![c_length(1, 10)]);
         let tc_holdout =
             make_constrained_case("holdout", Some(DataSplit::Holdout), vec![c_length(1, 10)]);
         let ctx = make_ctx(
@@ -1684,7 +1693,12 @@ mod tests {
     #[tokio::test]
     async fn evaluate_batch_unknown_id_returns_invalid_input() {
         let tc1 = make_exact_case("tc1", "OK");
-        let ctx = make_ctx(vec![tc1.clone()], task_cfg(EvaluatorType::ExactMatch), false, 0.95);
+        let ctx = make_ctx(
+            vec![tc1.clone()],
+            task_cfg(EvaluatorType::ExactMatch),
+            false,
+            0.95,
+        );
 
         let other = make_exact_case("other", "OK");
         let results = vec![(other, "OK".to_string())];
@@ -1701,7 +1715,12 @@ mod tests {
     #[tokio::test]
     async fn evaluate_batch_duplicate_id_returns_invalid_input() {
         let tc1 = make_exact_case("tc1", "OK");
-        let ctx = make_ctx(vec![tc1.clone()], task_cfg(EvaluatorType::ExactMatch), false, 0.95);
+        let ctx = make_ctx(
+            vec![tc1.clone()],
+            task_cfg(EvaluatorType::ExactMatch),
+            false,
+            0.95,
+        );
         let results = vec![(tc1.clone(), "OK".to_string()), (tc1, "OK".to_string())];
         let err = DefaultEvaluator::new(None)
             .evaluate_batch(&ctx, &results)
@@ -1749,7 +1768,12 @@ mod tests {
     #[tokio::test]
     async fn teacher_model_timeout_is_enforced() {
         let tc = make_exact_case("tc1", "OK");
-        let mut ctx = make_ctx(vec![tc.clone()], task_cfg(EvaluatorType::TeacherModel), false, 0.95);
+        let mut ctx = make_ctx(
+            vec![tc.clone()],
+            task_cfg(EvaluatorType::TeacherModel),
+            false,
+            0.95,
+        );
         ctx.config.budget.max_duration_secs = Some(1);
         let tm = Arc::new(StaticTeacherModel {
             response: "{\"passed\":true,\"score\":1}".to_string(),
@@ -1768,9 +1792,15 @@ mod tests {
     #[tokio::test]
     async fn teacher_model_parses_fenced_json() {
         let tc = make_exact_case("tc1", "OK");
-        let ctx = make_ctx(vec![tc.clone()], task_cfg(EvaluatorType::TeacherModel), false, 0.95);
+        let ctx = make_ctx(
+            vec![tc.clone()],
+            task_cfg(EvaluatorType::TeacherModel),
+            false,
+            0.95,
+        );
         let tm = Arc::new(StaticTeacherModel {
-            response: "当然可以：\n```json\n{\"passed\":true,\"score\":1,\"confidence\":1}\n```\n".to_string(),
+            response: "当然可以：\n```json\n{\"passed\":true,\"score\":1,\"confidence\":1}\n```\n"
+                .to_string(),
             delay_ms: 0,
         });
         let ev = DefaultEvaluator::new(Some(tm))
