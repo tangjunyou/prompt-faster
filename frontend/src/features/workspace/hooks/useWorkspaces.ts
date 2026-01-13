@@ -120,12 +120,24 @@ export function useDeleteWorkspace() {
       }
       return deleteWorkspace(workspaceId, sessionToken)
     },
-    onSuccess: (_data, workspaceId) => {
-      // 先就地更新列表缓存，避免 UI 等待 invalidate/refetch 的窗口期渲染旧列表（CI 下尤其容易触发）。
+    onMutate: async (workspaceId: string) => {
+      // 取消可能在飞的列表请求，避免“旧列表响应”在删除成功后覆盖本地缓存（CI + coverage 下尤其容易触发）。
+      await queryClient.cancelQueries({ queryKey: WORKSPACES_QUERY_KEY })
+
+      const previous = queryClient.getQueryData<WorkspaceResponse[]>(WORKSPACES_QUERY_KEY)
       queryClient.setQueryData<WorkspaceResponse[]>(WORKSPACES_QUERY_KEY, (prev) => {
         const current = prev ?? []
         return current.filter((ws) => ws.id !== workspaceId)
       })
+
+      return { previous }
+    },
+    onError: (_error, _workspaceId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData<WorkspaceResponse[]>(WORKSPACES_QUERY_KEY, context.previous)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
     },
   })
