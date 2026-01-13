@@ -2,7 +2,8 @@
 import type { AdvancedDataSplitConfig } from "./AdvancedDataSplitConfig";
 import type { DataSplitPercentConfig } from "./DataSplitPercentConfig";
 import type { EvaluatorConfig } from "./EvaluatorConfig";
+import type { ExecutionMode } from "./ExecutionMode";
 import type { OutputConfig } from "./OutputConfig";
 import type { TeacherLlmConfig } from "./TeacherLlmConfig";
 
-export type OptimizationTaskConfig = { schema_version: number, initial_prompt: string | null, max_iterations: number, pass_threshold_percent: number, candidate_prompt_count: number, diversity_injection_threshold: number, data_split: DataSplitPercentConfig, output_config: OutputConfig, evaluator_config: EvaluatorConfig, teacher_llm: TeacherLlmConfig, advanced_data_split: AdvancedDataSplitConfig, };
+export type OptimizationTaskConfig = { schema_version: number, initial_prompt: string | null, max_iterations: number, pass_threshold_percent: number, candidate_prompt_count: number, diversity_injection_threshold: number, execution_mode: ExecutionMode, max_concurrency: number, data_split: DataSplitPercentConfig, output_config: OutputConfig, evaluator_config: EvaluatorConfig, teacher_llm: TeacherLlmConfig, advanced_data_split: AdvancedDataSplitConfig, };

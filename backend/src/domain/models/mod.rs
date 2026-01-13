@@ -20,8 +20,8 @@ pub use optimization_task::{
 pub use optimization_task_config::{
     AdvancedDataSplitConfig, AdvancedDataSplitStrategy, ConstraintCheckEvaluatorConfig,
     DataSplitPercentConfig, EvaluatorConfig, EvaluatorType, ExactMatchEvaluatorConfig,
-    OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OutputConfig, OutputStrategy,
-    SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherLlmConfig,
+    ExecutionMode, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OutputConfig,
+    OutputStrategy, SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherLlmConfig,
     TeacherModelEvaluatorConfig,
 };
 pub use reflection::{

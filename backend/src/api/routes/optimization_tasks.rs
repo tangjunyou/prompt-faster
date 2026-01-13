@@ -15,9 +15,9 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::domain::models::{
-    AdvancedDataSplitConfig, DataSplitPercentConfig, EvaluatorConfig, ExecutionTargetType,
-    OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OptimizationTaskMode,
-    OptimizationTaskStatus, OutputConfig, TaskReference, TeacherLlmConfig,
+    AdvancedDataSplitConfig, DataSplitPercentConfig, EvaluatorConfig, ExecutionMode,
+    ExecutionTargetType, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig,
+    OptimizationTaskMode, OptimizationTaskStatus, OutputConfig, TaskReference, TeacherLlmConfig,
 };
 use crate::infra::db::repositories::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TestSetRepo,
@@ -80,6 +80,10 @@ pub struct UpdateOptimizationTaskConfigRequest {
     pub pass_threshold_percent: u8,
     pub candidate_prompt_count: u32,
     pub diversity_injection_threshold: u32,
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
+    #[serde(default = "default_max_concurrency")]
+    pub max_concurrency: u32,
     pub train_percent: u8,
     pub validation_percent: u8,
     pub output_config: OutputConfig,
@@ -87,6 +91,10 @@ pub struct UpdateOptimizationTaskConfigRequest {
     #[serde(default)]
     pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
+}
+
+fn default_max_concurrency() -> u32 {
+    OptimizationTaskConfig::default().max_concurrency
 }
 
 fn extract_correlation_id(headers: &HeaderMap) -> String {
@@ -650,6 +658,8 @@ pub(crate) async fn update_optimization_task_config(
         pass_threshold_percent: req.pass_threshold_percent,
         candidate_prompt_count: req.candidate_prompt_count,
         diversity_injection_threshold: req.diversity_injection_threshold,
+        execution_mode: req.execution_mode,
+        max_concurrency: req.max_concurrency,
         data_split: DataSplitPercentConfig {
             train_percent: req.train_percent,
             validation_percent: req.validation_percent,

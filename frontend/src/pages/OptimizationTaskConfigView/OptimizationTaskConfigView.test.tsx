@@ -72,21 +72,23 @@ const server = setupServer(
         body.initial_prompt && body.initial_prompt.trim() ? body.initial_prompt.trim() : null
 
       const now = 1700000001234
-      if (task) {
-        task = {
-          ...task,
-          config: {
-            ...task.config,
-            schema_version: 1,
-            initial_prompt: normalizedInitialPrompt,
-            max_iterations: body.max_iterations,
-            pass_threshold_percent: body.pass_threshold_percent,
-            candidate_prompt_count: body.candidate_prompt_count,
-            diversity_injection_threshold: body.diversity_injection_threshold,
-            data_split: {
-              train_percent: body.train_percent,
-              validation_percent: body.validation_percent,
-              holdout_percent: 0,
+	      if (task) {
+	        task = {
+	          ...task,
+	          config: {
+	            ...task.config,
+	            schema_version: 1,
+	            initial_prompt: normalizedInitialPrompt,
+	            max_iterations: body.max_iterations,
+	            pass_threshold_percent: body.pass_threshold_percent,
+	            candidate_prompt_count: body.candidate_prompt_count,
+	            diversity_injection_threshold: body.diversity_injection_threshold,
+	            execution_mode: body.execution_mode,
+	            max_concurrency: body.max_concurrency,
+	            data_split: {
+	              train_percent: body.train_percent,
+	              validation_percent: body.validation_percent,
+	              holdout_percent: 0,
             },
             output_config: body.output_config,
             evaluator_config: body.evaluator_config,
@@ -154,6 +156,8 @@ describe('OptimizationTaskConfigView', () => {
         pass_threshold_percent: 95,
         candidate_prompt_count: 5,
         diversity_injection_threshold: 3,
+        execution_mode: 'serial',
+        max_concurrency: 4,
         data_split: { train_percent: 80, validation_percent: 20, holdout_percent: 0 },
         output_config: { strategy: 'single', conflict_alert_threshold: 3, auto_recommend: true },
         evaluator_config: {
@@ -171,8 +175,8 @@ describe('OptimizationTaskConfigView', () => {
     }
   })
 
-  it('应渲染默认值并在 initial_prompt 为 null 时展示留空提示（含高级配置默认值）', async () => {
-    renderPage('/workspaces/ws-1/tasks/task-1')
+	  it('应渲染默认值并在 initial_prompt 为 null 时展示留空提示（含高级配置默认值）', async () => {
+	    renderPage('/workspaces/ws-1/tasks/task-1')
 
     expect(await screen.findByText('任务配置：任务 1')).toBeInTheDocument()
     expect(
@@ -181,10 +185,12 @@ describe('OptimizationTaskConfigView', () => {
 
     expect(screen.getByLabelText('最大迭代轮数')).toHaveValue(10)
     expect(screen.getByLabelText('通过率阈值（%）')).toHaveValue(95)
-    expect(screen.getByLabelText('候选 Prompt 生成数量')).toHaveValue(5)
-    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(3)
-    expect(screen.getByLabelText('Train%')).toHaveValue(80)
-    expect(screen.getByLabelText('Validation%')).toHaveValue(20)
+	    expect(screen.getByLabelText('候选 Prompt 生成数量')).toHaveValue(5)
+	    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(3)
+	    expect(screen.getByLabelText('执行模式')).toHaveValue('serial')
+	    expect(screen.queryByLabelText('并发数（max_concurrency）')).not.toBeInTheDocument()
+	    expect(screen.getByLabelText('Train%')).toHaveValue(80)
+	    expect(screen.getByLabelText('Validation%')).toHaveValue(20)
 
     expect(screen.getByLabelText('输出策略')).toHaveValue('single')
     expect(screen.getByLabelText('冲突告警阈值')).toHaveValue(3)
@@ -195,8 +201,8 @@ describe('OptimizationTaskConfigView', () => {
     expect(screen.queryByLabelText('采样策略')).not.toBeInTheDocument()
   })
 
-  it('保存成功后应提示成功并回显后端归一化配置（空 prompt → null）', async () => {
-    renderPage('/workspaces/ws-1/tasks/task-1')
+	  it('保存成功后应提示成功并回显后端归一化配置（空 prompt → null）', async () => {
+	    renderPage('/workspaces/ws-1/tasks/task-1')
 
     await screen.findByText('任务配置：任务 1')
 
@@ -213,9 +219,56 @@ describe('OptimizationTaskConfigView', () => {
       screen.getByText('留空时，系统将在首次迭代中基于优化目标和测试集自动生成初始 Prompt')
     ).toBeInTheDocument()
 
-    expect(screen.getByLabelText('候选 Prompt 生成数量')).toHaveValue(4)
-    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(2)
-  })
+	    expect(screen.getByLabelText('候选 Prompt 生成数量')).toHaveValue(4)
+	    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(2)
+	  })
+
+	  it('切换到并行模式时应显示并发数输入，并发数越界应本地拦截且不发送请求', async () => {
+	    renderPage('/workspaces/ws-1/tasks/task-1')
+
+	    await screen.findByText('任务配置：任务 1')
+
+	    expect(screen.queryByLabelText('并发数（max_concurrency）')).not.toBeInTheDocument()
+
+	    fireEvent.change(screen.getByLabelText('执行模式'), { target: { value: 'parallel' } })
+
+	    const concurrencyInput = await screen.findByLabelText('并发数（max_concurrency）')
+	    expect(concurrencyInput).toHaveValue(4)
+
+	    fireEvent.change(concurrencyInput, { target: { value: '0' } })
+	    await waitFor(() => {
+	      expect(concurrencyInput).toHaveValue(0)
+	    })
+
+	    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+	    expect(await screen.findByText('并发数仅允许 1-64')).toBeInTheDocument()
+	    expect(putCallCount).toBe(0)
+	  })
+
+	  it('并行模式保存成功时应携带 execution_mode/max_concurrency 并回显', async () => {
+	    renderPage('/workspaces/ws-1/tasks/task-1')
+
+	    await screen.findByText('任务配置：任务 1')
+
+	    fireEvent.change(screen.getByLabelText('执行模式'), { target: { value: 'parallel' } })
+	    const concurrencyInput = await screen.findByLabelText('并发数（max_concurrency）')
+	    fireEvent.change(concurrencyInput, { target: { value: '8' } })
+	    await waitFor(() => {
+	      expect(concurrencyInput).toHaveValue(8)
+	    })
+
+	    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+
+	    await waitFor(() => {
+	      expect(screen.getByText('保存成功')).toBeInTheDocument()
+	    })
+
+	    expect(lastPutBody?.execution_mode).toBe('parallel')
+	    expect(lastPutBody?.max_concurrency).toBe(8)
+
+	    expect(screen.getByLabelText('执行模式')).toHaveValue('parallel')
+	    expect(screen.getByLabelText('并发数（max_concurrency）')).toHaveValue(8)
+	  })
 
   it('切换 evaluator 类型时仅渲染对应字段，保存成功后回显', async () => {
     renderPage('/workspaces/ws-1/tasks/task-1')

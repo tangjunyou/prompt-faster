@@ -36,6 +36,10 @@ pub const OPTIMIZATION_TASK_CONFIG_LLM_JUDGE_SAMPLES_MAX: u32 = 5;
 
 pub const OPTIMIZATION_TASK_CONFIG_TEACHER_LLM_MODEL_ID_MAX_LEN: usize = 128;
 
+pub const OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_MIN: u32 = 1;
+pub const OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_MAX: u32 = 64;
+pub const OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_DEFAULT: u32 = 4;
+
 /// 防止 config_json 膨胀（未来可根据产品需要调整）
 pub const OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES: usize = 32 * 1024; // 32KB
 
@@ -50,6 +54,15 @@ pub enum OutputStrategy {
     Single,
     Adaptive,
     Multi,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum ExecutionMode {
+    #[default]
+    Serial,
+    Parallel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
@@ -234,6 +247,9 @@ pub struct OptimizationTaskConfig {
     pub pass_threshold_percent: u8,
     pub candidate_prompt_count: u32,
     pub diversity_injection_threshold: u32,
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
+    pub max_concurrency: u32,
     pub data_split: DataSplitPercentConfig,
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
@@ -251,6 +267,8 @@ impl Default for OptimizationTaskConfig {
             pass_threshold_percent: 95,
             candidate_prompt_count: 5,
             diversity_injection_threshold: 3,
+            execution_mode: ExecutionMode::Serial,
+            max_concurrency: OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_DEFAULT,
             data_split: DataSplitPercentConfig::default(),
             output_config: OutputConfig::default(),
             evaluator_config: EvaluatorConfig::default(),
@@ -309,6 +327,17 @@ impl OptimizationTaskConfig {
                 "多样性注入阈值仅允许 {}-{}",
                 OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MIN,
                 OPTIMIZATION_TASK_CONFIG_DIVERSITY_INJECTION_THRESHOLD_MAX
+            ));
+        }
+
+        if !(OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_MIN
+            ..=OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_MAX)
+            .contains(&self.max_concurrency)
+        {
+            return Err(format!(
+                "并发数仅允许 {}-{}",
+                OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_MIN,
+                OPTIMIZATION_TASK_CONFIG_MAX_CONCURRENCY_MAX
             ));
         }
 
@@ -438,6 +467,10 @@ fn default_diversity_injection_threshold() -> u32 {
     OptimizationTaskConfig::default().diversity_injection_threshold
 }
 
+fn default_max_concurrency() -> u32 {
+    OptimizationTaskConfig::default().max_concurrency
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 struct OptimizationTaskConfigStorage {
@@ -449,6 +482,10 @@ struct OptimizationTaskConfigStorage {
     pub candidate_prompt_count: u32,
     #[serde(default = "default_diversity_injection_threshold")]
     pub diversity_injection_threshold: u32,
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
+    #[serde(default = "default_max_concurrency")]
+    pub max_concurrency: u32,
     pub data_split: DataSplitPercentConfig,
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
@@ -469,6 +506,8 @@ impl Default for OptimizationTaskConfigStorage {
             pass_threshold_percent: base.pass_threshold_percent,
             candidate_prompt_count: base.candidate_prompt_count,
             diversity_injection_threshold: base.diversity_injection_threshold,
+            execution_mode: base.execution_mode,
+            max_concurrency: base.max_concurrency,
             data_split: base.data_split,
             output_config: base.output_config,
             evaluator_config: base.evaluator_config,
@@ -513,6 +552,8 @@ impl OptimizationTaskConfigStorage {
             pass_threshold_percent: self.pass_threshold_percent,
             candidate_prompt_count: self.candidate_prompt_count,
             diversity_injection_threshold: self.diversity_injection_threshold,
+            execution_mode: self.execution_mode,
+            max_concurrency: self.max_concurrency,
             data_split: self.data_split,
             output_config: self.output_config,
             evaluator_config: self.evaluator_config,
@@ -532,6 +573,8 @@ impl OptimizationTaskConfigStorage {
             pass_threshold_percent: config.pass_threshold_percent,
             candidate_prompt_count: config.candidate_prompt_count,
             diversity_injection_threshold: config.diversity_injection_threshold,
+            execution_mode: config.execution_mode,
+            max_concurrency: config.max_concurrency,
             data_split: config.data_split,
             output_config: config.output_config,
             evaluator_config: config.evaluator_config,
