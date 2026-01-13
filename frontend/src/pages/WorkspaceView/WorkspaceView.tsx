@@ -4,7 +4,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import {
-  WORKSPACES_QUERY_KEY,
   useCreateWorkspace,
   useDeleteWorkspace,
   useWorkspaces,
