@@ -92,15 +92,14 @@ pub async fn parallel_execute(
         }
     }
 
-    Ok(out
-        .into_iter()
+    out.into_iter()
         .map(|v| {
             v.ok_or_else(|| ExecutionError::Internal {
                 test_case_id: "unknown".to_string(),
                 message: "missing execution result".to_string(),
             })
         })
-        .collect::<Result<Vec<_>, _>>()?)
+        .collect::<Result<Vec<_>, _>>()
 }
 
 #[cfg(test)]

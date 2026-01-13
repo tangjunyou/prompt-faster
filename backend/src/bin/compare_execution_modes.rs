@@ -220,7 +220,7 @@ async fn run_benchmark(batch_size: usize, sleep_ms: u64) -> anyhow::Result<()> {
             let _ = parallel_execute(Arc::clone(&execution_target), prompt, &test_cases, n).await?;
             best_ms = best_ms.min(start.elapsed().as_millis());
         }
-        let chunks = (batch_size as u128 + n as u128 - 1) / n as u128;
+        let chunks = (batch_size as u128).div_ceil(n as u128);
         let expected_ms = chunks * best_serial_ms / batch_size_u128;
         let overhead_ms = best_ms.saturating_sub(expected_ms);
         println!("| {n} | {best_ms} | {expected_ms} | {overhead_ms} |");
