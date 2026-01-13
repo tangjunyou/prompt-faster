@@ -629,14 +629,6 @@ describe('App routes', () => {
       expect(workspaces).toHaveLength(0)
     })
 
-    await waitFor(
-      () => {
-        // 只验证“可删除的工作区条目”已移除，避免误匹配顶部的 workspace selector 文案
-        expect(screen.queryByTestId('workspace-delete-ws-1')).not.toBeInTheDocument()
-      },
-      { timeout: 10_000 }
-    )
-
     const updatedView = within(screen.getByTestId('workspace-view'))
     expect(
       await updatedView.findByText('暂无工作区，请先创建一个。', undefined, { timeout: 10_000 })

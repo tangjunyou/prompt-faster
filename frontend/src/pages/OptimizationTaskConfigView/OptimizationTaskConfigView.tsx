@@ -12,6 +12,7 @@ import { useTeacherModels } from '@/features/task-config/hooks/useTeacherModels'
 import type { UpdateOptimizationTaskConfigRequest } from '@/types/generated/api/UpdateOptimizationTaskConfigRequest'
 import type { OptimizationTaskResponse } from '@/types/generated/api/OptimizationTaskResponse'
 import type { AdvancedDataSplitStrategy } from '@/types/generated/models/AdvancedDataSplitStrategy'
+import type { ExecutionMode } from '@/types/generated/models/ExecutionMode'
 import type { EvaluatorType } from '@/types/generated/models/EvaluatorType'
 import type { OutputStrategy } from '@/types/generated/models/OutputStrategy'
 import type { SamplingStrategy } from '@/types/generated/models/SamplingStrategy'
@@ -36,6 +37,10 @@ const SEMANTIC_SIMILARITY_THRESHOLD_MAX = 100
 
 const LLM_JUDGE_SAMPLES_MIN = 1
 const LLM_JUDGE_SAMPLES_MAX = 5
+
+const MAX_CONCURRENCY_MIN = 1
+const MAX_CONCURRENCY_MAX = 64
+const MAX_CONCURRENCY_DEFAULT = 4
 
 function validateIntegerInRange(value: number, min: number, max: number, label: string) {
   if (!Number.isFinite(value)) {
@@ -118,6 +123,10 @@ function OptimizationTaskConfigForm(props: {
   const [diversityInjectionThreshold, setDiversityInjectionThreshold] = useState(
     task.config.diversity_injection_threshold
   )
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>(
+    task.config.execution_mode ?? 'serial'
+  )
+  const [maxConcurrency, setMaxConcurrency] = useState(task.config.max_concurrency ?? MAX_CONCURRENCY_DEFAULT)
   const [trainPercent, setTrainPercent] = useState(task.config.data_split.train_percent)
   const [validationPercent, setValidationPercent] = useState(task.config.data_split.validation_percent)
 
@@ -169,6 +178,8 @@ function OptimizationTaskConfigForm(props: {
     setPassThresholdPercent(config.pass_threshold_percent)
     setCandidatePromptCount(config.candidate_prompt_count)
     setDiversityInjectionThreshold(config.diversity_injection_threshold)
+    setExecutionMode(config.execution_mode)
+    setMaxConcurrency(config.max_concurrency)
     setTrainPercent(config.data_split.train_percent)
     setValidationPercent(config.data_split.validation_percent)
     setOutputStrategy(config.output_config.strategy)
@@ -195,6 +206,7 @@ function OptimizationTaskConfigForm(props: {
     const passThresholdValue = Number(passThresholdPercent)
     const candidatePromptCountValue = Number(candidatePromptCount)
     const diversityInjectionThresholdValue = Number(diversityInjectionThreshold)
+    const maxConcurrencyValue = Number(maxConcurrency)
     const trainPercentValue = Number(trainPercent)
     const validationPercentValue = Number(validationPercent)
     const conflictAlertThresholdValue = Number(conflictAlertThreshold)
@@ -248,6 +260,19 @@ function OptimizationTaskConfigForm(props: {
     if (diversityInjectionThresholdError) {
       setLocalError(diversityInjectionThresholdError)
       return
+    }
+
+    if (executionMode === 'parallel') {
+      const maxConcurrencyError = validateIntegerInRange(
+        maxConcurrencyValue,
+        MAX_CONCURRENCY_MIN,
+        MAX_CONCURRENCY_MAX,
+        '并发数'
+      )
+      if (maxConcurrencyError) {
+        setLocalError(maxConcurrencyError)
+        return
+      }
     }
 
     const trainPercentError = validateIntegerInRange(trainPercentValue, 0, 100, 'Train%')
@@ -324,6 +349,8 @@ function OptimizationTaskConfigForm(props: {
       pass_threshold_percent: passThresholdValue,
       candidate_prompt_count: candidatePromptCountValue,
       diversity_injection_threshold: diversityInjectionThresholdValue,
+      execution_mode: executionMode,
+      max_concurrency: maxConcurrencyValue,
       train_percent: trainPercentValue,
       validation_percent: validationPercentValue,
       output_config: {
@@ -387,6 +414,8 @@ function OptimizationTaskConfigForm(props: {
       pass_threshold_percent: Number(passThresholdPercent),
       candidate_prompt_count: Number(candidatePromptCount),
       diversity_injection_threshold: Number(diversityInjectionThreshold),
+      execution_mode: executionMode,
+      max_concurrency: Number(maxConcurrency),
       train_percent: Number(trainPercent),
       validation_percent: Number(validationPercent),
       output_config: {
@@ -493,6 +522,39 @@ function OptimizationTaskConfigForm(props: {
           当连续失败达到该次数后触发多样性注入，用于跳出“卡住”状态并扩大探索空间（默认推荐值：3）。
         </div>
       </div>
+
+      <div className="grid gap-2">
+        <Label htmlFor="execution-mode">执行模式</Label>
+        <select
+          id="execution-mode"
+          className="h-9 rounded-md border bg-transparent px-3 text-sm"
+          value={executionMode}
+          onChange={(e) => setExecutionMode(e.target.value as ExecutionMode)}
+        >
+          <option value="serial">serial（串行，质量优先）</option>
+          <option value="parallel">parallel（并行，用例并发）</option>
+        </select>
+        <div className="text-xs text-muted-foreground">
+          并行仅针对“同一候选 Prompt 下的多条测试用例并发执行”，结果顺序仍严格与输入用例一致。
+        </div>
+      </div>
+
+      {executionMode === 'parallel' && (
+        <div className="grid gap-2">
+          <Label htmlFor="max-concurrency">并发数（max_concurrency）</Label>
+          <Input
+            id="max-concurrency"
+            type="number"
+            min={MAX_CONCURRENCY_MIN}
+            max={MAX_CONCURRENCY_MAX}
+            value={maxConcurrency}
+            onChange={(e) => setMaxConcurrency(Number(e.target.value))}
+          />
+          <div className="text-xs text-muted-foreground">
+            合理范围：{MAX_CONCURRENCY_MIN}-{MAX_CONCURRENCY_MAX}（默认推荐值：{MAX_CONCURRENCY_DEFAULT}）。
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-2">
         <Label>数据划分策略（百分比）</Label>
