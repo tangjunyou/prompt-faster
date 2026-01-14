@@ -4,8 +4,8 @@ use crate::domain::models::{
     SuggestionConflict, SuggestionType, UnifiedReflection, UnifiedSuggestion,
 };
 use crate::domain::types::{
-    CandidateStats, EXT_BEST_CANDIDATE_STATS, EXT_CURRENT_PROMPT_STATS,
-    EXT_EVALUATIONS_BY_TEST_CASE_ID, METRIC_EPS, OptimizationContext,
+    CandidateStats, EXT_BEST_CANDIDATE_STATS, EXT_CONSECUTIVE_NO_IMPROVEMENT,
+    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, METRIC_EPS, OptimizationContext,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -465,12 +465,52 @@ fn choose_recommended_action(
             "best_is_better".to_string(),
             serde_json::Value::Bool(best_is_better),
         );
-        if !best_is_better && ctx.iteration >= ctx.config.iteration.diversity_inject_after {
-            extra.insert(
-                "strategy_reason".to_string(),
-                serde_json::json!("no_improvement_and_diversity_threshold_reached"),
-            );
-            return (RecommendedAction::InjectDiversity, extra);
+        if !best_is_better {
+            let threshold = ctx.config.iteration.diversity_inject_after;
+            let consecutive = read_optional_u32(ctx, EXT_CONSECUTIVE_NO_IMPROVEMENT);
+            match consecutive {
+                Some(current) => {
+                    extra.insert(
+                        "strategy_reason".to_string(),
+                        serde_json::json!("no_improvement_consecutive_gate"),
+                    );
+                    extra.insert(
+                        "diversity_injection_gate".to_string(),
+                        serde_json::json!({
+                            "source": "extensions",
+                            "threshold": threshold,
+                            "current": current,
+                        }),
+                    );
+                    if current >= threshold {
+                        extra.insert(
+                            "strategy_reason".to_string(),
+                            serde_json::json!("no_improvement_and_consecutive_threshold_reached"),
+                        );
+                        return (RecommendedAction::InjectDiversity, extra);
+                    }
+                }
+                None => {
+                    // 兼容：若编排层尚未注入连续计数，保持既有近似（iteration >= threshold）但必须可诊断。
+                    extra.insert(
+                        "strategy_reason".to_string(),
+                        serde_json::json!(
+                            "missing_consecutive_no_improvement_fallback_to_iteration"
+                        ),
+                    );
+                    extra.insert(
+                        "diversity_injection_gate".to_string(),
+                        serde_json::json!({
+                            "source": "fallback_iteration",
+                            "threshold": threshold,
+                            "iteration": ctx.iteration,
+                        }),
+                    );
+                    if ctx.iteration >= threshold {
+                        return (RecommendedAction::InjectDiversity, extra);
+                    }
+                }
+            }
         }
     } else {
         extra.insert(
@@ -561,6 +601,12 @@ fn is_better_stats(best: CandidateStats, current: CandidateStats) -> bool {
     }
     (best.pass_rate - current.pass_rate).abs() <= METRIC_EPS
         && best.mean_score > current.mean_score + METRIC_EPS
+}
+
+fn read_optional_u32(ctx: &OptimizationContext, key: &str) -> Option<u32> {
+    let v = ctx.extensions.get(key)?;
+    let n = v.as_u64()?;
+    u32::try_from(n).ok()
 }
 
 #[cfg(test)]
@@ -796,8 +842,11 @@ mod tests {
     async fn aggregate_recommends_inject_diversity_when_no_improvement_and_threshold_reached() {
         let agg = DefaultFeedbackAggregator;
         let mut ctx = base_ctx_with_evals();
-        ctx.iteration = 3;
         ctx.config.iteration.diversity_inject_after = 3;
+        ctx.extensions.insert(
+            EXT_CONSECUTIVE_NO_IMPROVEMENT.to_string(),
+            serde_json::json!(3),
+        );
 
         ctx.extensions.insert(
             EXT_CURRENT_PROMPT_STATS.to_string(),
@@ -834,7 +883,109 @@ mod tests {
                 .get("strategy_reason")
                 .and_then(|v| v.as_str())
                 .unwrap_or(""),
-            "no_improvement_and_diversity_threshold_reached"
+            "no_improvement_and_consecutive_threshold_reached"
+        );
+    }
+
+    #[tokio::test]
+    async fn aggregate_does_not_inject_diversity_when_consecutive_below_threshold() {
+        let agg = DefaultFeedbackAggregator;
+        let mut ctx = base_ctx_with_evals();
+        ctx.config.iteration.diversity_inject_after = 3;
+        ctx.extensions.insert(
+            EXT_CONSECUTIVE_NO_IMPROVEMENT.to_string(),
+            serde_json::json!(2),
+        );
+        ctx.extensions.insert(
+            EXT_CURRENT_PROMPT_STATS.to_string(),
+            serde_json::json!({ "pass_rate": 0.9, "mean_score": 0.8 }),
+        );
+        ctx.extensions.insert(
+            EXT_BEST_CANDIDATE_STATS.to_string(),
+            serde_json::json!({ "pass_rate": 0.9, "mean_score": 0.7 }),
+        );
+
+        let rr = ReflectionResult {
+            failure_type: FailureType::ExpressionIssue,
+            analysis: "a".to_string(),
+            root_cause: "r".to_string(),
+            suggestions: vec![Suggestion {
+                suggestion_type: SuggestionType::Rephrase,
+                content: "rephrase".to_string(),
+                confidence: 0.9,
+                expected_impact: None,
+            }],
+            failed_test_case_ids: vec!["tc1".to_string()],
+            related_rule_ids: vec![],
+            evaluation_ref: None,
+            extra: HashMap::new(),
+        };
+
+        let out = agg.aggregate(&ctx, &[rr]).await.unwrap();
+        assert!(!matches!(
+            out.recommended_action,
+            crate::domain::models::RecommendedAction::InjectDiversity
+        ));
+        assert_eq!(
+            out.extra
+                .get("strategy_reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+            "no_improvement_consecutive_gate"
+        );
+    }
+
+    #[tokio::test]
+    async fn aggregate_inject_diversity_fallback_is_diagnostic_when_extension_missing() {
+        let agg = DefaultFeedbackAggregator;
+        let mut ctx = base_ctx_with_evals();
+        ctx.iteration = 3;
+        ctx.config.iteration.diversity_inject_after = 3;
+        ctx.extensions.insert(
+            EXT_CURRENT_PROMPT_STATS.to_string(),
+            serde_json::json!({ "pass_rate": 0.9, "mean_score": 0.8 }),
+        );
+        ctx.extensions.insert(
+            EXT_BEST_CANDIDATE_STATS.to_string(),
+            serde_json::json!({ "pass_rate": 0.9, "mean_score": 0.7 }),
+        );
+
+        let rr = ReflectionResult {
+            failure_type: FailureType::ExpressionIssue,
+            analysis: "a".to_string(),
+            root_cause: "r".to_string(),
+            suggestions: vec![Suggestion {
+                suggestion_type: SuggestionType::Rephrase,
+                content: "rephrase".to_string(),
+                confidence: 0.9,
+                expected_impact: None,
+            }],
+            failed_test_case_ids: vec!["tc1".to_string()],
+            related_rule_ids: vec![],
+            evaluation_ref: None,
+            extra: HashMap::new(),
+        };
+
+        let out = agg.aggregate(&ctx, &[rr]).await.unwrap();
+        assert!(matches!(
+            out.recommended_action,
+            crate::domain::models::RecommendedAction::InjectDiversity
+        ));
+        assert_eq!(
+            out.extra
+                .get("strategy_reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or(""),
+            "missing_consecutive_no_improvement_fallback_to_iteration"
+        );
+        let gate = out
+            .extra
+            .get("diversity_injection_gate")
+            .cloned()
+            .unwrap_or_default();
+        assert_eq!(
+            gate.get("source").and_then(|v| v.as_str()),
+            Some("fallback_iteration")
         );
     }
 }

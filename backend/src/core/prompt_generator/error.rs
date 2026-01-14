@@ -13,4 +13,12 @@ pub enum GeneratorError {
 
     #[error("ctx.extensions 字段类型不合法：{reason}")]
     InvalidContext { reason: String },
+
+    #[error(
+        "检测到重复候选：candidate_index={candidate_index} fingerprint={fingerprint}（已命中失败档案或重复内容）"
+    )]
+    DuplicateCandidate {
+        candidate_index: u32,
+        fingerprint: String,
+    },
 }

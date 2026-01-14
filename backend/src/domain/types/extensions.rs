@@ -23,6 +23,19 @@ pub const EXT_BEST_CANDIDATE_STATS: &str = "layer4.best_candidate_stats";
 /// 形状：`Vec<f64>`，表示历史轮次的 `OptimizationResult.primary.score`（不包含当前轮）。
 pub const EXT_RECENT_PRIMARY_SCORES: &str = "layer4.recent_primary_scores";
 
+/// Layer 4：失败档案（用于候选去重/避坑）。
+///
+/// 形状：`Vec<domain::models::FailureArchiveEntry>`
+pub const EXT_FAILURE_ARCHIVE: &str = "layer4.failure_archive";
+
+/// Layer 4：连续无提升计数（由编排层维护并注入；Layer 4 只读使用）。
+///
+/// 形状：number（u32）
+pub const EXT_CONSECUTIVE_NO_IMPROVEMENT: &str = "layer4.consecutive_no_improvement";
+
+/// 失败档案条目上限（FIFO 丢弃最旧；避免无界增长）。
+pub const FAILURE_ARCHIVE_MAX_ENTRIES: usize = 200;
+
 /// Layer 1/3：逐用例评估映射（既有约定；不要引入同义 key）。
 pub const EXT_EVALUATIONS_BY_TEST_CASE_ID: &str = "layer1_test_results.evaluations_by_test_case_id";
 

@@ -2,8 +2,8 @@ use crate::core::prompt_generator::{
     EXT_CANDIDATE_INDEX, EXT_OPTIMIZATION_GOAL, GeneratorError, TEMPLATE_VARIANT_COUNT,
 };
 use crate::core::traits::PromptGenerator;
-use crate::domain::models::{Rule, TestCase};
-use crate::domain::types::OptimizationContext;
+use crate::domain::models::{FailureArchiveEntry, Rule, TestCase, failure_fingerprint_v1};
+use crate::domain::types::{EXT_FAILURE_ARCHIVE, OptimizationContext};
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{info, warn};
@@ -39,11 +39,9 @@ impl PromptGenerator for DefaultPromptGenerator {
                 "layer2 进入初始 Prompt 生成（current_prompt 为空）"
             );
 
-            return Ok(build_initial_prompt(
-                candidate_index,
-                &optimization_goal,
-                &ctx.test_cases,
-            ));
+            let prompt = build_initial_prompt(candidate_index, &optimization_goal, &ctx.test_cases);
+            reject_duplicate_candidate(ctx, candidate_index, &prompt)?;
+            return Ok(prompt);
         }
 
         if !missing.is_empty() {
@@ -92,12 +90,49 @@ impl PromptGenerator for DefaultPromptGenerator {
 
         let prompt = render_candidate_variant(candidate_index, &keep, &fix, &summary);
 
+        reject_duplicate_candidate(ctx, candidate_index, &prompt)?;
+
         Ok(prompt)
     }
 
     fn name(&self) -> &str {
         "default_prompt_generator"
     }
+}
+
+fn reject_duplicate_candidate(
+    ctx: &OptimizationContext,
+    candidate_index: u32,
+    prompt: &str,
+) -> Result<(), GeneratorError> {
+    // 1) 内容重复：若候选与 current_prompt 规范化后完全一致，则拒绝
+    if !ctx.current_prompt.trim().is_empty()
+        && failure_fingerprint_v1(prompt) == failure_fingerprint_v1(&ctx.current_prompt)
+    {
+        return Err(GeneratorError::DuplicateCandidate {
+            candidate_index,
+            fingerprint: failure_fingerprint_v1(prompt),
+        });
+    }
+
+    // 2) 命中失败档案：fingerprint 以 prompt 为输入，可在候选生成阶段预先比对
+    let Some(v) = ctx.extensions.get(EXT_FAILURE_ARCHIVE) else {
+        return Ok(());
+    };
+    let archive: Vec<FailureArchiveEntry> =
+        serde_json::from_value(v.clone()).map_err(|e| GeneratorError::InvalidContext {
+            reason: format!("{EXT_FAILURE_ARCHIVE} 反序列化失败：{e}"),
+        })?;
+
+    let fingerprint = failure_fingerprint_v1(prompt);
+    if archive.iter().any(|e| e.failure_fingerprint == fingerprint) {
+        return Err(GeneratorError::DuplicateCandidate {
+            candidate_index,
+            fingerprint,
+        });
+    }
+
+    Ok(())
 }
 
 struct RuleClassification<'a> {
@@ -726,7 +761,7 @@ fn join_str_iter<'a>(iter: impl IntoIterator<Item = &'a str>) -> String {
 mod tests {
     use super::*;
     use crate::domain::models::{OutputLength, RuleSystem, RuleTags, TaskReference};
-    use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig};
+    use crate::domain::types::{EXT_FAILURE_ARCHIVE, ExecutionTargetConfig, OptimizationConfig};
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -1203,5 +1238,65 @@ mod tests {
         let ctx = make_ctx("prompt", vec![bad], ext, vec![]);
         let err = generator.generate(&ctx).await.unwrap_err();
         assert!(matches!(err, GeneratorError::InvalidRules { .. }));
+    }
+
+    #[tokio::test]
+    async fn generate_rejects_duplicate_candidate_when_fingerprint_hits_failure_archive() {
+        let generator = DefaultPromptGenerator::new();
+
+        let success = rule_with_polarity(
+            "r1",
+            "success",
+            vec!["json"],
+            vec!["table"],
+            vec![],
+            vec!["exact_match"],
+            vec!["tc_ok"],
+        );
+        let failure = rule_with_polarity(
+            "r2",
+            "failure",
+            vec![],
+            vec![],
+            vec!["format"],
+            vec!["format"],
+            vec!["tc_bad"],
+        );
+
+        let mut ext0 = HashMap::new();
+        ext0.insert(EXT_CANDIDATE_INDEX.to_string(), json!(0));
+        let ctx0 = make_ctx(
+            "prompt",
+            vec![success.clone(), failure.clone()],
+            ext0,
+            vec![],
+        );
+        let candidate_prompt = generator.generate(&ctx0).await.unwrap();
+        let fp = failure_fingerprint_v1(&candidate_prompt);
+
+        let entry = FailureArchiveEntry::new(&candidate_prompt, "tc1", "format:bad");
+        let mut ext = HashMap::new();
+        ext.insert(EXT_CANDIDATE_INDEX.to_string(), json!(0));
+        ext.insert(
+            EXT_FAILURE_ARCHIVE.to_string(),
+            serde_json::to_value(vec![entry]).unwrap(),
+        );
+
+        let ctx = make_ctx("prompt", vec![success, failure], ext, vec![]);
+        let err = generator.generate(&ctx).await.unwrap_err();
+
+        match err.clone() {
+            GeneratorError::DuplicateCandidate {
+                candidate_index,
+                fingerprint,
+            } => {
+                assert_eq!(candidate_index, 0);
+                assert_eq!(fingerprint, fp);
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        // 不得泄露 prompt/testcase input 全文（这里只检查一个明显片段）
+        assert!(!err.to_string().contains("【保持项"));
     }
 }

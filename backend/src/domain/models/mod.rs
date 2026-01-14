@@ -10,9 +10,9 @@ pub mod workspace;
 
 pub use algorithm::{
     Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
-    ExecutionResult, FailurePoint, Iteration, IterationState, LineageType, OutputLength,
-    QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
-    RuleTags, Severity, TaskReference, TestCase, TokenUsage,
+    ExecutionResult, FailureArchiveEntry, FailurePoint, Iteration, IterationState, LineageType,
+    OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
+    RuleSystem, RuleTags, Severity, TaskReference, TestCase, TokenUsage, failure_fingerprint_v1,
 };
 pub use optimization_task::{
     ExecutionTargetType, OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus,
