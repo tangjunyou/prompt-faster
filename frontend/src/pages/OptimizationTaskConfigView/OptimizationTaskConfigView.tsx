@@ -701,6 +701,7 @@ function OptimizationTaskConfigForm(props: {
                 <option value="semantic_similarity">语义相似度</option>
                 <option value="constraint_check">约束检查</option>
                 <option value="teacher_model">老师模型评估</option>
+                <option value="example">example（确定性示例）</option>
               </select>
               <div className="text-xs text-muted-foreground">
                 `auto` 表示使用系统默认评估策略（本 Story 仅承载配置占位；实际自动选择逻辑在执行引擎阶段落地）。

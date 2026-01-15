@@ -213,10 +213,11 @@ fn parse_execution_target_type<T: Serialize>(
     match raw.trim() {
         "dify" => Ok(ExecutionTargetType::Dify),
         "generic" => Ok(ExecutionTargetType::Generic),
+        "example" => Ok(ExecutionTargetType::Example),
         _ => Err(ApiResponse::err(
             StatusCode::BAD_REQUEST,
             error_codes::VALIDATION_ERROR,
-            "execution_target_type 仅允许 dify | generic",
+            "execution_target_type 仅允许 dify | generic | example",
         )),
     }
 }

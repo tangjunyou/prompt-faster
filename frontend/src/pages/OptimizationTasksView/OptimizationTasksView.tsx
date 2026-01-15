@@ -15,6 +15,7 @@ import { useCreateOptimizationTask, useOptimizationTasks } from '@/features/task
 import type { CreateOptimizationTaskRequest } from '@/types/generated/api/CreateOptimizationTaskRequest'
 import type { OptimizationTaskListItemResponse } from '@/types/generated/api/OptimizationTaskListItemResponse'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
+import type { ExecutionTargetType } from '@/types/generated/models/ExecutionTargetType'
 
 function formatTime(ts: number) {
   if (!Number.isFinite(ts) || ts <= 0) return '-'
@@ -59,7 +60,7 @@ export function OptimizationTasksView() {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [goal, setGoal] = useState('')
-  const [executionTargetType, setExecutionTargetType] = useState<'dify' | 'generic'>('dify')
+  const [executionTargetType, setExecutionTargetType] = useState<ExecutionTargetType>('dify')
   const [taskMode, setTaskMode] = useState<'fixed' | 'creative'>('fixed')
   const [selectedTestSetIds, setSelectedTestSetIds] = useState<string[]>([])
   const [localError, setLocalError] = useState<string | null>(null)
@@ -74,6 +75,12 @@ export function OptimizationTasksView() {
     }
     return '已选择 通用 API（直连模型）（本 Story 仅要求可选择并持久化；细节字段在后续 Story 补齐）。'
   }, [executionTargetType])
+  const executionTargetHelpNormalized = useMemo(() => {
+    if (executionTargetType === 'example') {
+      return '已选择 Example（确定性示例，不出网）：用于扩展点开发/回归验证，不依赖真实 LLM。'
+    }
+    return executionTargetHelp
+  }, [executionTargetType, executionTargetHelp])
 
   const taskModeHelp = useMemo(() => {
     if (taskMode === 'fixed') {
@@ -190,12 +197,13 @@ export function OptimizationTasksView() {
                 id="execution-target-type"
                 className="h-9 rounded-md border bg-transparent px-3 text-sm"
                 value={executionTargetType}
-                onChange={(event) => setExecutionTargetType(event.target.value as 'dify' | 'generic')}
+                onChange={(event) => setExecutionTargetType(event.target.value as ExecutionTargetType)}
               >
                 <option value="dify">Dify 工作流</option>
                 <option value="generic">通用 API（直连模型）</option>
+                <option value="example">Example（确定性示例）</option>
               </select>
-              <div className="text-xs text-muted-foreground">{executionTargetHelp}</div>
+              <div className="text-xs text-muted-foreground">{executionTargetHelpNormalized}</div>
             </div>
 
             <div className="grid gap-2">

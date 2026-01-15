@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 pub enum ExecutionTargetType {
     Dify,
     Generic,
+    Example,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]

@@ -94,6 +94,7 @@ pub enum EvaluatorType {
     SemanticSimilarity,
     ConstraintCheck,
     TeacherModel,
+    Example,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema, Default)]
@@ -416,6 +417,7 @@ impl OptimizationTaskConfig {
                     ));
                 }
             }
+            _ => {}
         }
 
         if let Some(model_id) = &self.teacher_llm.model_id {
