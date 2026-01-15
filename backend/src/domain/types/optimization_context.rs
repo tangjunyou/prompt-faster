@@ -30,18 +30,30 @@ pub enum ExecutionTargetConfig {
         api_url: String,
         workflow_id: String,
         prompt_variable: String,
+        /// 运行时注入的 Dify API Key（不允许序列化/持久化）。
+        ///
+        /// 说明：凭证应从 CredentialRepo 解密后注入，仅在本次执行生命周期内存在。
+        #[serde(skip_serializing, skip_deserializing)]
+        api_key: Option<String>,
     },
     DirectModel {
+        /// OpenAI 兼容 API Base URL（例如 https://api.siliconflow.cn）。
+        base_url: String,
         model_name: String,
         user_prompt_template: String,
+        /// 运行时注入的 API Key（不允许序列化/持久化）。
+        #[serde(skip_serializing, skip_deserializing)]
+        api_key: Option<String>,
     },
 }
 
 impl Default for ExecutionTargetConfig {
     fn default() -> Self {
         Self::DirectModel {
+            base_url: "http://localhost".to_string(),
             model_name: "unknown".to_string(),
             user_prompt_template: "{input}".to_string(),
+            api_key: None,
         }
     }
 }

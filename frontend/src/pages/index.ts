@@ -9,3 +9,5 @@ export { WorkspaceView } from './WorkspaceView';
 export { TestSetsView } from './TestSetsView';
 export { OptimizationTasksView } from './OptimizationTasksView';
 export { OptimizationTaskConfigView } from './OptimizationTaskConfigView';
+export { PerfNfr2View } from './PerfNfr2View';
+export { PerfNfr3View } from './PerfNfr3View';

@@ -393,7 +393,7 @@ describe('App routes', () => {
             error: {
               code: 'VALIDATION_ERROR',
               message: '名字不合法',
-              details: 'should-not-render',
+              details: 'TOPSECRET_DO_NOT_ECHO',
             },
           },
           { status: 400 }
@@ -410,7 +410,7 @@ describe('App routes', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建' }))
 
     expect(await screen.findByText('创建失败：名字不合法')).toBeInTheDocument()
-    expect(screen.queryByText('should-not-render')).not.toBeInTheDocument()
+    expect(screen.queryByText('TOPSECRET_DO_NOT_ECHO')).not.toBeInTheDocument()
   })
 
   it('lastWorkspaceId 无效时应回退到第一个 workspace', async () => {
@@ -530,7 +530,7 @@ describe('App routes', () => {
             error: {
               code: 'DATABASE_ERROR',
               message: '删除失败：数据库错误',
-              details: { internal: 'do-not-leak' },
+              details: { internal: 'TOPSECRET_DO_NOT_ECHO' },
             },
           },
           { status: 500 }
@@ -554,7 +554,7 @@ describe('App routes', () => {
     fireEvent.click(await screen.findByTestId('workspace-delete-confirm'))
 
     expect(await screen.findByText('删除失败：数据库错误')).toBeInTheDocument()
-    expect(screen.queryByText('do-not-leak')).not.toBeInTheDocument()
+    expect(screen.queryByText('TOPSECRET_DO_NOT_ECHO')).not.toBeInTheDocument()
   })
 
   it('确认按钮 loading 禁用：快速连续点击不会触发重复请求', async () => {

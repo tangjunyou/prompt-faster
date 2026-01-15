@@ -302,3 +302,23 @@ Cascade
 - frontend/src/pages/HomePage.tsx (添加导航链接，修复样式)
 - frontend/eslint.config.js (添加 shadcn/ui 组件忽略规则)
 - frontend/src/features/index.ts (添加 api-config 导出)
+
+## Review Notes
+
+> 说明：补齐最小结构化 Review Notes，用于后续跨 story 检索与持续改进。历史执行证据以本文件的 Dev Agent Record（验证命令/文件清单）为准。
+
+### Findings
+
+- [LEGACY] 本 Story 当时未沉淀独立的结构化 review 结论；当前仅补齐统一结构。
+
+### Decisions
+
+- 无
+
+### Risks / Tech Debt
+
+- 无
+
+### Follow-ups
+
+- 无

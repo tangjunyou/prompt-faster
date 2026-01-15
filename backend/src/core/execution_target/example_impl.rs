@@ -6,6 +6,7 @@ use serde_json::json;
 use crate::core::execution_target::ExecutionError;
 use crate::core::traits::ExecutionTarget;
 use crate::domain::models::ExecutionResult;
+use crate::domain::types::ExecutionTargetConfig;
 
 /// 示例执行目标：用于演示“新增 ExecutionTarget 扩展点”的最小闭环（确定性、不出网）。
 ///
@@ -25,6 +26,7 @@ impl ExampleExecutionTarget {
 impl ExecutionTarget for ExampleExecutionTarget {
     async fn execute(
         &self,
+        _execution_target_config: &ExecutionTargetConfig,
         prompt: &str,
         input: &HashMap<String, serde_json::Value>,
         test_case_id: &str,
@@ -78,7 +80,12 @@ mod tests {
         );
 
         let r = target
-            .execute("PROMPT_SHOULD_NOT_LEAK", &input, "tc-1")
+            .execute(
+                &ExecutionTargetConfig::default(),
+                "PROMPT_SHOULD_NOT_LEAK",
+                &input,
+                "tc-1",
+            )
             .await
             .unwrap();
 
@@ -109,7 +116,12 @@ mod tests {
         let test_case_ids = vec!["tc-a".to_string(), "tc-b".to_string()];
 
         let results = target
-            .execute_batch("PROMPT_SHOULD_NOT_LEAK", &inputs, &test_case_ids)
+            .execute_batch(
+                &ExecutionTargetConfig::default(),
+                "PROMPT_SHOULD_NOT_LEAK",
+                &inputs,
+                &test_case_ids,
+            )
             .await
             .unwrap();
 

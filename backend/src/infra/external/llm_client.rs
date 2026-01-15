@@ -3,12 +3,10 @@
 //! 支持 OpenAI 兼容 API（硅基流动、魔搭社区等）
 
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::dify_client::TestConnectionResult;
-use super::http_client::truncate_error_body;
-
 /// Provider 允许列表（白名单验证）
 pub const ALLOWED_PROVIDERS: &[&str] = &["siliconflow", "modelscope"];
 
@@ -31,6 +29,40 @@ pub struct ModelsResponse {
 #[derive(Debug, Deserialize)]
 pub struct ModelInfo {
     pub id: String,
+}
+
+/// OpenAI 兼容 Chat Completions - 消息
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+}
+
+/// OpenAI 兼容 Chat Completions - 请求
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatCompletionsRequest {
+    pub model: String,
+    pub messages: Vec<ChatMessage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionsResponse {
+    #[serde(default)]
+    choices: Vec<ChatChoice>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatChoice {
+    #[serde(default)]
+    message: Option<ChatChoiceMessage>,
+    #[serde(default)]
+    text: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChatChoiceMessage {
+    #[serde(default)]
+    content: Option<String>,
 }
 
 /// LLM 连接错误类型
@@ -143,11 +175,75 @@ pub async fn list_models(
         401 => Err(LlmConnectionError::InvalidCredentials),
         403 => Err(LlmConnectionError::Forbidden),
         status => {
-            let body = response.text().await.unwrap_or_default();
+            // 不回显上游 body（可能包含敏感信息，如 prompt/testcase/token）。
             Err(LlmConnectionError::UpstreamError(format!(
-                "HTTP {} - {}",
-                status,
-                truncate_error_body(&body)
+                "HTTP {}",
+                status
+            )))
+        }
+    }
+}
+
+/// 调用 OpenAI 兼容的 `/v1/chat/completions` 获取输出文本（阻塞模式）。
+///
+/// 重要：错误信息不得回显 prompt/input 原文或上游 body（可能包含敏感信息）。
+pub async fn chat_completions(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+    correlation_id: &str,
+    req: &ChatCompletionsRequest,
+) -> Result<String, LlmConnectionError> {
+    let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+    let response = client
+        .post(&url)
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("X-Correlation-Id", correlation_id)
+        .json(req)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                LlmConnectionError::Timeout
+            } else {
+                LlmConnectionError::RequestFailed(e)
+            }
+        })?;
+
+    match response.status().as_u16() {
+        200..=299 => {
+            let json = response
+                .json::<ChatCompletionsResponse>()
+                .await
+                .map_err(|e| {
+                    LlmConnectionError::ParseError(format!("解析 chat/completions 响应失败: {}", e))
+                })?;
+            let choice = json.choices.into_iter().next().ok_or_else(|| {
+                LlmConnectionError::ParseError("chat/completions 缺少 choices[0]".to_string())
+            })?;
+
+            if let Some(s) = choice
+                .message
+                .and_then(|m| m.content)
+                .filter(|s| !s.trim().is_empty())
+            {
+                return Ok(s);
+            }
+            if let Some(s) = choice.text.filter(|s| !s.trim().is_empty()) {
+                return Ok(s);
+            }
+
+            Err(LlmConnectionError::ParseError(
+                "chat/completions 缺少 message.content/text".to_string(),
+            ))
+        }
+        401 => Err(LlmConnectionError::InvalidCredentials),
+        403 => Err(LlmConnectionError::Forbidden),
+        status => {
+            // 不读取/拼接 body，避免上游回显敏感内容。
+            Err(LlmConnectionError::UpstreamError(format!(
+                "HTTP {}",
+                status
             )))
         }
     }

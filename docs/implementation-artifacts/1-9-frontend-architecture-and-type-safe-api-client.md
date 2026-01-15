@@ -550,3 +550,23 @@ GPT-5 (Codex CLI)
 - 2026-01-02：测试环境注入内存 localStorage，消除 `--localstorage-file` 警告
 - 2026-01-02：CI 修复（cargo fmt + 前端类型导出冲突修正）
 - 2026-01-02：修复认证 E2E（前端路由内跳转，避免刷新导致内存态登录丢失）
+
+## Review Notes
+
+> 说明：补齐最小结构化 Review Notes，用于后续跨 story 检索与持续改进。历史执行证据以本文件的 Dev Agent Record（验证命令/文件清单）为准。
+
+### Findings
+
+- [LEGACY] 本 Story 当时未沉淀独立的结构化 review 结论；当前仅补齐统一结构。
+
+### Decisions
+
+- 无
+
+### Risks / Tech Debt
+
+- 无
+
+### Follow-ups
+
+- 无

@@ -512,3 +512,23 @@ Claude 3.5 Sonnet (Cascade)
 - frontend/src/features/api-config/DifyCredentialForm.test.tsx
 - frontend/src/features/api-config/GenericLlmCredentialForm.tsx（展示 message/models）
 - frontend/src/features/api-config/GenericLlmCredentialForm.test.tsx
+
+## Review Notes
+
+> 说明：补齐最小结构化 Review Notes，用于后续跨 story 检索与持续改进。历史执行证据以本文件的 Dev Agent Record（验证命令/文件清单）为准。
+
+### Findings
+
+- [LEGACY] 本 Story 当时未沉淀独立的结构化 review 结论；当前仅补齐统一结构。
+
+### Decisions
+
+- 无
+
+### Risks / Tech Debt
+
+- 无
+
+### Follow-ups
+
+- 无

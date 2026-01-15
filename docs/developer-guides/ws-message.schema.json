@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prompt-faster:contracts:ws-message:v1",
+  "title": "WsMessage<T>",
+  "description": "Backend → Frontend WebSocket message envelope contract (frozen).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type", "payload", "timestamp"],
+  "properties": {
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Event type in `{domain}:{action}` format."
+    },
+    "payload": {
+      "description": "Event payload (event-specific)."
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1,
+      "description": "RFC3339 / ISO 8601 timestamp string."
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "End-to-end trace correlation id (AR2). Optional field, but the schema MUST include it."
+    }
+  }
+}
+

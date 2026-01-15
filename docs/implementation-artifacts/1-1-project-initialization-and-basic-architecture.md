@@ -411,3 +411,23 @@ Claude Sonnet 4 (Cascade)
 | 2025-12-22 | Code Review Fix | [M3] 修复 correlationId tracing - 使用 info_span! + Instrument |
 | 2025-12-22 | Code Review Fix | [M4+M5] 修复 .gitignore - 允许 Cargo.lock + 忽略 WAL/SHM |
 | 2025-12-22 | Code Review Fix | [L1] 补充前端目录 index.ts 导出文件 |
+
+## Review Notes
+
+> 说明：补齐最小结构化 Review Notes，用于后续跨 story 检索与持续改进。历史执行证据以本文件的 Dev Agent Record（验证命令/文件清单）为准。
+
+### Findings
+
+- [LEGACY] 本 Story 当时未沉淀独立的结构化 review 结论；当前仅补齐统一结构。
+
+### Decisions
+
+- 无
+
+### Risks / Tech Debt
+
+- 无
+
+### Follow-ups
+
+- 无

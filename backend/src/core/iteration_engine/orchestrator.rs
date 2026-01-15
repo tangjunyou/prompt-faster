@@ -44,11 +44,18 @@ impl IterationEngine {
 
         let results = match task_config.execution_mode {
             ExecutionMode::Serial => {
-                serial_execute(self.execution_target.as_ref(), prompt, batch).await?
+                serial_execute(
+                    self.execution_target.as_ref(),
+                    &ctx.execution_target_config,
+                    prompt,
+                    batch,
+                )
+                .await?
             }
             ExecutionMode::Parallel => {
                 parallel_execute(
                     Arc::clone(&self.execution_target),
+                    &ctx.execution_target_config,
                     prompt,
                     batch,
                     task_config.max_concurrency,
@@ -527,6 +534,7 @@ mod tests {
     impl ExecutionTarget for InFlightTarget {
         async fn execute(
             &self,
+            _execution_target_config: &ExecutionTargetConfig,
             _prompt: &str,
             _input: &HashMap<String, serde_json::Value>,
             test_case_id: &str,
@@ -558,6 +566,7 @@ mod tests {
     impl ExecutionTarget for WrongIdTarget {
         async fn execute(
             &self,
+            _execution_target_config: &ExecutionTargetConfig,
             _prompt: &str,
             _input: &HashMap<String, serde_json::Value>,
             _test_case_id: &str,
@@ -862,6 +871,7 @@ mod tests {
     impl ExecutionTarget for EchoTarget {
         async fn execute(
             &self,
+            _execution_target_config: &ExecutionTargetConfig,
             prompt: &str,
             _input: &HashMap<String, serde_json::Value>,
             test_case_id: &str,

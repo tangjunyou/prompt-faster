@@ -226,3 +226,49 @@ N/A
 - 2026-01-03：修复 Docker Compose 后端启动（设置默认运行二进制）；本机验证 compose 启动与健康检查；补齐本机安全审计执行结果
 - 2026-01-03：启用 `main` 分支 required checks；前端 lint 忽略本地测试产物目录
 - 2026-01-03：修复前端 TypeScript build 被测试文件阻塞（为 core journeys 覆盖模块补齐 `.d.ts` 类型声明）
+
+## Dev Agent Record
+
+### Agent Model Used
+
+Unknown (legacy)
+
+### Debug Log References
+
+> 说明：本 Story 早期采用的是“中文 Story 模板 + 执行备注/文件清单”结构，未按后续统一的 Dev Agent Record 模板写作；此处补齐最小结构用于检索与门禁。
+
+- 证据：上文“完成备注列表 / 文件清单 / 变更日志”
+- 关键门禁配置：`.github/workflows/ci.yml`
+
+### Completion Notes List
+
+1. CI 已覆盖 backend/frontend 的 lint/test/build，且包含 E2E、覆盖率 artifact 与核心旅程覆盖率门禁（见上文“完成备注列表”与 `ci.yml`）
+2. Docker Compose 启动与健康检查验证已记录（见上文“完成备注列表”）
+
+### File List
+
+- `.github/workflows/ci.yml`
+- `docker-compose.yml`
+- `README.md`
+- `frontend/tests/e2e/core-journeys.yml`
+- `frontend/tests/e2e/scripts/check-core-journeys-coverage.mjs`
+
+## Review Notes
+
+> 说明：补齐最小结构化 Review Notes，用于后续跨 story 检索与持续改进。历史执行证据以本文件中的“完成备注列表/文件清单/变更日志”为准。
+
+### Findings
+
+- [LEGACY] 本 Story 当时未沉淀独立的结构化 review 结论；当前仅补齐结构与可追溯入口（CI 配置/门禁脚本/文档与变更日志）。
+
+### Decisions
+
+- 保持 CI 门禁与脚本为单一权威入口（`.github/workflows/ci.yml` + `frontend/tests/e2e/scripts/*`），避免多套入口漂移。
+
+### Risks / Tech Debt
+
+- 分支保护规则属于 GitHub 仓库配置（非代码仓库内容），需在仓库设置中保持一致（避免“本地/CI 配置正确但仓库未启用 required checks”）。
+
+### Follow-ups
+
+- 无
