@@ -1,6 +1,6 @@
 # Story 4.7: 扩展模板与文档（ExecutionTarget / Evaluator / TeacherModel）
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -209,8 +209,8 @@ so that 可以在不修改核心框架的前提下扩展支持新的执行/评�
 
 ## Story Completion Status
 
-- Status set to `review`
-- Completion note: 已补齐实现与回归测试；本文件处于“审查/验收”阶段（见下方 Review Notes）。
+- Status set to `done`
+- Completion note: 已完成审查整改并通过 CI；可合并入 main。
 
 ## Dev Agent Record
 
