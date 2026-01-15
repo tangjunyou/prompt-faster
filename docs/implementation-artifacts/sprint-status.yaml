@@ -88,7 +88,7 @@ development_status:
   # Epic 4: 自动迭代优化执行
   # FRs: FR24-FR33
   # ============================================
-  epic-4: in-progress
+  epic-4: done
   4-1-pattern-extraction-layer: done
   4-2-prompt-generation-layer: done
   4-3-quality-assessment-layer: done
@@ -96,7 +96,7 @@ development_status:
   4-5-execution-mode-and-parallel-scheduling: done
   4-6-failure-archive-and-diversity-injection: done
   4-7-extension-templates-and-docs: done
-  4-8-core-algorithm-module-decoupling-and-replacement: review
+  4-8-core-algorithm-module-decoupling-and-replacement: done
   epic-4-retrospective: optional
 
   # ============================================
