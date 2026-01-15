@@ -103,8 +103,8 @@ development_status:
   # Epic 5: 可视化与实时反馈
   # FRs: FR35-FR39
   # ============================================
-  epic-5: backlog
-  5-1-node-graph-basic-rendering: backlog
+  epic-5: in-progress
+  5-1-node-graph-basic-rendering: done
   5-2-edge-animation-and-data-flow-visualization: backlog
   5-3-streaming-thinking-process-display: backlog
   5-4-thinking-panel-stage-indicator: backlog

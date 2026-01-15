@@ -1,4 +1,12 @@
-import { useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+
+import { IterationGraph } from '@/components/nodes/IterationGraph'
+import type { IterationGraphNodeStates } from '@/components/nodes/types'
+import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
+import {
+  createInitialIterationGraphNodeStates,
+  reduceDemoWsMessageToIterationGraphNodeStates,
+} from '@/features/visualization/iterationGraphDemoReducer'
 
 type Result = {
   frames: number
@@ -6,29 +14,80 @@ type Result = {
   fps: number
 }
 
-function buildBoxes(count: number): number[] {
-  return Array.from({ length: count }, (_, i) => i)
-}
-
 export function PerfNfr3View() {
   const [result, setResult] = useState<Result | null>(null)
   const [isRunning, setIsRunning] = useState(false)
+  const [nodeStates, setNodeStates] = useState<IterationGraphNodeStates>(() =>
+    createInitialIterationGraphNodeStates(),
+  )
   const rafId = useRef<number | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const isRunningRef = useRef(false)
 
-  const boxes = buildBoxes(800)
+  const demoMessages = useMemo(
+    () =>
+      createDeterministicDemoWsMessages({
+        correlationId: 'nfr3-demo',
+        iterations: 2,
+        tokensPerIteration: 80,
+      }),
+    [],
+  )
+
+  const stop = useCallback(() => {
+    abortControllerRef.current?.abort()
+    abortControllerRef.current = null
+
+    if (rafId.current != null) {
+      cancelAnimationFrame(rafId.current)
+      rafId.current = null
+    }
+
+    isRunningRef.current = false
+    setIsRunning(false)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      stop()
+    }
+  }, [stop])
 
   const run = async () => {
-    if (isRunning) return
+    if (isRunningRef.current) return
+    isRunningRef.current = true
     setIsRunning(true)
     setResult(null)
+    setNodeStates(createInitialIterationGraphNodeStates())
+
+    abortControllerRef.current?.abort()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    const { signal } = abortController
 
     const start = performance.now()
     const durationMs = 1000
     let frames = 0
+    let idx = 0
 
     await new Promise<void>((resolve) => {
+      signal.addEventListener('abort', () => resolve(), { once: true })
+
       const tick = () => {
+        if (signal.aborted) {
+          resolve()
+          return
+        }
+
         frames += 1
+        const msg = demoMessages[idx]
+        if (msg) {
+          idx += 1
+          setNodeStates((prev) => reduceDemoWsMessageToIterationGraphNodeStates(prev, msg))
+        } else {
+          idx = 0
+          setNodeStates(createInitialIterationGraphNodeStates())
+        }
         const now = performance.now()
         if (now - start >= durationMs) {
           resolve()
@@ -39,6 +98,16 @@ export function PerfNfr3View() {
       rafId.current = requestAnimationFrame(tick)
     })
 
+    if (abortControllerRef.current === abortController) {
+      abortControllerRef.current = null
+    }
+
+    if (signal.aborted) {
+      isRunningRef.current = false
+      setIsRunning(false)
+      return
+    }
+
     const end = performance.now()
     const d = end - start
     setResult({
@@ -46,14 +115,7 @@ export function PerfNfr3View() {
       durationMs: d,
       fps: frames / (d / 1000),
     })
-    setIsRunning(false)
-  }
-
-  const stop = () => {
-    if (rafId.current != null) {
-      cancelAnimationFrame(rafId.current)
-      rafId.current = null
-    }
+    isRunningRef.current = false
     setIsRunning(false)
   }
 
@@ -61,8 +123,7 @@ export function PerfNfr3View() {
     <div className="mx-auto max-w-3xl p-6">
       <h1 className="text-xl font-semibold">NFR3：节点图渲染性能（口径预置）</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        该页面用于预置 NFR3 的 FPS 测量口径与回归入口（纯本地、确定性、不出网）。Epic 5 接入节点图后，
-        将此测量替换为“真实节点图渲染 + 动画”场景。
+        该页面用于 NFR3 的 FPS 测量口径与回归入口（纯本地、确定性、不出网）：真实节点图渲染 + 确定性状态更新。
       </p>
 
       <div className="mt-6 flex items-center gap-3">
@@ -90,12 +151,10 @@ export function PerfNfr3View() {
         <div>durationMs: {result ? result.durationMs.toFixed(2) : '-'}</div>
       </div>
 
-      <div className="mt-6 grid grid-cols-20 gap-1 rounded border p-3">
-        {boxes.map((i) => (
-          <div key={i} className="h-3 w-3 rounded bg-muted" />
-        ))}
-      </div>
+      <IterationGraph
+        nodeStates={nodeStates}
+        className="mt-6 h-[560px] w-full rounded-lg border bg-white"
+      />
     </div>
   )
 }
-

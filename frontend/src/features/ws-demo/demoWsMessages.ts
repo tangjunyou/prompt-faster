@@ -76,6 +76,20 @@ export function createDeterministicDemoWsMessages(options: DemoWsMessagesOptions
     })
     seq += 1
 
+    out.push({
+      type: 'iteration:progress',
+      correlationId,
+      timestamp: rfc3339At(baseMs + seq * 10),
+      payload: {
+        kind: 'progress',
+        seq,
+        iteration,
+        state: 'waiting_user',
+        step: '等待用户',
+      },
+    })
+    seq += 1
+
     for (let t = 0; t < tokensPerIteration; t++) {
       out.push({
         type: 'thinking:stream',
@@ -90,6 +104,7 @@ export function createDeterministicDemoWsMessages(options: DemoWsMessagesOptions
       seq += 1
     }
 
+    const finalState = iteration % 2 === 0 ? 'failed' : 'completed'
     out.push({
       type: 'iteration:progress',
       correlationId,
@@ -98,8 +113,8 @@ export function createDeterministicDemoWsMessages(options: DemoWsMessagesOptions
         kind: 'progress',
         seq,
         iteration,
-        state: 'completed',
-        step: '完成',
+        state: finalState,
+        step: finalState === 'failed' ? '失败' : '完成',
       },
     })
     seq += 1
@@ -107,4 +122,3 @@ export function createDeterministicDemoWsMessages(options: DemoWsMessagesOptions
 
   return out
 }
-
