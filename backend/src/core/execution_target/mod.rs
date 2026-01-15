@@ -28,10 +28,13 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::core::evaluator::{create_evaluator_for_task_config, SplitFilter, summarize_for_stats};
+    use crate::core::evaluator::{
+        SplitFilter, create_evaluator_for_task_config, summarize_for_stats,
+    };
     use crate::core::iteration_engine::orchestrator::IterationEngine;
     use crate::domain::models::{
-        EvaluatorType, ExecutionMode, ExecutionTargetType, OptimizationTaskConfig, TaskReference, TestCase,
+        EvaluatorType, ExecutionMode, ExecutionTargetType, OptimizationTaskConfig, TaskReference,
+        TestCase,
     };
     use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig, OptimizationContext};
 

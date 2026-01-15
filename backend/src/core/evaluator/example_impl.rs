@@ -5,7 +5,9 @@ use serde_json::json;
 
 use crate::core::evaluator::EvaluatorError;
 use crate::core::traits::Evaluator;
-use crate::domain::models::{DimensionScore, EvaluationResult, FailurePoint, Severity, TaskReference, TestCase};
+use crate::domain::models::{
+    DimensionScore, EvaluationResult, FailurePoint, Severity, TaskReference, TestCase,
+};
 use crate::domain::types::OptimizationContext;
 
 fn task_reference_kind(reference: &TaskReference) -> &'static str {
@@ -54,7 +56,8 @@ impl Evaluator for ExampleEvaluator {
                 } else {
                     vec![FailurePoint {
                         dimension: "example_exact_match".to_string(),
-                        description: "output 与 expected 不匹配（示例评估器不回显原文）".to_string(),
+                        description: "output 与 expected 不匹配（示例评估器不回显原文）"
+                            .to_string(),
                         severity: Severity::Major,
                         expected: None,
                         actual: None,
@@ -173,7 +176,10 @@ mod tests {
         };
 
         let ctx = make_ctx(vec![tc_a.clone(), tc_b.clone()]);
-        let results = vec![(tc_b.clone(), "ok-b".to_string()), (tc_a.clone(), "wrong".to_string())];
+        let results = vec![
+            (tc_b.clone(), "ok-b".to_string()),
+            (tc_a.clone(), "wrong".to_string()),
+        ];
 
         let out = ev.evaluate_batch(&ctx, &results).await.unwrap();
         assert_eq!(out.len(), 2);

@@ -72,7 +72,10 @@ mod tests {
         let target = ExampleExecutionTarget::new();
 
         let mut input = HashMap::new();
-        input.insert("secret_key".to_string(), serde_json::Value::String("should_not_leak".into()));
+        input.insert(
+            "secret_key".to_string(),
+            serde_json::Value::String("should_not_leak".into()),
+        );
 
         let r = target
             .execute("PROMPT_SHOULD_NOT_LEAK", &input, "tc-1")

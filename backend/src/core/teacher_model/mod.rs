@@ -18,4 +18,3 @@ pub fn create_teacher_model(teacher_model_type: TeacherModelType) -> Arc<dyn Tea
         TeacherModelType::Example => Arc::new(ExampleTeacherModel::new_default()),
     }
 }
-

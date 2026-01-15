@@ -62,10 +62,10 @@ mod tests {
 
     #[tokio::test]
     async fn example_teacher_model_generate_is_deterministic() {
-        let tm = ExampleTeacherModel::new("{\"passed\":true,\"score\":1}").with_delay(Duration::from_millis(1));
+        let tm = ExampleTeacherModel::new("{\"passed\":true,\"score\":1}")
+            .with_delay(Duration::from_millis(1));
         let out = tm.generate("PROMPT_SHOULD_NOT_LEAK").await.unwrap();
         assert_eq!(out, "{\"passed\":true,\"score\":1}");
         assert!(!out.contains("PROMPT_SHOULD_NOT_LEAK"));
     }
 }
-

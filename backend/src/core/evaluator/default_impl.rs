@@ -1431,7 +1431,7 @@ mod tests {
         }
     }
 
-    use crate::core::teacher_model::{create_teacher_model, ExampleTeacherModel, TeacherModelType};
+    use crate::core::teacher_model::{ExampleTeacherModel, TeacherModelType, create_teacher_model};
 
     #[tokio::test]
     async fn exact_match_pass_and_fail() {
@@ -1747,7 +1747,8 @@ mod tests {
         );
         ctx.config.budget.max_duration_secs = Some(1);
         let tm = Arc::new(
-            ExampleTeacherModel::new("{\"passed\":true,\"score\":1}").with_delay(Duration::from_millis(1500)),
+            ExampleTeacherModel::new("{\"passed\":true,\"score\":1}")
+                .with_delay(Duration::from_millis(1500)),
         );
         let err = DefaultEvaluator::new(Some(tm))
             .evaluate(&ctx, &tc, "OK")
