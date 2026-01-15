@@ -11,7 +11,7 @@ use crate::domain::models::{
     ArbitrationResult, EvaluationResult, ExecutionResult, OptimizationResult, ReflectionResult,
     Rule, RuleConflict, SuggestionConflict, TerminationReason, TestCase, UnifiedReflection,
 };
-use crate::domain::types::OptimizationContext;
+use crate::domain::types::{ExecutionTargetConfig, OptimizationContext};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -137,6 +137,7 @@ pub trait ExecutionTarget: Send + Sync {
     /// 执行 Prompt 并返回输出
     async fn execute(
         &self,
+        execution_target_config: &ExecutionTargetConfig,
         prompt: &str,
         input: &HashMap<String, serde_json::Value>,
         test_case_id: &str,
@@ -145,6 +146,7 @@ pub trait ExecutionTarget: Send + Sync {
     /// 批量执行（默认串行，同序返回；并行由编排层负责调度）
     async fn execute_batch(
         &self,
+        execution_target_config: &ExecutionTargetConfig,
         prompt: &str,
         inputs: &[HashMap<String, serde_json::Value>],
         test_case_ids: &[String],
@@ -162,7 +164,10 @@ pub trait ExecutionTarget: Send + Sync {
 
         let mut results = Vec::with_capacity(inputs.len());
         for (input, test_case_id) in inputs.iter().zip(test_case_ids.iter()) {
-            results.push(self.execute(prompt, input, test_case_id).await?);
+            results.push(
+                self.execute(execution_target_config, prompt, input, test_case_id)
+                    .await?,
+            );
         }
         Ok(results)
     }

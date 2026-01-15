@@ -74,7 +74,7 @@ development_status:
   # Epic 3: 优化任务配置与工作区
   # FRs: FR16-FR23c, FR47-FR51
   # ============================================
-  epic-3: in-progress
+  epic-3: done
   3-1-optimization-task-creation-and-basic-config: done
   3-2-initial-prompt-and-iteration-termination-conditions: done
   3-3-candidate-generation-and-diversity-injection-config: done
@@ -82,7 +82,7 @@ development_status:
   3-5-workspace-creation-and-switching: done
   3-6-workspace-deletion-and-data-isolation: done
   3-7-multi-teacher-model-switching: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 
   # ============================================
   # Epic 4: 自动迭代优化执行
@@ -97,7 +97,7 @@ development_status:
   4-6-failure-archive-and-diversity-injection: done
   4-7-extension-templates-and-docs: done
   4-8-core-algorithm-module-decoupling-and-replacement: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 
   # ============================================
   # Epic 5: 可视化与实时反馈

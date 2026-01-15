@@ -3,6 +3,7 @@ pub mod dify;
 pub mod docs;
 pub mod generic;
 pub mod health;
+pub mod meta;
 pub mod optimization_tasks;
 pub mod test_set_templates;
 pub mod test_sets;

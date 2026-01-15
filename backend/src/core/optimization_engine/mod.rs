@@ -1,5 +1,6 @@
 #[cfg(feature = "alt-optimization-engine")]
 mod alternate_impl;
+mod common;
 #[cfg_attr(feature = "alt-optimization-engine", allow(dead_code))]
 mod default_impl;
 mod error;

@@ -270,17 +270,14 @@ async fn test_connection_timeout() {
     );
 }
 
-/// 测试错误消息截断（防止信息泄露）
+/// 上游错误响应 body 不应进入错误消息（避免泄露敏感信息）
 #[tokio::test]
-async fn test_error_body_truncation() {
+async fn test_upstream_error_message_does_not_include_body() {
     let mock_server = MockServer::start().await;
-
-    // 创建一个很长的错误响应
-    let long_error = "x".repeat(3000);
 
     Mock::given(method("GET"))
         .and(path("/v1/models"))
-        .respond_with(ResponseTemplate::new(500).set_body_string(&long_error))
+        .respond_with(ResponseTemplate::new(500).set_body_string("TOPSECRET_DO_NOT_ECHO"))
         .mount(&mock_server)
         .await;
 
@@ -298,9 +295,10 @@ async fn test_error_body_truncation() {
     let err = result.unwrap_err();
     match err {
         llm_client::LlmConnectionError::UpstreamError(msg) => {
-            // 确保错误消息被截断
-            assert!(msg.len() < 2000, "错误消息应被截断");
-            assert!(msg.contains("截断"), "应包含截断提示");
+            assert!(
+                !msg.contains("TOPSECRET_DO_NOT_ECHO"),
+                "message leaked upstream body: {msg}"
+            );
         }
         _ => panic!("预期 UpstreamError"),
     }

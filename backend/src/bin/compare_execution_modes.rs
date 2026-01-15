@@ -21,6 +21,7 @@ struct MockExecutionTarget {
 impl ExecutionTarget for MockExecutionTarget {
     async fn execute(
         &self,
+        _execution_target_config: &ExecutionTargetConfig,
         _prompt: &str,
         input: &HashMap<String, serde_json::Value>,
         test_case_id: &str,
@@ -117,7 +118,13 @@ async fn run_compare(batch_size: usize, max_concurrency: u32, sleep_ms: u64) -> 
     let execution_target: Arc<dyn ExecutionTarget> = Arc::new(MockExecutionTarget { sleep_ms });
     let prompt = "p";
 
-    let serial_results = serial_execute(execution_target.as_ref(), prompt, &test_cases).await?;
+    let serial_results = serial_execute(
+        execution_target.as_ref(),
+        &ctx.execution_target_config,
+        prompt,
+        &test_cases,
+    )
+    .await?;
     let serial_pairs = test_cases
         .iter()
         .cloned()
@@ -128,6 +135,7 @@ async fn run_compare(batch_size: usize, max_concurrency: u32, sleep_ms: u64) -> 
 
     let parallel_results = parallel_execute(
         Arc::clone(&execution_target),
+        &ctx.execution_target_config,
         prompt,
         &test_cases,
         max_concurrency,
@@ -178,13 +186,20 @@ async fn run_benchmark(batch_size: usize, sleep_ms: u64) -> anyhow::Result<()> {
     let test_cases = build_test_cases(batch_size);
     let execution_target: Arc<dyn ExecutionTarget> = Arc::new(MockExecutionTarget { sleep_ms });
     let prompt = "p";
+    let execution_target_config = ExecutionTargetConfig::default();
 
     let concurrencies = [1_u32, 2, 4, 8];
 
     let mut best_serial_ms = u128::MAX;
     for _ in 0..3 {
         let start = tokio::time::Instant::now();
-        let _ = serial_execute(execution_target.as_ref(), prompt, &test_cases).await?;
+        let _ = serial_execute(
+            execution_target.as_ref(),
+            &execution_target_config,
+            prompt,
+            &test_cases,
+        )
+        .await?;
         best_serial_ms = best_serial_ms.min(start.elapsed().as_millis());
     }
     let batch_size_u128 = batch_size.max(1) as u128;
@@ -217,7 +232,14 @@ async fn run_benchmark(batch_size: usize, sleep_ms: u64) -> anyhow::Result<()> {
         let mut best_ms = u128::MAX;
         for _ in 0..3 {
             let start = tokio::time::Instant::now();
-            let _ = parallel_execute(Arc::clone(&execution_target), prompt, &test_cases, n).await?;
+            let _ = parallel_execute(
+                Arc::clone(&execution_target),
+                &execution_target_config,
+                prompt,
+                &test_cases,
+                n,
+            )
+            .await?;
             best_ms = best_ms.min(start.elapsed().as_millis());
         }
         let chunks = (batch_size as u128).div_ceil(n as u128);

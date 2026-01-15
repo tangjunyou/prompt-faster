@@ -7,9 +7,11 @@ use tokio::task::JoinSet;
 use crate::core::execution_target::ExecutionError;
 use crate::core::traits::ExecutionTarget;
 use crate::domain::models::{ExecutionResult, TestCase};
+use crate::domain::types::ExecutionTargetConfig;
 
 pub async fn serial_execute(
     execution_target: &dyn ExecutionTarget,
+    execution_target_config: &ExecutionTargetConfig,
     prompt: &str,
     batch: &[TestCase],
 ) -> Result<Vec<ExecutionResult>, ExecutionError> {
@@ -17,7 +19,12 @@ pub async fn serial_execute(
     for test_case in batch {
         results.push(
             execution_target
-                .execute(prompt, &test_case.input, &test_case.id)
+                .execute(
+                    execution_target_config,
+                    prompt,
+                    &test_case.input,
+                    &test_case.id,
+                )
                 .await?,
         );
     }
@@ -26,6 +33,7 @@ pub async fn serial_execute(
 
 pub async fn parallel_execute(
     execution_target: Arc<dyn ExecutionTarget>,
+    execution_target_config: &ExecutionTargetConfig,
     prompt: &str,
     batch: &[TestCase],
     max_concurrency: u32,
@@ -43,12 +51,14 @@ pub async fn parallel_execute(
 
     let semaphore = Arc::new(Semaphore::new(max_concurrency));
     let prompt = Arc::new(prompt.to_string());
+    let execution_target_config = Arc::new(execution_target_config.clone());
 
     let mut join_set = JoinSet::new();
     for (index, test_case) in batch.iter().enumerate() {
         let execution_target = Arc::clone(&execution_target);
         let semaphore = Arc::clone(&semaphore);
         let prompt = Arc::clone(&prompt);
+        let execution_target_config = Arc::clone(&execution_target_config);
         let input: HashMap<String, serde_json::Value> = test_case.input.clone();
         let test_case_id = test_case.id.clone();
 
@@ -67,7 +77,7 @@ pub async fn parallel_execute(
             };
 
             let result = execution_target
-                .execute(&prompt, &input, &test_case_id)
+                .execute(&execution_target_config, &prompt, &input, &test_case_id)
                 .await;
             (index, result)
         });
@@ -139,6 +149,7 @@ mod tests {
     impl ExecutionTarget for MockExecutionTarget {
         async fn execute(
             &self,
+            _execution_target_config: &crate::domain::types::ExecutionTargetConfig,
             prompt: &str,
             input: &HashMap<String, serde_json::Value>,
             test_case_id: &str,
@@ -193,7 +204,9 @@ mod tests {
         let target = MockExecutionTarget::new(1);
         let batch = vec![test_case("a"), test_case("b"), test_case("c")];
 
-        let results = serial_execute(&target, "hello", &batch).await.unwrap();
+        let results = serial_execute(&target, &ExecutionTargetConfig::default(), "hello", &batch)
+            .await
+            .unwrap();
         let ids: Vec<_> = results.iter().map(|r| r.test_case_id.as_str()).collect();
         assert_eq!(ids, vec!["a", "b", "c"]);
     }
@@ -204,9 +217,15 @@ mod tests {
         let batch: Vec<TestCase> = vec![];
 
         let execution_target: Arc<dyn ExecutionTarget> = target;
-        let results = parallel_execute(execution_target, "p", &batch, 4)
-            .await
-            .unwrap();
+        let results = parallel_execute(
+            execution_target,
+            &ExecutionTargetConfig::default(),
+            "p",
+            &batch,
+            4,
+        )
+        .await
+        .unwrap();
         assert!(results.is_empty());
     }
 
@@ -216,9 +235,15 @@ mod tests {
         let batch = vec![test_case("a")];
 
         let execution_target: Arc<dyn ExecutionTarget> = target;
-        let err = parallel_execute(execution_target, "p", &batch, 0)
-            .await
-            .unwrap_err();
+        let err = parallel_execute(
+            execution_target,
+            &ExecutionTargetConfig::default(),
+            "p",
+            &batch,
+            0,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, ExecutionError::InvalidRequest { .. }));
     }
 
@@ -231,6 +256,7 @@ mod tests {
         impl ExecutionTarget for DelayByIdTarget {
             async fn execute(
                 &self,
+                _execution_target_config: &crate::domain::types::ExecutionTargetConfig,
                 _prompt: &str,
                 _input: &HashMap<String, serde_json::Value>,
                 test_case_id: &str,
@@ -264,7 +290,9 @@ mod tests {
             .map(|i| test_case(&i.to_string()))
             .collect::<Vec<_>>();
 
-        let results = parallel_execute(target, "p", &batch, 2).await.unwrap();
+        let results = parallel_execute(target, &ExecutionTargetConfig::default(), "p", &batch, 2)
+            .await
+            .unwrap();
         let ids: Vec<_> = results.iter().map(|r| r.test_case_id.as_str()).collect();
         assert_eq!(ids, vec!["0", "1", "2", "3", "4"]);
     }
@@ -277,9 +305,15 @@ mod tests {
             .collect::<Vec<_>>();
 
         let execution_target: Arc<dyn ExecutionTarget> = target.clone();
-        let _ = parallel_execute(execution_target, "p", &batch, 4)
-            .await
-            .unwrap();
+        let _ = parallel_execute(
+            execution_target,
+            &ExecutionTargetConfig::default(),
+            "p",
+            &batch,
+            4,
+        )
+        .await
+        .unwrap();
 
         let max_seen = target.max_in_flight.load(Ordering::SeqCst);
         assert!(max_seen <= 4, "max_seen={max_seen}");
@@ -294,9 +328,15 @@ mod tests {
             .collect::<Vec<_>>();
 
         let execution_target: Arc<dyn ExecutionTarget> = target.clone();
-        let _ = parallel_execute(execution_target, "p", &batch, 64)
-            .await
-            .unwrap();
+        let _ = parallel_execute(
+            execution_target,
+            &ExecutionTargetConfig::default(),
+            "p",
+            &batch,
+            64,
+        )
+        .await
+        .unwrap();
 
         let max_seen = target.max_in_flight.load(Ordering::SeqCst);
         assert!(max_seen <= batch.len(), "max_seen={max_seen}");
@@ -309,9 +349,15 @@ mod tests {
         let batch = vec![test_case("a"), test_case("b"), test_case("c")];
 
         let execution_target: Arc<dyn ExecutionTarget> = target;
-        let err = parallel_execute(execution_target, "p", &batch, 2)
-            .await
-            .unwrap_err();
+        let err = parallel_execute(
+            execution_target,
+            &ExecutionTargetConfig::default(),
+            "p",
+            &batch,
+            2,
+        )
+        .await
+        .unwrap_err();
         assert!(matches!(err, ExecutionError::UpstreamError { .. }));
         assert!(err.to_string().contains("test_case_id=b"));
     }

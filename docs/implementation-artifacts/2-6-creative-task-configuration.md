@@ -271,3 +271,23 @@ Date: 2026-01-06
 
 - 2026-01-05：实现 Story 2.6（核心诉求 + 结构化约束），更新前后端 DTO/校验/UI，并补齐测试与回归保护
 - 2026-01-06：Senior code review 修复：params 非对象覆盖确认 + cases 结构校验强化 + 增补前端测试
+
+## Review Notes
+
+> 说明：本 Story 已有 “Senior Developer Review (AI)” 与详细完成备注；此处补齐统一的 Review Notes 结构，便于跨 story 检索与持续改进。
+
+### Findings
+
+- 已通过 Senior code review（Changes Requested → Resolved），关键边界（params 非对象覆盖确认、cases 结构校验）已补齐并有回归测试锁死。
+
+### Decisions
+
+- 继续坚持 “casesJson 单一事实来源 + JSONL 解析/校验前置” 的实现策略，避免多处状态写入导致一致性问题。
+
+### Risks / Tech Debt
+
+- 无
+
+### Follow-ups
+
+- 无

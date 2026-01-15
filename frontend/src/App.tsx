@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import './App.css'
-import { ApiConfigPage, FocusView, OptimizationTaskConfigView, OptimizationTasksView, RunView, TestSetsView, WorkspaceView } from './pages'
+import { ApiConfigPage, FocusView, OptimizationTaskConfigView, OptimizationTasksView, PerfNfr2View, PerfNfr3View, RunView, TestSetsView, WorkspaceView } from './pages'
 import { LoginPage } from './features/auth/components/LoginPage'
 import { ProtectedRoute } from './features/auth/components/ProtectedRoute'
 import { registerUnauthorizedHandler } from './lib/api'
@@ -96,6 +96,8 @@ function App() {
         <Route path="/run" element={<RunView />} />
         <Route path="/focus" element={<FocusView />} />
         <Route path="/workspace" element={<WorkspaceView />} />
+        <Route path="/__perf__/nfr2" element={<PerfNfr2View />} />
+        <Route path="/__perf__/nfr3" element={<PerfNfr3View />} />
         <Route
           path="/workspaces/:id/test-sets"
           element={

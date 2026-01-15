@@ -354,3 +354,23 @@ Task 5 后端集成测试未完成，但这已在故事文件中标记为 `[ ]`�
 **审查结论:**
 - 状态: **done** ✅
 - Story 1.5 所有功能已完成，代码质量良好
+
+## Review Notes
+
+> 说明：补齐最小结构化 Review Notes，用于后续跨 story 检索与持续改进。历史执行证据以本文件的 Debug/验证命令与文件清单为准。
+
+### Findings
+
+- [LEGACY] 本 Story 的 review 过程以“审查结论 + 验证命令”形式沉淀；当前仅补齐统一结构，避免跨 story 检索断层。
+
+### Decisions
+
+- 无
+
+### Risks / Tech Debt
+
+- 无
+
+### Follow-ups
+
+- 无

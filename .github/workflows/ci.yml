@@ -10,6 +10,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  docs-dod:
+    name: Docs DoD Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify story DoD (done stories)
+        run: python3 scripts/verify_story_dod.py
+
   # 后端检查
   backend-lint:
     name: Backend Lint

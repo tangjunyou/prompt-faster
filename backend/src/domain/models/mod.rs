@@ -1,6 +1,7 @@
 //! 领域模型定义
 
 pub mod algorithm;
+pub mod iteration_stage;
 pub mod optimization_task;
 pub mod optimization_task_config;
 pub mod reflection;
@@ -13,6 +14,9 @@ pub use algorithm::{
     ExecutionResult, FailureArchiveEntry, FailurePoint, Iteration, IterationState, LineageType,
     OutputLength, QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord,
     RuleSystem, RuleTags, Severity, TaskReference, TestCase, TokenUsage, failure_fingerprint_v1,
+};
+pub use iteration_stage::{
+    IterationStageDescriptor, all_stages as all_iteration_stages, stage_for_state,
 };
 pub use optimization_task::{
     ExecutionTargetType, OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus,

@@ -26,6 +26,8 @@ use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const TEST_MASTER_PASSWORD: &str = "test_master_password_for_integration";
 
@@ -143,6 +145,42 @@ async fn register_user(app: &Router, username: &str, password: &str) -> String {
         .as_str()
         .expect("缺少 session_token")
         .to_string()
+}
+
+#[tokio::test]
+async fn test_generic_llm_connection_error_does_not_leak_upstream_body() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/v1/models"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("TOPSECRET_DO_NOT_ECHO"))
+        .mount(&mock_server)
+        .await;
+
+    let app = setup_test_app().await;
+
+    let response = app
+        .clone()
+        .oneshot(build_json_request(
+            "POST",
+            "/api/v1/auth/test-connection/generic-llm",
+            json!({
+              "base_url": mock_server.uri(),
+              "api_key": "sk-test-123",
+              "provider": "siliconflow"
+            }),
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+
+    let body = read_json_body(response).await;
+    let raw = body.to_string();
+    assert!(
+        !raw.contains("TOPSECRET_DO_NOT_ECHO"),
+        "response leaked upstream body"
+    );
 }
 
 #[tokio::test]
