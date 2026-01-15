@@ -1,6 +1,6 @@
 # Story 4.8: 核心算法模块解耦与替换演练
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -241,8 +241,8 @@ so that 在需要更换优化算法时，只修改算法模块自身。
 
 ## Story Completion Status
 
-- Status set to `review`
-- Completion note: 2026-01-15 修复已完成并通过本地验证（见 “Fix Verification (AI)”）。
+- Status set to `done`
+- Completion note: 2026-01-15 已合并至 main，main 分支 CI 全绿。
 
 ## Dev Agent Record
 
@@ -280,6 +280,7 @@ GPT-5.2 (Codex CLI)
 - 引入 `OptimizationEngine` 可替换 Facade 与 feature gate（`alt-optimization-engine`），并在 CI + tests 覆盖 Default/Alternate 双路径
 - 2026-01-15 Senior Dev Review：Changes Requested（修复 evaluator 配置注入、增强 Alternate 可证伪性、补齐 CI clippy 与测试断言）
 - 2026-01-15 Follow-up Review：Approve（Ready to merge；Status 保持 review）
+- 2026-01-15 Shipped：已合并 main 且 main CI 通过；Story 状态更新为 done
 ## Review Notes
 
 > 统一结构（便于后续检索/复用/持续改进）
