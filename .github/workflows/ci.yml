@@ -42,6 +42,9 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
+      - name: Clippy (alt optimization engine)
+        run: cargo clippy --features alt-optimization-engine -- -D warnings
+
   backend-test:
     name: Backend Test
     runs-on: ubuntu-latest
@@ -67,6 +70,9 @@ jobs:
 
       - name: Run tests
         run: cargo test --all
+
+      - name: Run tests (alt optimization engine)
+        run: cargo test --all --features alt-optimization-engine
 
   backend-build:
     name: Backend Build
