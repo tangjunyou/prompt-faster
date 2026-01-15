@@ -104,6 +104,7 @@ prompt-faster/
 - [架构设计](docs/project-planning-artifacts/architecture.md)
 - [UX 设计规范](docs/project-planning-artifacts/ux-design-specification.md)
 - [Epic 与 Story 分解](docs/project-planning-artifacts/epics.md)
+- [扩展点开发指南（ExecutionTarget / Evaluator / TeacherModel）](docs/developer-guides/extensions.md)
 
 ## 🧪 测试
 

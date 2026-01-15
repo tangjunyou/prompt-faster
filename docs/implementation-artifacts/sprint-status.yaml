@@ -95,7 +95,7 @@ development_status:
   4-4-reflection-iteration-layer: done
   4-5-execution-mode-and-parallel-scheduling: done
   4-6-failure-archive-and-diversity-injection: done
-  4-7-extension-templates-and-docs: backlog
+  4-7-extension-templates-and-docs: review
   4-8-core-algorithm-module-decoupling-and-replacement: backlog
   epic-4-retrospective: optional
 

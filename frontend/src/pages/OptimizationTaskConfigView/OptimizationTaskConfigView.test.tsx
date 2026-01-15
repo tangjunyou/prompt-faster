@@ -223,6 +223,24 @@ describe('OptimizationTaskConfigView', () => {
 	    expect(screen.getByLabelText('多样性注入阈值（连续失败次数）')).toHaveValue(2)
 	  })
 
+	  it('选择 example 评估器时应随请求发送 evaluator_type=example 并回显', async () => {
+	    renderPage('/workspaces/ws-1/tasks/task-1')
+
+	    await screen.findByText('任务配置：任务 1')
+
+	    fireEvent.change(screen.getByLabelText('评估器类型'), { target: { value: 'example' } })
+	    expect(screen.getByLabelText('评估器类型')).toHaveValue('example')
+
+	    fireEvent.click(screen.getByRole('button', { name: '保存配置' }))
+
+	    await waitFor(() => {
+	      expect(screen.getByText('保存成功')).toBeInTheDocument()
+	    })
+
+	    expect(lastPutBody?.evaluator_config.evaluator_type).toBe('example')
+	    expect(screen.getByLabelText('评估器类型')).toHaveValue('example')
+	  })
+
 	  it('切换到并行模式时应显示并发数输入，并发数越界应本地拦截且不发送请求', async () => {
 	    renderPage('/workspaces/ws-1/tasks/task-1')
 

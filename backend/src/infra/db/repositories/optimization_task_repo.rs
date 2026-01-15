@@ -53,6 +53,7 @@ fn parse_execution_target_type(raw: &str) -> Option<ExecutionTargetType> {
     match raw {
         "dify" => Some(ExecutionTargetType::Dify),
         "generic" => Some(ExecutionTargetType::Generic),
+        "example" => Some(ExecutionTargetType::Example),
         _ => None,
     }
 }
@@ -76,6 +77,7 @@ fn serialize_execution_target_type(value: ExecutionTargetType) -> &'static str {
     match value {
         ExecutionTargetType::Dify => "dify",
         ExecutionTargetType::Generic => "generic",
+        ExecutionTargetType::Example => "example",
     }
 }
 

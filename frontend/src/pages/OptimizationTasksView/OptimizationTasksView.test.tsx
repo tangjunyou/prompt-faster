@@ -11,6 +11,7 @@ import type { UserInfo } from '@/types/generated/api/UserInfo'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
 import type { OptimizationTaskListItemResponse } from '@/types/generated/api/OptimizationTaskListItemResponse'
 import type { CreateOptimizationTaskRequest } from '@/types/generated/api/CreateOptimizationTaskRequest'
+import type { ExecutionTargetType } from '@/types/generated/models/ExecutionTargetType'
 
 const API_BASE = 'http://localhost:3000/api/v1'
 
@@ -58,7 +59,7 @@ const server = setupServer(
       workspace_id: workspaceId,
       name: body.name,
       goal: body.goal,
-      execution_target_type: (body.execution_target_type as 'dify' | 'generic') ?? 'dify',
+      execution_target_type: (body.execution_target_type as ExecutionTargetType) ?? 'dify',
       task_mode: (body.task_mode as 'fixed' | 'creative') ?? 'fixed',
       status: 'draft',
       teacher_model_display_name: '系统默认',
@@ -197,6 +198,27 @@ describe('OptimizationTasksView', () => {
       expect(screen.getByText('新任务')).toBeInTheDocument()
     })
     expect(screen.getAllByText('老师模型：系统默认').length).toBeGreaterThan(0)
+  })
+
+  it('应支持选择 example 执行目标并随请求发送', async () => {
+    renderPage('/workspaces/ws-1/tasks')
+
+    await screen.findByText('已有任务')
+
+    fireEvent.change(screen.getByLabelText('任务名称 *'), { target: { value: '示例任务' } })
+    fireEvent.change(screen.getByLabelText('优化目标 *'), { target: { value: '示例目标' } })
+
+    fireEvent.change(screen.getByLabelText('执行目标 *'), { target: { value: 'example' } })
+
+    const checkbox = await screen.findByLabelText('选择测试集 测试集 1')
+    fireEvent.click(checkbox)
+
+    fireEvent.click(screen.getByRole('button', { name: '创建任务' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('示例任务')).toBeInTheDocument()
+    })
+    expect(screen.getAllByText(/执行目标：example/).length).toBeGreaterThan(0)
   })
 
   it('后端模式校验错误应展示 message（不展示 details）', async () => {

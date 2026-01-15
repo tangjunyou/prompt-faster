@@ -11,6 +11,7 @@
 - **Epic 文档** (`docs/project-planning-artifacts/epics.md`) - Epic 和 User Stories 详细定义
 - **UX 设计规范** (`docs/project-planning-artifacts/ux-design-specification.md`) - 用户体验设计规范和界面设计
 - **测试设计系统** (`docs/test-design-system.md`) - 测试策略和测试用例设计
+- **扩展点开发指南** (`docs/developer-guides/extensions.md`) - ExecutionTarget / Evaluator / TeacherModel 扩展模板与最小闭环
 
 ### 实现状态
 

@@ -390,6 +390,11 @@ async fn evaluate_single(
                 .await
                 .map(|r| (r, vec!["teacher_model"], None))
         }
+        other => {
+            return Err(EvaluatorError::InvalidInput(format!(
+                "未支持的 evaluator_type（请使用扩展工厂创建对应 Evaluator）：{other:?}"
+            )));
+        }
     }?;
 
     let selected_evaluators: Vec<String> = selected_evaluators
@@ -1313,7 +1318,6 @@ mod tests {
         Constraint, EvaluatorConfig as TaskEvaluatorConfig, EvaluatorType, RuleSystem,
     };
     use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig};
-    use tokio::time::sleep;
 
     fn make_ctx(
         test_cases: Vec<TestCase>,
@@ -1427,28 +1431,7 @@ mod tests {
         }
     }
 
-    struct StaticTeacherModel {
-        response: String,
-        delay_ms: u64,
-    }
-
-    #[async_trait]
-    impl TeacherModel for StaticTeacherModel {
-        async fn generate(&self, _prompt: &str) -> anyhow::Result<String> {
-            if self.delay_ms > 0 {
-                sleep(Duration::from_millis(self.delay_ms)).await;
-            }
-            Ok(self.response.clone())
-        }
-
-        async fn generate_stream(
-            &self,
-            _prompt: &str,
-        ) -> anyhow::Result<tokio::sync::mpsc::Receiver<String>> {
-            let (_tx, rx) = tokio::sync::mpsc::channel(1);
-            Ok(rx)
-        }
-    }
+    use crate::core::teacher_model::{create_teacher_model, ExampleTeacherModel, TeacherModelType};
 
     #[tokio::test]
     async fn exact_match_pass_and_fail() {
@@ -1763,10 +1746,9 @@ mod tests {
             0.95,
         );
         ctx.config.budget.max_duration_secs = Some(1);
-        let tm = Arc::new(StaticTeacherModel {
-            response: "{\"passed\":true,\"score\":1}".to_string(),
-            delay_ms: 1500,
-        });
+        let tm = Arc::new(
+            ExampleTeacherModel::new("{\"passed\":true,\"score\":1}").with_delay(Duration::from_millis(1500)),
+        );
         let err = DefaultEvaluator::new(Some(tm))
             .evaluate(&ctx, &tc, "OK")
             .await
@@ -1786,11 +1768,9 @@ mod tests {
             false,
             0.95,
         );
-        let tm = Arc::new(StaticTeacherModel {
-            response: "当然可以：\n```json\n{\"passed\":true,\"score\":1,\"confidence\":1}\n```\n"
-                .to_string(),
-            delay_ms: 0,
-        });
+        let tm = Arc::new(ExampleTeacherModel::new(
+            "当然可以：\n```json\n{\"passed\":true,\"score\":1,\"confidence\":1}\n```\n",
+        ));
         let ev = DefaultEvaluator::new(Some(tm))
             .evaluate(&ctx, &tc, "OK")
             .await
@@ -1803,10 +1783,7 @@ mod tests {
     async fn ensemble_includes_teacher_model_when_injected() {
         let tc = make_exact_case("tc1", "OK");
         let ctx = make_ctx(vec![tc.clone()], task_cfg(EvaluatorType::Auto), false, 0.95);
-        let tm = Arc::new(StaticTeacherModel {
-            response: "{\"passed\":true,\"score\":1}".to_string(),
-            delay_ms: 0,
-        });
+        let tm = create_teacher_model(TeacherModelType::Example);
         let ev = DefaultEvaluator::new(Some(tm))
             .evaluate(&ctx, &tc, "OK")
             .await
