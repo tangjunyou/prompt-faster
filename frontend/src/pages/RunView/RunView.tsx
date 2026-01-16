@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { IterationGraph } from '@/components/nodes/IterationGraph'
-import { StreamingText } from '@/components/streaming'
+import { StageHistoryPanel, StageIndicator, StreamingText } from '@/components/streaming'
 import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
 import { usePrefersReducedMotion } from '@/hooks'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
@@ -144,8 +144,13 @@ export function RunView() {
           className="flex flex-col rounded-lg border bg-white lg:col-span-1"
           data-testid="thinking-panel"
         >
-          <div className="border-b px-4 py-2 text-sm font-medium text-muted-foreground">
-            思考过程
+          <div className="border-b px-4 py-2">
+            <div className="text-sm font-medium text-muted-foreground">思考过程</div>
+            <StageIndicator
+              stage={thinkingState.currentStage}
+              prefersReducedMotion={prefersReducedMotion}
+              className="mt-2"
+            />
           </div>
           <StreamingText
             text={thinkingState.text}
@@ -159,6 +164,11 @@ export function RunView() {
             }
             prefersReducedMotion={prefersReducedMotion}
             className="m-2 h-[500px] flex-1"
+          />
+          <StageHistoryPanel
+            history={thinkingState.stageHistory}
+            prefersReducedMotion={prefersReducedMotion}
+            className="border-t"
           />
         </aside>
       </div>

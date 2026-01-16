@@ -1,4 +1,5 @@
 import type { IterationState } from '@/types/generated/models'
+import type { StageType } from '@/features/visualization/thinkingStages'
 
 export type WsMessage<T> = {
   type: string
@@ -12,6 +13,7 @@ export type DemoProgressPayload = {
   iteration: number
   state: IterationState
   step: string
+  stage?: StageType
 }
 
 export type DemoStreamPayload = {
@@ -47,62 +49,50 @@ export function createDeterministicDemoWsMessages(options: DemoWsMessagesOptions
   const out: DemoWsMessage[] = []
   let seq = 0
 
+  const stageDescriptors: Array<{ stage: StageType; state: IterationState; step: string }> = [
+    { stage: 'pattern', state: 'extracting_rules', step: '规律抽取' },
+    { stage: 'prompt', state: 'generating_prompt', step: '候选生成' },
+    { stage: 'quality', state: 'evaluating', step: '质量评估' },
+    { stage: 'reflection', state: 'reflecting', step: '反思迭代' },
+  ]
+
   for (let iteration = 1; iteration <= iterations; iteration++) {
-    out.push({
-      type: 'iteration:progress',
-      correlationId,
-      timestamp: rfc3339At(baseMs + seq * 10),
-      payload: {
-        kind: 'progress',
-        seq,
-        iteration,
-        state: 'running_tests',
-        step: '运行测试',
-      },
-    })
-    seq += 1
+    const baseTokens = Math.floor(tokensPerIteration / stageDescriptors.length)
+    const remainder = tokensPerIteration % stageDescriptors.length
+    const stageTokens = stageDescriptors.map((_, index) =>
+      baseTokens + (index < remainder ? 1 : 0),
+    )
 
-    out.push({
-      type: 'iteration:progress',
-      correlationId,
-      timestamp: rfc3339At(baseMs + seq * 10),
-      payload: {
-        kind: 'progress',
-        seq,
-        iteration,
-        state: 'evaluating',
-        step: '评估',
-      },
-    })
-    seq += 1
-
-    out.push({
-      type: 'iteration:progress',
-      correlationId,
-      timestamp: rfc3339At(baseMs + seq * 10),
-      payload: {
-        kind: 'progress',
-        seq,
-        iteration,
-        state: 'waiting_user',
-        step: '等待用户',
-      },
-    })
-    seq += 1
-
-    for (let t = 0; t < tokensPerIteration; t++) {
+    stageDescriptors.forEach((descriptor, stageIndex) => {
       out.push({
-        type: 'thinking:stream',
+        type: 'iteration:progress',
         correlationId,
         timestamp: rfc3339At(baseMs + seq * 10),
         payload: {
-          kind: 'stream',
+          kind: 'progress',
           seq,
-          content: `iter=${iteration} token=${t}`,
+          iteration,
+          state: descriptor.state,
+          step: descriptor.step,
+          stage: descriptor.stage,
         },
       })
       seq += 1
-    }
+
+      for (let t = 0; t < stageTokens[stageIndex]; t++) {
+        out.push({
+          type: 'thinking:stream',
+          correlationId,
+          timestamp: rfc3339At(baseMs + seq * 10),
+          payload: {
+            kind: 'stream',
+            seq,
+            content: `iter=${iteration} stage=${descriptor.stage} token=${t}`,
+          },
+        })
+        seq += 1
+      }
+    })
 
     const finalState = iteration % 2 === 0 ? 'failed' : 'completed'
     out.push({
@@ -115,6 +105,7 @@ export function createDeterministicDemoWsMessages(options: DemoWsMessagesOptions
         iteration,
         state: finalState,
         step: finalState === 'failed' ? '失败' : '完成',
+        stage: 'reflection',
       },
     })
     seq += 1

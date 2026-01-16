@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
 describe('RunView', () => {
@@ -37,9 +37,20 @@ describe('RunView', () => {
     const replayButton = screen.getByTestId('runview-demo-replay')
     fireEvent.click(replayButton)
 
-    await vi.advanceTimersByTimeAsync(600)
-    await vi.runAllTimersAsync()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200)
+    })
 
-    expect(screen.getByTestId('streaming-text-content')).toHaveTextContent('iter=1 token=0')
+    expect(screen.getByTestId('stage-indicator')).toHaveTextContent('规律抽取中')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400)
+      await vi.runAllTimersAsync()
+    })
+
+    expect(screen.getByTestId('streaming-text-content')).toHaveTextContent(
+      'iter=1 stage=reflection token=0',
+    )
+    expect(screen.getByTestId('stage-indicator')).toHaveTextContent('反思迭代中')
   })
 })

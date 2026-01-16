@@ -1,4 +1,5 @@
 import type { DemoWsMessage } from '@/features/ws-demo/demoWsMessages'
+import type { StageHistoryItem, StageType } from '@/features/visualization/thinkingStages'
 
 /**
  * Thinking Panel 流式状态
@@ -9,6 +10,12 @@ export type ThinkingStreamStatus = 'idle' | 'streaming' | 'complete' | 'error'
 export type ThinkingStreamState = {
   /** 当前关联的 correlationId（AR2 隔离边界） */
   correlationId: string | null
+  /** 当前环节（Stage） */
+  currentStage: StageType | null
+  /** 当前环节开始的 seq */
+  currentStageStartSeq: number | null
+  /** 环节历史（摘要 + 输出片段） */
+  stageHistory: StageHistoryItem[]
   /** 累积的流式文本内容 */
   text: string
   /** 当前文本是否已被截断 */
@@ -31,6 +38,9 @@ export type ThinkingStreamState = {
 export function createInitialThinkingStreamState(): ThinkingStreamState {
   return {
     correlationId: null,
+    currentStage: null,
+    currentStageStartSeq: null,
+    stageHistory: [],
     text: '',
     isTruncated: false,
     maxChars: DEFAULT_MAX_CHARS,
@@ -53,6 +63,8 @@ export type ThinkingStreamReducerOptions = {
 
 const DEFAULT_MAX_CHARS = 10000
 const DEFAULT_MAX_LINES = 500
+const STAGE_HISTORY_LIMIT = 20
+const STAGE_SUMMARY_LIMIT = 100
 
 /**
  * 应用长文本兜底策略（截断）
@@ -80,6 +92,34 @@ function applyTextTruncation(
   }
 
   return { text: result, isTruncated }
+}
+
+function normalizeStageSummary(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  if (normalized.length <= STAGE_SUMMARY_LIMIT) return normalized
+  return `${normalized.slice(0, STAGE_SUMMARY_LIMIT)}...`
+}
+
+function appendStageHistory(
+  prev: ThinkingStreamState,
+  endSeq: number,
+): StageHistoryItem[] {
+  if (!prev.currentStage) return prev.stageHistory
+
+  const summary = normalizeStageSummary(prev.text)
+  if (!summary) return prev.stageHistory
+
+  const startSeq = prev.currentStageStartSeq ?? endSeq
+  const nextItem: StageHistoryItem = {
+    stage: prev.currentStage,
+    summary,
+    text: prev.text,
+    startSeq,
+    endSeq,
+  }
+
+  return [...prev.stageHistory, nextItem].slice(-STAGE_HISTORY_LIMIT)
 }
 
 /**
@@ -160,13 +200,50 @@ export function reduceThinkingStreamState(
 
     // 设置 correlationId（若为首条消息）
     const newCorrelationId = prev.correlationId ?? msgCorrelationId ?? null
+    const nextStage = payload.stage ?? null
+
+    let stageHistory = prev.stageHistory
+    let nextText = prev.text
+    let nextIsTruncated = prev.isTruncated
+    let nextStageStartSeq = prev.currentStageStartSeq
+    let nextCurrentStage = prev.currentStage
+
+    if (nextStage && nextStage !== prev.currentStage) {
+      stageHistory = appendStageHistory(prev, prev.lastSeq)
+      nextText = ''
+      nextIsTruncated = false
+      nextStageStartSeq = seq
+      nextCurrentStage = nextStage
+    } else if (nextStage && !prev.currentStage) {
+      nextStageStartSeq = seq
+      nextCurrentStage = nextStage
+    }
 
     // 检查 terminal 状态
     if (payload.state === 'completed' || payload.state === 'failed') {
+      const finalStageHistory = nextText
+        ? appendStageHistory(
+            {
+              ...prev,
+              currentStage: nextCurrentStage,
+              currentStageStartSeq: nextStageStartSeq,
+              stageHistory,
+              text: nextText,
+            },
+            seq,
+          )
+        : stageHistory
       return {
         ...prev,
         correlationId: newCorrelationId,
+        currentStage: nextCurrentStage,
+        currentStageStartSeq: nextStageStartSeq,
+        stageHistory: finalStageHistory,
+        text: nextText,
+        isTruncated: nextIsTruncated,
         status: 'complete',
+        maxChars,
+        maxLines,
         lastSeq: seq,
       }
     }
@@ -175,6 +252,11 @@ export function reduceThinkingStreamState(
     return {
       ...prev,
       correlationId: newCorrelationId,
+      currentStage: nextCurrentStage,
+      currentStageStartSeq: nextStageStartSeq,
+      stageHistory,
+      text: nextText,
+      isTruncated: nextIsTruncated,
       maxChars,
       maxLines,
       lastSeq: seq,
