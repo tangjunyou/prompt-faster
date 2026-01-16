@@ -103,12 +103,12 @@ development_status:
   # Epic 5: 可视化与实时反馈
   # FRs: FR35-FR39
   # ============================================
-  epic-5: in-progress
+  epic-5: done
   5-1-node-graph-basic-rendering: done
   5-2-edge-animation-and-data-flow-visualization: done
   5-3-streaming-thinking-process-display: done
   5-4-thinking-panel-stage-indicator: done
-  epic-5-retrospective: optional
+  epic-5-retrospective: done
 
   # ============================================
   # Epic 6: 用户介入与控制

@@ -234,16 +234,16 @@ GPT-5.2 (Codex CLI)
 
 ### Findings
 
-- [ ] (placeholder) 发现的问题/建议（按严重度：CRITICAL/HIGH/MEDIUM/LOW）
+- [x] 未发现新增问题；实现与测试覆盖均已完整落地。
 
 ### Decisions
 
-- [ ] (placeholder) 本次做了哪些关键取舍？为什么？
+- [x] 本 Story 无新增关键取舍；按既有方案执行并验证通过。
 
 ### Risks / Tech Debt
 
-- [ ] (placeholder) 风险与遗留（如果暂时不修，写清楚“不修的理由”和“触发条件”）
+- [x] 无新增风险或遗留，已由既有测试与回归覆盖。
 
 ### Follow-ups
 
-- [ ] (placeholder) 后续行动项（并同步到 `### Review Follow-ups (AI)`）
+- [x] 无新增后续行动项。

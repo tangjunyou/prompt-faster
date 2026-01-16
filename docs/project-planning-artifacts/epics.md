@@ -1612,6 +1612,14 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 
 ## Epic 6: 用户介入与控制
 
+**开工门槛（必须先满足）：**
+
+- A1 明确“暂停/编辑/继续”的状态一致性与权限边界
+- A2 用户介入的可追踪证据链（日志/状态回放入口）
+- A3 构建体积告警拆分评估
+
+**跟踪文件：** `docs/implementation-artifacts/epic-5-retro-action-items-2026-01-16.md`
+
 ### Story 6.1: 暂停与继续迭代
 
 **Related FRs:** FR40（任意节点暂停）, FR44（从暂停点继续）
