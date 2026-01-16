@@ -177,7 +177,7 @@ describe('thinkingStreamReducer', () => {
     describe('长文本兜底策略（截断）', () => {
       it('应按 maxChars 截断（保留末尾）', () => {
         const longText = 'A'.repeat(50)
-        let state = reduceThinkingStreamState(initialState, createStreamMessage(0, longText), {
+        const state = reduceThinkingStreamState(initialState, createStreamMessage(0, longText), {
           maxChars: 30,
           maxLines: 1000,
         })
@@ -191,7 +191,7 @@ describe('thinkingStreamReducer', () => {
 
       it('应按 maxLines 截断（保留末尾）', () => {
         const multiLineText = Array.from({ length: 10 }, (_, i) => `Line ${i}`).join('\n')
-        let state = reduceThinkingStreamState(
+        const state = reduceThinkingStreamState(
           initialState,
           createStreamMessage(0, multiLineText),
           { maxLines: 5, maxChars: 10000 },
@@ -208,7 +208,7 @@ describe('thinkingStreamReducer', () => {
 
       it('优先按 maxLines 再按 maxChars 截断', () => {
         const multiLineText = Array.from({ length: 10 }, () => 'A'.repeat(20)).join('\n')
-        let state = reduceThinkingStreamState(
+        const state = reduceThinkingStreamState(
           initialState,
           createStreamMessage(0, multiLineText),
           { maxLines: 5, maxChars: 50 },

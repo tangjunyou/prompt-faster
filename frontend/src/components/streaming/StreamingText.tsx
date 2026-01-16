@@ -140,6 +140,8 @@ export function StreamingText({
     }
   }, [isAtBottom, isAutoScrollLocked, setAutoScrollLocked])
 
+  const isScrollButtonVisible = showScrollToBottom || isAutoScrollLocked
+
   // 新内容到达时自动滚动（使用 rAF 批量处理）
   useEffect(() => {
     if (text.length === lastTextLengthRef.current) return
@@ -147,7 +149,6 @@ export function StreamingText({
 
     // 如果锁定了自动滚动，只显示提示
     if (isAutoScrollLocked) {
-      setShowScrollToBottom(true)
       return
     }
 
@@ -261,7 +262,7 @@ export function StreamingText({
       </div>
 
       {/* 回到底部按钮 */}
-      {showScrollToBottom && (
+      {isScrollButtonVisible && (
         <button
           type="button"
           onClick={scrollToBottom}
