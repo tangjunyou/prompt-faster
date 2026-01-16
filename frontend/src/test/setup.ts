@@ -39,7 +39,8 @@ vi.mock('@xyflow/react', async () => {
   const React = await import('react')
 
   type MockNode = { id: string; className?: string; data?: { label?: string } }
-  type ReactFlowMockProps = { nodes?: MockNode[]; children?: ReactNode }
+  type MockEdge = { id: string; animated?: boolean; className?: string }
+  type ReactFlowMockProps = { nodes?: MockNode[]; edges?: MockEdge[]; children?: ReactNode }
 
   const ReactFlow = (props: ReactFlowMockProps) => {
     const nodeEls = (props.nodes ?? []).map((n) =>
@@ -50,7 +51,16 @@ vi.mock('@xyflow/react', async () => {
       ),
     )
 
-    return React.createElement('div', { 'data-testid': 'xyflow-mock' }, ...nodeEls, props.children)
+    const edgeEls = (props.edges ?? []).map((e) =>
+      React.createElement('div', {
+        key: e.id,
+        'data-edgeid': e.id,
+        'data-animated': String(!!e.animated),
+        className: e.className,
+      }),
+    )
+
+    return React.createElement('div', { 'data-testid': 'xyflow-mock' }, ...nodeEls, ...edgeEls, props.children)
   }
 
   return {

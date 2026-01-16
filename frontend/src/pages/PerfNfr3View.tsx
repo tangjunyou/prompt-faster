@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { IterationGraph } from '@/components/nodes/IterationGraph'
-import type { IterationGraphNodeStates } from '@/components/nodes/types'
+import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
+import { usePrefersReducedMotion } from '@/hooks'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
+  createInitialIterationGraphEdgeFlowStates,
   createInitialIterationGraphNodeStates,
   reduceDemoWsMessageToIterationGraphNodeStates,
 } from '@/features/visualization/iterationGraphDemoReducer'
+import {
+  createIterationGraphEdgeFlowMachine,
+  type IterationGraphEdgeFlowMachine,
+} from '@/features/visualization/iterationGraphEdgeFlowMachine'
 
 type Result = {
   frames: number
@@ -17,12 +23,17 @@ type Result = {
 export function PerfNfr3View() {
   const [result, setResult] = useState<Result | null>(null)
   const [isRunning, setIsRunning] = useState(false)
+  const prefersReducedMotion = usePrefersReducedMotion()
   const [nodeStates, setNodeStates] = useState<IterationGraphNodeStates>(() =>
     createInitialIterationGraphNodeStates(),
+  )
+  const [edgeFlowStates, setEdgeFlowStates] = useState<IterationGraphEdgeFlowStates>(() =>
+    createInitialIterationGraphEdgeFlowStates(),
   )
   const rafId = useRef<number | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const isRunningRef = useRef(false)
+  const edgeFlowMachineRef = useRef<IterationGraphEdgeFlowMachine | null>(null)
 
   const demoMessages = useMemo(
     () =>
@@ -45,10 +56,13 @@ export function PerfNfr3View() {
 
     isRunningRef.current = false
     setIsRunning(false)
+    edgeFlowMachineRef.current?.reset()
   }, [])
 
   useEffect(() => {
+    edgeFlowMachineRef.current = createIterationGraphEdgeFlowMachine(setEdgeFlowStates)
     return () => {
+      edgeFlowMachineRef.current?.dispose()
       stop()
     }
   }, [stop])
@@ -59,6 +73,7 @@ export function PerfNfr3View() {
     setIsRunning(true)
     setResult(null)
     setNodeStates(createInitialIterationGraphNodeStates())
+    edgeFlowMachineRef.current?.reset()
 
     abortControllerRef.current?.abort()
     const abortController = new AbortController()
@@ -84,9 +99,11 @@ export function PerfNfr3View() {
         if (msg) {
           idx += 1
           setNodeStates((prev) => reduceDemoWsMessageToIterationGraphNodeStates(prev, msg))
+          edgeFlowMachineRef.current?.applyDemoWsMessage(msg, { prefersReducedMotion })
         } else {
           idx = 0
           setNodeStates(createInitialIterationGraphNodeStates())
+          edgeFlowMachineRef.current?.reset()
         }
         const now = performance.now()
         if (now - start >= durationMs) {
@@ -153,6 +170,8 @@ export function PerfNfr3View() {
 
       <IterationGraph
         nodeStates={nodeStates}
+        edgeFlowStates={edgeFlowStates}
+        prefersReducedMotion={prefersReducedMotion}
         className="mt-6 h-[560px] w-full rounded-lg border bg-white"
       />
     </div>
