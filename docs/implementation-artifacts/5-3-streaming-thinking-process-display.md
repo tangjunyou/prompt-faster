@@ -1,6 +1,6 @@
 # Story 5.3: 流式思考过程展示
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -190,8 +190,8 @@ so that 我可以理解模型的推理逻辑并在需要时介入。
 
 ## Story Completion Status
 
-- Status set to `ready-for-dev`
-- Completion note: Ultimate context engine analysis completed - comprehensive developer guide created (2026-01-16)
+- Status set to `done`
+- Completion note: 实现与回归已完成，CI 全绿并合入 main（2026-01-16）
 
 ## Dev Agent Record
 

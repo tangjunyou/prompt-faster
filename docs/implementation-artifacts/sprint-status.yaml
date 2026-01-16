@@ -106,7 +106,7 @@ development_status:
   epic-5: in-progress
   5-1-node-graph-basic-rendering: done
   5-2-edge-animation-and-data-flow-visualization: done
-  5-3-streaming-thinking-process-display: review
+  5-3-streaming-thinking-process-display: done
   5-4-thinking-panel-stage-indicator: backlog
   epic-5-retrospective: optional
 
