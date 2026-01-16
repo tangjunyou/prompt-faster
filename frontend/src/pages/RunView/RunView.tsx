@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { IterationGraph } from '@/components/nodes/IterationGraph'
-import type { IterationGraphNodeStates } from '@/components/nodes/types'
+import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
+import { usePrefersReducedMotion } from '@/hooks'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
+  createInitialIterationGraphEdgeFlowStates,
   createInitialIterationGraphNodeStates,
   reduceDemoWsMessageToIterationGraphNodeStates,
 } from '@/features/visualization/iterationGraphDemoReducer'
+import {
+  createIterationGraphEdgeFlowMachine,
+  type IterationGraphEdgeFlowMachine,
+} from '@/features/visualization/iterationGraphEdgeFlowMachine'
 
 export function RunView() {
   const demoMessages = useMemo(
@@ -19,14 +25,22 @@ export function RunView() {
     [],
   )
 
+  const prefersReducedMotion = usePrefersReducedMotion()
+
   const [nodeStates, setNodeStates] = useState<IterationGraphNodeStates>(() =>
     createInitialIterationGraphNodeStates(),
   )
+  const [edgeFlowStates, setEdgeFlowStates] = useState<IterationGraphEdgeFlowStates>(() =>
+    createInitialIterationGraphEdgeFlowStates(),
+  )
   const [isReplaying, setIsReplaying] = useState(false)
   const replayTimerRef = useRef<number | null>(null)
+  const edgeFlowMachineRef = useRef<IterationGraphEdgeFlowMachine | null>(null)
 
   useEffect(() => {
+    edgeFlowMachineRef.current = createIterationGraphEdgeFlowMachine(setEdgeFlowStates)
     return () => {
+      edgeFlowMachineRef.current?.dispose()
       if (replayTimerRef.current !== null) {
         window.clearInterval(replayTimerRef.current)
       }
@@ -41,6 +55,7 @@ export function RunView() {
 
     setIsReplaying(true)
     setNodeStates(createInitialIterationGraphNodeStates())
+    edgeFlowMachineRef.current?.reset()
 
     let idx = 0
     replayTimerRef.current = window.setInterval(() => {
@@ -55,6 +70,7 @@ export function RunView() {
       }
       idx += 1
       setNodeStates((prev) => reduceDemoWsMessageToIterationGraphNodeStates(prev, msg))
+      edgeFlowMachineRef.current?.applyDemoWsMessage(msg, { prefersReducedMotion })
     }, 120)
   }
 
@@ -83,6 +99,8 @@ export function RunView() {
       <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <IterationGraph
           nodeStates={nodeStates}
+          edgeFlowStates={edgeFlowStates}
+          prefersReducedMotion={prefersReducedMotion}
           className="h-[560px] w-full rounded-lg border bg-white lg:col-span-2"
         />
 

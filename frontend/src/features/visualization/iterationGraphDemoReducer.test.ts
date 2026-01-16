@@ -4,9 +4,12 @@ import type { IterationState } from '@/types/generated/models'
 import type { DemoWsMessage } from '@/features/ws-demo/demoWsMessages'
 
 import {
+  createInitialIterationGraphEdgeFlowStates,
   createInitialIterationGraphNodeStates,
+  mapDemoWsMessageToIterationGraphEdgeFlowSignal,
   reduceDemoWsMessageToIterationGraphNodeStates,
 } from './iterationGraphDemoReducer'
+import { iterationGraphEdgeIds } from '@/components/nodes/types'
 
 function progressMessage(state: IterationState): DemoWsMessage {
   return {
@@ -43,6 +46,15 @@ describe('iterationGraphDemoReducer', () => {
       prompt_engineer: 'idle',
       quality_assessor: 'idle',
       reflection_agent: 'idle',
+    })
+  })
+
+  it('initializes all edge flows as idle', () => {
+    const [patternToPrompt, promptToQuality, qualityToReflection] = iterationGraphEdgeIds
+    expect(createInitialIterationGraphEdgeFlowStates()).toEqual({
+      [patternToPrompt]: { state: 'idle', lastActivatedSeq: -1 },
+      [promptToQuality]: { state: 'idle', lastActivatedSeq: -1 },
+      [qualityToReflection]: { state: 'idle', lastActivatedSeq: -1 },
     })
   })
 
@@ -106,5 +118,41 @@ describe('iterationGraphDemoReducer', () => {
     )
     expect(next.reflection_agent).toBe('running')
   })
-})
 
+  it('maps running_tests -> pattern->prompt edge activation', () => {
+    const [patternToPrompt] = iterationGraphEdgeIds
+    expect(mapDemoWsMessageToIterationGraphEdgeFlowSignal(progressMessage('running_tests'))).toEqual({
+      kind: 'activate',
+      edgeIds: [patternToPrompt],
+      activation: 'pulse',
+      seq: 0,
+    })
+  })
+
+  it('maps evaluating -> prompt->quality + pattern->prompt activation (parallel)', () => {
+    const [patternToPrompt, promptToQuality] = iterationGraphEdgeIds
+    expect(mapDemoWsMessageToIterationGraphEdgeFlowSignal(progressMessage('evaluating'))).toEqual({
+      kind: 'activate',
+      edgeIds: [promptToQuality, patternToPrompt],
+      activation: 'pulse',
+      seq: 0,
+    })
+  })
+
+  it('maps waiting_user -> endAll', () => {
+    expect(mapDemoWsMessageToIterationGraphEdgeFlowSignal(progressMessage('waiting_user'))).toEqual({
+      kind: 'endAll',
+      seq: 0,
+    })
+  })
+
+  it('maps stream -> quality->reflection stream activation', () => {
+    const [, , qualityToReflection] = iterationGraphEdgeIds
+    expect(mapDemoWsMessageToIterationGraphEdgeFlowSignal(streamMessage())).toEqual({
+      kind: 'activate',
+      edgeIds: [qualityToReflection],
+      activation: 'stream',
+      seq: 1,
+    })
+  })
+})

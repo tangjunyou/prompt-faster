@@ -1,0 +1,48 @@
+.iteration-graph__edge .react-flow__edge-path {
+  transition:
+    stroke 200ms ease,
+    stroke-width 200ms ease,
+    opacity 200ms ease;
+  opacity: 1;
+  stroke-width: 1;
+}
+
+.iteration-graph__edge--strong .react-flow__edge-path {
+  stroke: rgb(59 130 246); /* blue-500 */
+  stroke-width: 2;
+}
+
+.iteration-graph__edge--weak .react-flow__edge-path {
+  stroke: rgb(59 130 246); /* blue-500 */
+  opacity: 0.5;
+  stroke-width: 1;
+}
+
+.iteration-graph__edge--cooldown.iteration-graph__edge--strong .react-flow__edge-path {
+  opacity: 0.85;
+}
+
+@keyframes iterationGraphEdgePulse {
+  0% {
+    opacity: 1;
+    stroke-width: 3;
+  }
+  100% {
+    opacity: 0.85;
+    stroke-width: 2;
+  }
+}
+
+.iteration-graph__edge--pulse .react-flow__edge-path {
+  animation: iterationGraphEdgePulse 220ms ease-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Disable React Flow dash animation in reduced motion, but keep our one-shot pulse. */
+  .react-flow__edge.animated path {
+    animation: none !important;
+  }
+  .react-flow__connection .animated {
+    animation: none !important;
+  }
+}
