@@ -107,7 +107,7 @@ development_status:
   5-1-node-graph-basic-rendering: done
   5-2-edge-animation-and-data-flow-visualization: done
   5-3-streaming-thinking-process-display: done
-  5-4-thinking-panel-stage-indicator: backlog
+  5-4-thinking-panel-stage-indicator: done
   epic-5-retrospective: optional
 
   # ============================================

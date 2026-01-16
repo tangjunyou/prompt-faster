@@ -32,6 +32,7 @@ function createProgressMessage(
   seq: number,
   state: 'running_tests' | 'evaluating' | 'waiting_user' | 'completed' | 'failed',
   correlationId = 'test-correlation',
+  stage?: 'pattern' | 'prompt' | 'quality' | 'reflection',
 ): DemoWsMessage {
   return {
     type: 'iteration:progress',
@@ -43,6 +44,7 @@ function createProgressMessage(
       iteration: 1,
       state,
       step: state,
+      stage,
     },
   }
 }
@@ -54,6 +56,9 @@ describe('thinkingStreamReducer', () => {
 
       expect(state).toEqual({
         correlationId: null,
+        currentStage: null,
+        currentStageStartSeq: null,
+        stageHistory: [],
         text: '',
         isTruncated: false,
         maxChars: 10000,
@@ -171,6 +176,71 @@ describe('thinkingStreamReducer', () => {
 
         expect(state.status).toBe('streaming')
         expect(state.lastSeq).toBe(1)
+      })
+    })
+
+    describe('环节标识与历史归档', () => {
+      it('应更新 currentStage 并在切换时归档历史', () => {
+        let state = reduceThinkingStreamState(
+          initialState,
+          createProgressMessage(0, 'running_tests', 'test-correlation', 'pattern'),
+        )
+        state = reduceThinkingStreamState(state, createStreamMessage(1, 'Pattern output'))
+        state = reduceThinkingStreamState(
+          state,
+          createProgressMessage(2, 'evaluating', 'test-correlation', 'prompt'),
+        )
+
+        expect(state.currentStage).toBe('prompt')
+        expect(state.text).toBe('')
+        expect(state.stageHistory).toHaveLength(1)
+        expect(state.stageHistory[0]).toMatchObject({
+          stage: 'pattern',
+          summary: 'Pattern output',
+          text: 'Pattern output',
+          startSeq: 0,
+          endSeq: 1,
+        })
+      })
+
+      it('终结时应归档最后一个环节输出', () => {
+        let state = reduceThinkingStreamState(
+          initialState,
+          createProgressMessage(0, 'running_tests', 'test-correlation', 'reflection'),
+        )
+        state = reduceThinkingStreamState(state, createStreamMessage(1, 'Final output'))
+        state = reduceThinkingStreamState(
+          state,
+          createProgressMessage(2, 'completed', 'test-correlation', 'reflection'),
+        )
+
+        expect(state.stageHistory).toHaveLength(1)
+        expect(state.stageHistory[0]).toMatchObject({
+          stage: 'reflection',
+          summary: 'Final output',
+          text: 'Final output',
+        })
+      })
+
+      it('环节历史应限制在 20 条以内', () => {
+        const stages = ['pattern', 'prompt', 'quality', 'reflection'] as const
+        let state = initialState
+
+        for (let i = 0; i < 24; i++) {
+          const stage = stages[i % stages.length]
+          state = reduceThinkingStreamState(
+            state,
+            createProgressMessage(i * 2, 'running_tests', 'test-correlation', stage),
+          )
+          state = reduceThinkingStreamState(state, createStreamMessage(i * 2 + 1, `Stage ${i}`))
+        }
+
+        state = reduceThinkingStreamState(
+          state,
+          createProgressMessage(50, 'evaluating', 'test-correlation', 'pattern'),
+        )
+
+        expect(state.stageHistory.length).toBeLessThanOrEqual(20)
       })
     })
 
