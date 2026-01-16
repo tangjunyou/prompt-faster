@@ -1,11 +1,20 @@
 import { useMemo, useState } from 'react'
 
+import { StreamingText } from '@/components/streaming'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
+import {
+  createInitialThinkingStreamState,
+  reduceThinkingStreamState,
+  type ThinkingStreamState,
+} from '@/features/visualization/thinkingStreamReducer'
 
 export function PerfNfr2View() {
   const [latencyMs, setLatencyMs] = useState<number | null>(null)
   const [firstMessageType, setFirstMessageType] = useState<string | null>(null)
   const [messageCount, setMessageCount] = useState<number | null>(null)
+  const [thinkingState, setThinkingState] = useState<ThinkingStreamState>(() =>
+    createInitialThinkingStreamState(),
+  )
 
   const messages = useMemo(
     () => createDeterministicDemoWsMessages({ correlationId: 'perf-nfr2', iterations: 1, tokensPerIteration: 5 }),
@@ -16,6 +25,7 @@ export function PerfNfr2View() {
     setLatencyMs(null)
     setFirstMessageType(null)
     setMessageCount(null)
+    setThinkingState(createInitialThinkingStreamState())
 
     const start = performance.now()
 
@@ -27,6 +37,12 @@ export function PerfNfr2View() {
     setLatencyMs(end - start)
     setFirstMessageType(first?.type ?? null)
     setMessageCount(messages.length)
+
+    // 可选：用 StreamingText 展示首条可见反馈
+    const firstVisible = messages.find((msg) => msg.type === 'thinking:stream')
+    if (firstVisible) {
+      setThinkingState((prev) => reduceThinkingStreamState(prev, firstVisible))
+    }
   }
 
   return (
@@ -51,10 +67,21 @@ export function PerfNfr2View() {
         <div>firstMessageType: {firstMessageType ?? '-'}</div>
         <div>messageCount: {messageCount ?? '-'}</div>
         <div className="mt-2 text-muted-foreground">
-          说明：Epic 5 接入真实 WS 后，将“firstMessageLatencyMs”的起止点替换为“发起运行请求 → 收到第一条 WS 消息”。
+          说明：Epic 5 接入真实 WS 后，将"firstMessageLatencyMs"的起止点替换为"发起运行请求 → 收到第一条 WS 消息"。
         </div>
+      </div>
+
+      <div className="mt-6">
+        <h2 className="text-sm font-medium text-muted-foreground mb-2">首条可见反馈预览</h2>
+        <StreamingText
+          text={thinkingState.text}
+          status={thinkingState.status}
+          isTruncated={thinkingState.isTruncated}
+          maxChars={thinkingState.maxChars}
+          maxLines={thinkingState.maxLines}
+          className="h-[200px]"
+        />
       </div>
     </div>
   )
 }
-
