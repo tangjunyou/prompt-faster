@@ -76,7 +76,7 @@ export function PauseResumeControl({
       const target = event.target as HTMLElement | null
       const isEditable =
         target?.isContentEditable ||
-        !!target?.closest?.('input, textarea, [role=\"textbox\"], [contenteditable=\"true\"]') ||
+        !!target?.closest?.('input, textarea, [role="textbox"], [contenteditable="true"]') ||
         !!target?.closest?.('.monaco-editor, .cm-editor')
 
       if (isEditable) return

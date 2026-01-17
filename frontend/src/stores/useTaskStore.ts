@@ -128,7 +128,8 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
 
   clearTaskState: (taskId) =>
     set((state) => {
-      const { [taskId]: _, ...rest } = state.taskStates
+      const { [taskId]: removed, ...rest } = state.taskStates
+      void removed
       return { taskStates: rest }
     }),
 

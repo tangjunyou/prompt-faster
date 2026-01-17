@@ -4,10 +4,10 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::net::TcpListener;
-use tokio_tungstenite::connect_async;
-use tokio_tungstenite::WebSocketStream;
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::net::TcpListener;
+use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::connect_async;
 
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;

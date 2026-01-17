@@ -14,8 +14,8 @@ use prompt_faster::api::middleware::correlation_id::{
 };
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
 use prompt_faster::api::routes::{auth, docs, health, meta, user_auth, workspaces};
-use prompt_faster::api::ws;
 use prompt_faster::api::state::AppState;
+use prompt_faster::api::ws;
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;

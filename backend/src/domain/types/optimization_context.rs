@@ -568,7 +568,9 @@ mod run_control_state_tests {
     fn try_transition_to_returns_error_on_invalid() {
         let mut state = RunControlState::Idle;
 
-        let err = state.try_transition_to(RunControlState::Paused).unwrap_err();
+        let err = state
+            .try_transition_to(RunControlState::Paused)
+            .unwrap_err();
         assert!(matches!(
             err,
             RunControlStateTransitionError::InvalidTransition { .. }

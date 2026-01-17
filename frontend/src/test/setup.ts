@@ -57,7 +57,8 @@ class MockWebSocket {
     }, 0)
   }
 
-  send(_data: string) {
+  send(data: string) {
+    void data
     if (this.readyState !== MockWebSocket.OPEN) {
       this.onerror?.(new Event('error'))
       this.dispatchEvent('error', new Event('error'))

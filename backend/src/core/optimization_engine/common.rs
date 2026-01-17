@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
 use crate::core::iteration_engine::orchestrator::IterationEngine;
+use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
     Checkpoint, EvaluationResult, IterationState, OptimizationTaskConfig, TestCase,

@@ -5,8 +5,8 @@
 
 use crate::domain::types::RunControlState;
 use crate::shared::ws::{
-    chrono_timestamp, IterationPausedPayload, IterationResumedPayload, WsMessage,
-    EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED,
+    EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED, IterationPausedPayload, IterationResumedPayload,
+    WsMessage, chrono_timestamp,
 };
 use crate::shared::ws_bus::global_ws_bus;
 use serde::{Deserialize, Serialize};
@@ -386,7 +386,13 @@ fn pause_state_dir() -> PathBuf {
 fn snapshot_path(task_id: &str) -> PathBuf {
     let sanitized = task_id
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>();
     pause_state_dir().join(format!("{sanitized}.json"))
 }
@@ -397,8 +403,8 @@ fn persist_snapshot(snapshot: &PauseStateSnapshot) -> Result<(), PauseStateError
         return Err(PauseStateError::Persist(err.to_string()));
     }
     let path = snapshot_path(&snapshot.task_id);
-    let json = serde_json::to_vec_pretty(snapshot)
-        .map_err(|e| PauseStateError::Persist(e.to_string()))?;
+    let json =
+        serde_json::to_vec_pretty(snapshot).map_err(|e| PauseStateError::Persist(e.to_string()))?;
     std::fs::write(path, json).map_err(|e| PauseStateError::Persist(e.to_string()))?;
     Ok(())
 }
@@ -417,7 +423,8 @@ fn load_snapshot(task_id: &str) -> Result<Option<PauseStateSnapshot>, PauseState
         return Ok(None);
     }
     let bytes = std::fs::read(path).map_err(|e| PauseStateError::Restore(e.to_string()))?;
-    let snapshot = serde_json::from_slice(&bytes).map_err(|e| PauseStateError::Restore(e.to_string()))?;
+    let snapshot =
+        serde_json::from_slice(&bytes).map_err(|e| PauseStateError::Restore(e.to_string()))?;
     Ok(Some(snapshot))
 }
 

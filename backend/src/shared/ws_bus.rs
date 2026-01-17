@@ -33,7 +33,5 @@ static WS_BUS: OnceLock<Arc<WsEventBus>> = OnceLock::new();
 
 /// 获取全局 WS 事件总线
 pub fn global_ws_bus() -> Arc<WsEventBus> {
-    WS_BUS
-        .get_or_init(|| Arc::new(WsEventBus::new()))
-        .clone()
+    WS_BUS.get_or_init(|| Arc::new(WsEventBus::new())).clone()
 }

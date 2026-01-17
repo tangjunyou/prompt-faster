@@ -1,10 +1,10 @@
 //! WebSocket 事件与消息定义（共享层）
 //! 格式：{domain}:{action}
 
+use crate::domain::types::RunControlState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
-use crate::domain::types::RunControlState;
 
 // ============================================================================
 // WS 事件类型常量

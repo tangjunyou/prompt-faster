@@ -195,7 +195,9 @@ impl OptimizationEngine for AlternateOptimizationEngine {
             last = Some(out.clone());
             if out.should_terminate {
                 ctx.state = IterationState::Completed;
-                let _ = ctx.run_control_state.try_transition_to(RunControlState::Idle);
+                let _ = ctx
+                    .run_control_state
+                    .try_transition_to(RunControlState::Idle);
                 return Ok(out);
             }
         }
@@ -206,7 +208,9 @@ impl OptimizationEngine for AlternateOptimizationEngine {
             ));
         };
 
-        let _ = ctx.run_control_state.try_transition_to(RunControlState::Idle);
+        let _ = ctx
+            .run_control_state
+            .try_transition_to(RunControlState::Idle);
         Ok(last)
     }
 

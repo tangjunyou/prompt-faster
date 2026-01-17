@@ -1,11 +1,11 @@
 //! WebSocket 连接管理
 
+use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
-use axum::http::{header, HeaderMap, StatusCode};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tracing::{info, warn};
@@ -15,8 +15,8 @@ use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::types::RunControlState;
 use crate::infra::db::repositories::{OptimizationTaskRepo, OptimizationTaskRepoError};
 use crate::shared::ws::{
-    IterationPausedPayload, TaskControlAckPayload, TaskControlPayload, WsMessage, CMD_TASK_PAUSE,
-    CMD_TASK_RESUME, EVT_ITERATION_PAUSED, EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK,
+    CMD_TASK_PAUSE, CMD_TASK_RESUME, EVT_ITERATION_PAUSED, EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK,
+    IterationPausedPayload, TaskControlAckPayload, TaskControlPayload, WsMessage,
 };
 use crate::shared::ws_bus::global_ws_bus;
 
@@ -35,7 +35,12 @@ struct ClientCommand<T> {
 }
 
 fn extract_token(headers: &HeaderMap, query: &WsQuery) -> Option<String> {
-    if let Some(token) = query.token.as_ref().map(|s| s.trim()).filter(|s| !s.is_empty()) {
+    if let Some(token) = query
+        .token
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
         return Some(token.to_string());
     }
 
@@ -141,22 +146,21 @@ async fn handle_command(
         .await
         .map(|s| s.stage)
         .unwrap_or_else(|| "unknown".to_string());
-    let context_snapshot = controller
-        .get_snapshot()
-        .await
-        .map(|s| s.context_snapshot);
+    let context_snapshot = controller.get_snapshot().await.map(|s| s.context_snapshot);
 
     match cmd.event_type.as_str() {
         CMD_TASK_PAUSE => {
-            let accepted = controller
-                .request_pause(&cmd.correlation_id, user_id)
-                .await;
+            let accepted = controller.request_pause(&cmd.correlation_id, user_id).await;
             let current_state = if controller.is_paused() {
                 RunControlState::Paused
             } else {
                 RunControlState::Running
             };
-            let new_state = if accepted { RunControlState::Paused } else { prev_state };
+            let new_state = if accepted {
+                RunControlState::Paused
+            } else {
+                prev_state
+            };
             info!(
                 correlation_id = %cmd.correlation_id,
                 user_id = %user_id,
@@ -200,7 +204,11 @@ async fn handle_command(
             } else {
                 RunControlState::Running
             };
-            let new_state = if accepted { RunControlState::Running } else { prev_state };
+            let new_state = if accepted {
+                RunControlState::Running
+            } else {
+                prev_state
+            };
             info!(
                 correlation_id = %cmd.correlation_id,
                 user_id = %user_id,
@@ -260,9 +268,7 @@ async fn handle_command(
     }
 }
 
-async fn send_paused_snapshots(
-    sender: &tokio::sync::mpsc::UnboundedSender<Message>,
-) -> bool {
+async fn send_paused_snapshots(sender: &tokio::sync::mpsc::UnboundedSender<Message>) -> bool {
     let registry = global_pause_registry();
     let snapshots = registry.get_all_paused_snapshots().await;
 
@@ -273,7 +279,11 @@ async fn send_paused_snapshots(
             stage: snapshot.stage.clone(),
             iteration: snapshot.iteration,
         };
-        let msg = WsMessage::new(EVT_ITERATION_PAUSED, payload, snapshot.correlation_id.clone());
+        let msg = WsMessage::new(
+            EVT_ITERATION_PAUSED,
+            payload,
+            snapshot.correlation_id.clone(),
+        );
         let Ok(text) = serde_json::to_string(&msg) else {
             continue;
         };
@@ -285,11 +295,7 @@ async fn send_paused_snapshots(
     true
 }
 
-async fn handle_socket(
-    socket: WebSocket,
-    state: AppState,
-    user_id: String,
-) {
+async fn handle_socket(socket: WebSocket, state: AppState, user_id: String) {
     let (mut ws_sender, mut ws_receiver) = socket.split();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
 
