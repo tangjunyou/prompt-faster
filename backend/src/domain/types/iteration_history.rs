@@ -128,7 +128,10 @@ pub fn unix_ms_to_iso8601(unix_ms: i64) -> String {
     OffsetDateTime::from_unix_timestamp(secs)
         .ok()
         .and_then(|dt| dt.checked_add(time::Duration::nanoseconds(nanos)))
-        .and_then(|dt| dt.format(&time::format_description::well_known::Rfc3339).ok())
+        .and_then(|dt| {
+            dt.format(&time::format_description::well_known::Rfc3339)
+                .ok()
+        })
         .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
 }
 
@@ -138,11 +141,23 @@ mod tests {
 
     #[test]
     fn test_iteration_status_from_str() {
-        assert_eq!(IterationStatus::from_str("running"), IterationStatus::Running);
-        assert_eq!(IterationStatus::from_str("completed"), IterationStatus::Completed);
+        assert_eq!(
+            IterationStatus::from_str("running"),
+            IterationStatus::Running
+        );
+        assert_eq!(
+            IterationStatus::from_str("completed"),
+            IterationStatus::Completed
+        );
         assert_eq!(IterationStatus::from_str("failed"), IterationStatus::Failed);
-        assert_eq!(IterationStatus::from_str("terminated"), IterationStatus::Terminated);
-        assert_eq!(IterationStatus::from_str("unknown"), IterationStatus::Running);
+        assert_eq!(
+            IterationStatus::from_str("terminated"),
+            IterationStatus::Terminated
+        );
+        assert_eq!(
+            IterationStatus::from_str("unknown"),
+            IterationStatus::Running
+        );
     }
 
     #[test]

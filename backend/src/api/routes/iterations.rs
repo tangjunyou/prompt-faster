@@ -6,9 +6,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{Router, routing::get};
 use serde::Deserialize;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 use utoipa::IntoParams;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;

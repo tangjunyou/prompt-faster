@@ -13,6 +13,7 @@ pub mod workspace_repo;
 pub use credential_repo::{
     CredentialRecord, CredentialRepo, CredentialRepoError, CredentialType, UpsertCredentialInput,
 };
+pub use iteration_repo::{IterationRepo, IterationRepoError};
 pub use migration_repo::{MigrationRepo, MigrationRepoError, MigrationResult};
 pub use optimization_task_repo::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,
@@ -23,5 +24,4 @@ pub use teacher_settings_repo::{
 };
 pub use test_set_repo::{TestSetRepo, TestSetRepoError};
 pub use user_repo::{UserRepo, UserRepoError};
-pub use iteration_repo::{IterationRepo, IterationRepoError};
 pub use workspace_repo::{WorkspaceRepo, WorkspaceRepoError};

@@ -83,7 +83,10 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/workspaces", protected_workspaces_routes)
-        .nest("/api/v1/tasks/{task_id}/iterations", protected_iterations_routes)
+        .nest(
+            "/api/v1/tasks/{task_id}/iterations",
+            protected_iterations_routes,
+        )
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware));
 
@@ -223,12 +226,7 @@ async fn create_optimization_task(
         .to_string()
 }
 
-async fn insert_iteration(
-    db: &sqlx::SqlitePool,
-    task_id: &str,
-    iteration_id: &str,
-    round: i32,
-) {
+async fn insert_iteration(db: &sqlx::SqlitePool, task_id: &str, iteration_id: &str, round: i32) {
     let artifacts = json!({
         "patterns": [
             {"id": "p1", "pattern": "pattern", "source": "system", "confidence": 0.8}
@@ -299,9 +297,14 @@ async fn test_list_forbidden_for_other_user() {
     let (app, _db) = setup_test_app_with_db().await;
     let token_a = register_user(&app, "iter_list_a", "TestPass123!").await;
     let workspace_id = create_workspace(&app, &token_a).await;
-    let test_set_id =
-        create_test_set_with_cases(&app, &workspace_id, &token_a, "ts", sample_exact_cases_json())
-            .await;
+    let test_set_id = create_test_set_with_cases(
+        &app,
+        &workspace_id,
+        &token_a,
+        "ts",
+        sample_exact_cases_json(),
+    )
+    .await;
     let task_id = create_optimization_task(&app, &workspace_id, &token_a, test_set_id).await;
 
     let token_b = register_user(&app, "iter_list_b", "TestPass123!").await;

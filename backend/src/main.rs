@@ -148,7 +148,10 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/workspaces", protected_workspaces_routes)
-        .nest("/api/v1/tasks/{task_id}/iterations", protected_iterations_routes)
+        .nest(
+            "/api/v1/tasks/{task_id}/iterations",
+            protected_iterations_routes,
+        )
         .nest("/api/v1", ws::router())
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))
