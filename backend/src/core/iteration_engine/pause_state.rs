@@ -567,6 +567,7 @@ impl PauseController {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_guidance_log_fields(
     task_id: &str,
     correlation_id: &str,

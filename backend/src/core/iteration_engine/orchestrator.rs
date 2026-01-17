@@ -1025,9 +1025,11 @@ mod tests {
             serde_json::to_value(archive).unwrap(),
         );
 
-        let mut task_config = OptimizationTaskConfig::default();
-        task_config.execution_mode = ExecutionMode::Serial;
-        task_config.max_concurrency = 1;
+        let task_config = OptimizationTaskConfig {
+            execution_mode: ExecutionMode::Serial,
+            max_concurrency: 1,
+            ..Default::default()
+        };
 
         let out = run_failure_archive_and_diversity_injection_step(
             &mut ctx,
@@ -1083,9 +1085,11 @@ mod tests {
         ctx.extensions
             .insert(EXT_CONSECUTIVE_NO_IMPROVEMENT.to_string(), json!(1));
 
-        let mut task_config = OptimizationTaskConfig::default();
-        task_config.execution_mode = ExecutionMode::Serial;
-        task_config.max_concurrency = 1;
+        let task_config = OptimizationTaskConfig {
+            execution_mode: ExecutionMode::Serial,
+            max_concurrency: 1,
+            ..Default::default()
+        };
 
         let out = run_failure_archive_and_diversity_injection_step(
             &mut ctx,

@@ -244,7 +244,7 @@ async fn test_crud_happy_path() {
     let list_resp = app.clone().oneshot(list_req).await.unwrap();
     assert_eq!(list_resp.status(), StatusCode::OK);
     let list_body = read_json_body(list_resp).await;
-    assert!(list_body["data"].as_array().unwrap().len() >= 1);
+    assert!(!list_body["data"].as_array().unwrap().is_empty());
     assert_eq!(list_body["data"][0]["cases_count"], 1);
 
     // Get

@@ -133,7 +133,7 @@ async fn read_message_of_type<S>(socket: &mut WebSocketStream<S>, target_type: &
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let msg = tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(2), async {
         while let Some(Ok(frame)) = socket.next().await {
             if let tokio_tungstenite::tungstenite::Message::Text(text) = frame {
                 let value: Value = serde_json::from_str(&text).expect("parse message");
@@ -145,8 +145,7 @@ where
         panic!("socket closed before receiving {target_type}");
     })
     .await
-    .expect("timeout waiting for message");
-    msg
+    .expect("timeout waiting for message")
 }
 
 async fn read_message_of_type_for_task<S>(
@@ -157,7 +156,7 @@ async fn read_message_of_type_for_task<S>(
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
-    let msg = tokio::time::timeout(Duration::from_secs(2), async {
+    tokio::time::timeout(Duration::from_secs(2), async {
         while let Some(Ok(frame)) = socket.next().await {
             if let tokio_tungstenite::tungstenite::Message::Text(text) = frame {
                 let value: Value = serde_json::from_str(&text).expect("parse message");
@@ -175,8 +174,7 @@ where
         panic!("socket closed before receiving {target_type} for {task_id}");
     })
     .await
-    .expect("timeout waiting for message");
-    msg
+    .expect("timeout waiting for message")
 }
 
 fn sample_artifacts_payload() -> Value {

@@ -1818,7 +1818,7 @@ mod tests {
             .iter()
             .filter_map(|v| v.as_str())
             .collect::<Vec<_>>();
-        assert!(selected.iter().any(|s| *s == "teacher_model"));
+        assert!(selected.contains(&"teacher_model"));
     }
 
     #[test]

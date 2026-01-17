@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use prompt_faster::core::optimization_engine::create_optimization_engine;
 use prompt_faster::domain::models::{
-    Checkpoint, EvaluatorType, ExecutionMode, ExecutionTargetType, LineageType,
+    Checkpoint, EvaluatorConfig, EvaluatorType, ExecutionTargetType, LineageType,
     OptimizationTaskConfig, TaskReference, TestCase,
 };
 use prompt_faster::domain::types::{
@@ -67,10 +67,14 @@ async fn optimization_engine_can_run_and_is_switchable_by_feature() {
         metadata: None,
     };
 
-    let mut task_cfg = OptimizationTaskConfig::default();
-    task_cfg.execution_mode = ExecutionMode::Serial;
-    task_cfg.max_concurrency = 1;
-    task_cfg.evaluator_config.evaluator_type = EvaluatorType::Example;
+    let task_cfg = OptimizationTaskConfig {
+        max_concurrency: 1,
+        evaluator_config: EvaluatorConfig {
+            evaluator_type: EvaluatorType::Example,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
 
     let engine = create_optimization_engine(ExecutionTargetType::Example, task_cfg);
     let expected_name = if cfg!(feature = "alt-optimization-engine") {
@@ -122,11 +126,14 @@ async fn optimization_engine_default_evaluator_path_does_not_require_manual_exte
         metadata: None,
     };
 
-    let mut task_cfg = OptimizationTaskConfig::default();
-    task_cfg.execution_mode = ExecutionMode::Serial;
-    task_cfg.max_concurrency = 1;
-    // 非 Example → 走 DefaultEvaluator（由 task evaluator_config 驱动）。
-    task_cfg.evaluator_config.evaluator_type = EvaluatorType::ExactMatch;
+    let task_cfg = OptimizationTaskConfig {
+        max_concurrency: 1,
+        evaluator_config: EvaluatorConfig {
+            evaluator_type: EvaluatorType::ExactMatch,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
 
     let engine = create_optimization_engine(ExecutionTargetType::Example, task_cfg);
     let mut ctx = make_ctx(prompt, vec![tc]);
@@ -154,10 +161,14 @@ async fn optimization_engine_can_resume_from_checkpoint() {
         metadata: None,
     };
 
-    let mut task_cfg = OptimizationTaskConfig::default();
-    task_cfg.execution_mode = ExecutionMode::Serial;
-    task_cfg.max_concurrency = 1;
-    task_cfg.evaluator_config.evaluator_type = EvaluatorType::Example;
+    let task_cfg = OptimizationTaskConfig {
+        max_concurrency: 1,
+        evaluator_config: EvaluatorConfig {
+            evaluator_type: EvaluatorType::Example,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
 
     let engine = create_optimization_engine(ExecutionTargetType::Example, task_cfg);
     let mut ctx = make_ctx("different_prompt_before_resume", vec![tc]);

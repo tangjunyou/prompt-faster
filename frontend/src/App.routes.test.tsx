@@ -142,7 +142,7 @@ describe('App routes', () => {
   beforeAll(() =>
     server.listen({
       onUnhandledRequest(req, print) {
-        const href = typeof req.url === 'string' ? req.url : req.url.href
+        const href = req.url
         if (href.startsWith('ws://') || href.startsWith('wss://')) return
         print.warning()
       },

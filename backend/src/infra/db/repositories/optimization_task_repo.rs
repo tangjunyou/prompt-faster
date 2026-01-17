@@ -511,7 +511,7 @@ mod tests {
                 goal: "goal",
                 execution_target_type: ExecutionTargetType::Dify,
                 task_mode: OptimizationTaskMode::Fixed,
-                test_set_ids: &[test_set.id.clone()],
+                test_set_ids: std::slice::from_ref(&test_set.id),
             },
         )
         .await
