@@ -110,6 +110,9 @@ dist/
 build/
 out/
 
+# Local backend runtime data
+backend/data/
+
 # Backup files
 *.bak
 *.backup
