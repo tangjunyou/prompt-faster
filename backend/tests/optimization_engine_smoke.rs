@@ -25,6 +25,7 @@ fn make_ctx(prompt: &str, test_cases: Vec<TestCase>) -> OptimizationContext {
         rule_system,
         iteration: 0,
         state: prompt_faster::domain::models::IterationState::Idle,
+        run_control_state: Default::default(),
         test_cases,
         config: OptimizationConfig::default(),
         checkpoints: vec![],

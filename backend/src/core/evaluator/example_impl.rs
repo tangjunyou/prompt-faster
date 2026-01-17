@@ -146,6 +146,7 @@ mod tests {
             rule_system,
             iteration: 0,
             state: crate::domain::models::IterationState::RunningTests,
+            run_control_state: Default::default(),
             test_cases,
             config: crate::domain::types::OptimizationConfig::default(),
             checkpoints: vec![],

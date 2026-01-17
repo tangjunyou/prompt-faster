@@ -14,6 +14,7 @@ use prompt_faster::api::middleware::correlation_id::{
 };
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
 use prompt_faster::api::routes::{auth, docs, health, meta, user_auth, workspaces};
+use prompt_faster::api::ws;
 use prompt_faster::api::state::AppState;
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
@@ -142,6 +143,7 @@ async fn main() -> anyhow::Result<()> {
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/workspaces", protected_workspaces_routes)
+        .nest("/api/v1", ws::router())
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))
         .layer(TraceLayer::new_for_http())

@@ -3,6 +3,7 @@ use thiserror::Error;
 use crate::core::evaluator::EvaluatorError;
 use crate::core::execution_target::ExecutionError;
 use crate::core::feedback_aggregator::AggregatorError;
+use crate::core::iteration_engine::pause_state::PauseStateError;
 use crate::core::optimizer::OptimizerError;
 use crate::core::prompt_generator::GeneratorError;
 use crate::core::rule_engine::RuleEngineError;
@@ -27,6 +28,9 @@ pub enum OptimizationEngineError {
 
     #[error("feedback aggregation failed")]
     FeedbackAggregator(#[from] AggregatorError),
+
+    #[error("pause state failed")]
+    PauseState(#[from] PauseStateError),
 
     #[error("optimization step failed")]
     Optimizer(#[from] OptimizerError),

@@ -784,6 +784,7 @@ mod tests {
             },
             iteration: 0,
             state: crate::domain::models::IterationState::Idle,
+            run_control_state: Default::default(),
             test_cases,
             config: OptimizationConfig::default(),
             checkpoints: vec![],

@@ -82,6 +82,7 @@ mod tests {
             },
             iteration: 0,
             state: crate::domain::models::IterationState::RunningTests,
+            run_control_state: Default::default(),
             test_cases: vec![tc1.clone(), tc2.clone()],
             config: OptimizationConfig::default(),
             checkpoints: vec![],

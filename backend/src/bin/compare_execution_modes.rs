@@ -85,6 +85,7 @@ fn build_ctx(test_cases: Vec<TestCase>) -> OptimizationContext {
         },
         iteration: 1,
         state: IterationState::RunningTests,
+        run_control_state: Default::default(),
         test_cases,
         config: OptimizationConfig::default(),
         checkpoints: vec![],

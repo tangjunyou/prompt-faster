@@ -11,5 +11,6 @@ pub use extensions::{
 };
 pub use optimization_context::{
     ExecutionTargetConfig, OptimizationConfig, OptimizationContext, OscillationAction,
-    OscillationConfig, OutputConfig, OutputStrategy, RacingConfig, RuleConfig, SplitStrategy,
+    OscillationConfig, OutputConfig, OutputStrategy, RacingConfig, RunControlState,
+    RunControlStateTransitionError, RuleConfig, SplitStrategy,
 };

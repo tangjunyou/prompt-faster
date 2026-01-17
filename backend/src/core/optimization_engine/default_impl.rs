@@ -12,10 +12,12 @@ use crate::domain::models::{
     RecommendedAction, ReflectionResult, Suggestion, TerminationReason,
 };
 use crate::domain::types::{
-    EXT_BEST_CANDIDATE_PROMPT, EXTRA_ADOPT_BEST_CANDIDATE, OptimizationContext,
+    EXT_BEST_CANDIDATE_PROMPT, EXTRA_ADOPT_BEST_CANDIDATE, OptimizationContext, RunControlState,
 };
 
-use super::common::{apply_checkpoint, run_tests_and_evaluate, validate_ctx_for_run};
+use super::common::{
+    apply_checkpoint, checkpoint_pause_if_requested, run_tests_and_evaluate, validate_ctx_for_run,
+};
 use super::{OptimizationEngine, OptimizationEngineError};
 
 pub struct DefaultOptimizationEngine {
@@ -72,12 +74,14 @@ impl DefaultOptimizationEngine {
             &self.task_config,
         )
         .await?;
+        checkpoint_pause_if_requested(ctx).await?;
 
         // RuleEngine：基于 Layer 1 结果更新规则体系（不要求本 Story 完整实现冲突处理/验证管线）。
         ctx.state = IterationState::ExtractingRules;
         let rules = self.rule_engine.extract_rules(ctx, &ctx.test_cases).await?;
         ctx.rule_system.rules = rules;
         ctx.rule_system.version = ctx.rule_system.version.saturating_add(1);
+        checkpoint_pause_if_requested(ctx).await?;
 
         let failed_ids: Vec<String> = run
             .evaluations
@@ -114,12 +118,14 @@ impl DefaultOptimizationEngine {
             };
             self.feedback_aggregator.aggregate(ctx, &[rr]).await?
         };
+        checkpoint_pause_if_requested(ctx).await?;
 
         ctx.state = IterationState::Optimizing;
         let out = self
             .optimizer
             .optimize_step(ctx, &unified_reflection)
             .await?;
+        checkpoint_pause_if_requested(ctx).await?;
 
         if out
             .extra
@@ -147,6 +153,9 @@ impl OptimizationEngine for DefaultOptimizationEngine {
         ctx: &mut OptimizationContext,
     ) -> Result<OptimizationResult, OptimizationEngineError> {
         validate_ctx_for_run(ctx)?;
+        ctx.run_control_state
+            .try_transition_to(RunControlState::Running)
+            .map_err(|err| OptimizationEngineError::Internal(format!("{err}")))?;
 
         let max_iters = ctx.config.iteration.max_iterations.max(1);
         let mut last: Option<OptimizationResult> = None;
@@ -157,15 +166,19 @@ impl OptimizationEngine for DefaultOptimizationEngine {
             last = Some(out.clone());
             if out.should_terminate {
                 ctx.state = IterationState::Completed;
+                let _ = ctx.run_control_state.try_transition_to(RunControlState::Idle);
                 return Ok(out);
             }
         }
 
-        last.ok_or_else(|| {
-            OptimizationEngineError::Internal(
+        let Some(last) = last else {
+            return Err(OptimizationEngineError::Internal(
                 "no iterations executed (unexpected state)".to_string(),
-            )
-        })
+            ));
+        };
+
+        let _ = ctx.run_control_state.try_transition_to(RunControlState::Idle);
+        Ok(last)
     }
 
     async fn resume(
@@ -174,6 +187,9 @@ impl OptimizationEngine for DefaultOptimizationEngine {
         ctx: &mut OptimizationContext,
     ) -> Result<OptimizationResult, OptimizationEngineError> {
         apply_checkpoint(checkpoint, ctx);
+        ctx.run_control_state
+            .try_transition_to(RunControlState::Running)
+            .map_err(|err| OptimizationEngineError::Internal(format!("{err}")))?;
         self.run(ctx).await
     }
 

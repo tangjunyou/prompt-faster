@@ -4,3 +4,4 @@
  */
 
 export { usePrefersReducedMotion } from './usePrefersReducedMotion'
+export { useWebSocket } from './useWebSocket'
