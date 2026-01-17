@@ -33,7 +33,8 @@ use prompt_faster::api::routes::workspaces::{
 };
 use prompt_faster::api::ws::events::{
     ArtifactGetAckPayload, ArtifactGetPayload, ArtifactUpdateAckPayload, ArtifactUpdatePayload,
-    ArtifactUpdatedPayload, IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload,
+    ArtifactUpdatedPayload, GuidanceAppliedPayload, GuidanceSendAckPayload, GuidanceSendPayload,
+    GuidanceSentPayload, IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload,
     TaskControlPayload,
 };
 use prompt_faster::domain::models::{
@@ -170,6 +171,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TaskControlAckPayload::export_all_to(&out_dir)?;
     IterationPausedPayload::export_all_to(&out_dir)?;
     IterationResumedPayload::export_all_to(&out_dir)?;
+    GuidanceSendPayload::export_all_to(&out_dir)?;
+    GuidanceSendAckPayload::export_all_to(&out_dir)?;
+    GuidanceSentPayload::export_all_to(&out_dir)?;
+    GuidanceAppliedPayload::export_all_to(&out_dir)?;
 
     // Artifact 相关类型
     IterationArtifacts::export_all_to(&out_dir)?;

@@ -16,10 +16,12 @@ use crate::domain::types::RunControlState;
 use crate::infra::db::repositories::{OptimizationTaskRepo, OptimizationTaskRepoError};
 use crate::shared::ws::{
     ArtifactGetAckPayload, ArtifactGetPayload, ArtifactUpdateAckPayload, ArtifactUpdatePayload,
-    ArtifactUpdatedPayload, CMD_ARTIFACT_GET, CMD_ARTIFACT_UPDATE, CMD_TASK_PAUSE, CMD_TASK_RESUME,
-    EVT_ARTIFACT_GET_ACK, EVT_ARTIFACT_UPDATE_ACK, EVT_ARTIFACT_UPDATED, EVT_ITERATION_PAUSED,
-    EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK, IterationPausedPayload, TaskControlAckPayload,
-    TaskControlPayload, WsMessage,
+    ArtifactUpdatedPayload, CMD_ARTIFACT_GET, CMD_ARTIFACT_UPDATE, CMD_GUIDANCE_SEND,
+    CMD_TASK_PAUSE, CMD_TASK_RESUME, EVT_ARTIFACT_GET_ACK, EVT_ARTIFACT_UPDATE_ACK,
+    EVT_ARTIFACT_UPDATED, EVT_GUIDANCE_SEND_ACK, EVT_GUIDANCE_SENT, EVT_ITERATION_PAUSED,
+    EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK, GuidanceSendAckPayload, GuidanceSendPayload,
+    GuidanceSentPayload, IterationPausedPayload, TaskControlAckPayload, TaskControlPayload,
+    WsMessage,
 };
 use crate::shared::ws_bus::global_ws_bus;
 
@@ -69,6 +71,7 @@ fn ack_event_type(event_type: &str) -> Option<&'static str> {
         CMD_TASK_RESUME => Some(EVT_TASK_RESUME_ACK),
         CMD_ARTIFACT_GET => Some(EVT_ARTIFACT_GET_ACK),
         CMD_ARTIFACT_UPDATE => Some(EVT_ARTIFACT_UPDATE_ACK),
+        CMD_GUIDANCE_SEND => Some(EVT_GUIDANCE_SEND_ACK),
         _ => None,
     }
 }
@@ -96,6 +99,10 @@ async fn handle_command(
         }
         CMD_ARTIFACT_UPDATE => {
             handle_artifact_update(state, user_id, text, ack_sender).await;
+            return;
+        }
+        CMD_GUIDANCE_SEND => {
+            handle_guidance_send(state, user_id, text, ack_sender).await;
             return;
         }
         _ => {}
@@ -520,6 +527,171 @@ async fn handle_artifact_update(
                 reason: Some(err.to_string()),
             };
             let msg = WsMessage::new(EVT_ARTIFACT_UPDATE_ACK, ack, cmd.correlation_id.clone());
+            if let Ok(text) = serde_json::to_string(&msg) {
+                let _ = ack_sender.send(Message::Text(text.into()));
+            }
+        }
+    }
+}
+
+/// 处理 guidance:send 命令
+async fn handle_guidance_send(
+    state: &AppState,
+    user_id: &str,
+    text: &str,
+    ack_sender: &tokio::sync::mpsc::UnboundedSender<Message>,
+) {
+    let cmd: ClientCommand<GuidanceSendPayload> = match serde_json::from_str(text) {
+        Ok(cmd) => cmd,
+        Err(err) => {
+            warn!(error = %err, "guidance:send command parse failed");
+            return;
+        }
+    };
+
+    if cmd.correlation_id.trim().is_empty() {
+        warn!("guidance:send command missing correlationId");
+        return;
+    }
+
+    let task_id = cmd.payload.task_id.trim().to_string();
+    if task_id.is_empty() {
+        let ack = GuidanceSendAckPayload {
+            task_id: "".to_string(),
+            ok: false,
+            guidance_id: None,
+            status: None,
+            reason: Some("missing_task_id".to_string()),
+        };
+        let msg = WsMessage::new(EVT_GUIDANCE_SEND_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    // 权限校验
+    if let Err(err) = validate_task_ownership(state, user_id, &task_id).await {
+        warn!(
+            correlation_id = %cmd.correlation_id,
+            user_id = %user_id,
+            task_id = %task_id,
+            error = %err,
+            "guidance:send rejected: task ownership check failed"
+        );
+        let ack = GuidanceSendAckPayload {
+            task_id: task_id.clone(),
+            ok: false,
+            guidance_id: None,
+            status: None,
+            reason: Some("task_not_found_or_forbidden".to_string()),
+        };
+        let msg = WsMessage::new(EVT_GUIDANCE_SEND_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    let registry = global_pause_registry();
+    let controller = registry.get_or_create(&task_id).await;
+
+    // 状态校验：必须处于 Paused 状态
+    if !controller.is_paused() {
+        warn!(
+            correlation_id = %cmd.correlation_id,
+            user_id = %user_id,
+            task_id = %task_id,
+            "guidance:send rejected: task not paused"
+        );
+        let ack = GuidanceSendAckPayload {
+            task_id: task_id.clone(),
+            ok: false,
+            guidance_id: None,
+            status: None,
+            reason: Some("task_not_paused".to_string()),
+        };
+        let msg = WsMessage::new(EVT_GUIDANCE_SEND_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    let iteration_state = controller
+        .get_snapshot()
+        .await
+        .map(|s| s.stage)
+        .unwrap_or_else(|| "unknown".to_string());
+    let timestamp = crate::shared::ws::chrono_timestamp();
+
+    // 执行引导更新
+    match controller
+        .update_guidance(&cmd.payload.content, &cmd.correlation_id, user_id)
+        .await
+    {
+        Ok(guidance) => {
+            info!(
+                correlation_id = %cmd.correlation_id,
+                user_id = %user_id,
+                task_id = %task_id,
+                action = "guidance_send",
+                prev_state = ?RunControlState::Paused,
+                new_state = ?RunControlState::Paused,
+                iteration_state = %iteration_state,
+                timestamp = %timestamp,
+                guidance_id = %guidance.id,
+                guidance_preview = %guidance.content_preview(),
+                "guidance:send success"
+            );
+
+            // 发送 ACK
+            let ack = GuidanceSendAckPayload {
+                task_id: task_id.clone(),
+                ok: true,
+                guidance_id: Some(guidance.id.clone()),
+                status: Some(format!("{:?}", guidance.status).to_lowercase()),
+                reason: None,
+            };
+            let msg = WsMessage::new(EVT_GUIDANCE_SEND_ACK, ack, cmd.correlation_id.clone());
+            if let Ok(text) = serde_json::to_string(&msg) {
+                let _ = ack_sender.send(Message::Text(text.into()));
+            }
+
+            // 广播 guidance:sent 事件
+            let broadcast_payload = GuidanceSentPayload {
+                task_id: task_id.clone(),
+                guidance_id: guidance.id.clone(),
+                content_preview: guidance.content_preview(),
+                status: format!("{:?}", guidance.status).to_lowercase(),
+                created_at: guidance.created_at.clone(),
+                sent_by: user_id.to_string(),
+            };
+            let broadcast_msg = WsMessage::new(
+                EVT_GUIDANCE_SENT,
+                broadcast_payload,
+                cmd.correlation_id.clone(),
+            );
+            if let Ok(text) = serde_json::to_string(&broadcast_msg) {
+                global_ws_bus().publish(text);
+            }
+        }
+        Err(err) => {
+            warn!(
+                correlation_id = %cmd.correlation_id,
+                user_id = %user_id,
+                task_id = %task_id,
+                error = %err,
+                "guidance:send failed"
+            );
+            let ack = GuidanceSendAckPayload {
+                task_id: task_id.clone(),
+                ok: false,
+                guidance_id: None,
+                status: None,
+                reason: Some(err.to_string()),
+            };
+            let msg = WsMessage::new(EVT_GUIDANCE_SEND_ACK, ack, cmd.correlation_id.clone());
             if let Ok(text) = serde_json::to_string(&msg) {
                 let _ = ack_sender.send(Message::Text(text.into()));
             }

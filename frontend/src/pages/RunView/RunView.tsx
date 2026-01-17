@@ -4,7 +4,7 @@ import { IterationGraph } from '@/components/nodes/IterationGraph'
 import { StageHistoryPanel, StageIndicator, StreamingText } from '@/components/streaming'
 import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
 import { usePrefersReducedMotion, useWebSocket } from '@/hooks'
-import { ArtifactEditor, PauseResumeControl } from '@/features/user-intervention'
+import { ArtifactEditor, GuidanceInput, PauseResumeControl } from '@/features/user-intervention'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
   createInitialIterationGraphEdgeFlowStates,
@@ -26,6 +26,7 @@ import { useTaskStore } from '@/stores/useTaskStore'
 import type { IterationArtifacts } from '@/types/generated/models/IterationArtifacts'
 import type { IterationPausedPayload, IterationResumedPayload } from '@/types/generated/ws'
 import type { ArtifactGetAckPayload, ArtifactUpdateAckPayload, ArtifactUpdatedPayload } from '@/types/generated/ws'
+import type { GuidanceSendAckPayload, GuidanceSentPayload, GuidanceAppliedPayload } from '@/types/generated/ws'
 
 export function RunView() {
   const taskId = useMemo(() => {
@@ -62,10 +63,25 @@ export function RunView() {
   const pausedNodeStatesRef = useRef<IterationGraphNodeStates | null>(null)
   const isPausedRef = useRef(false)
 
-  const { taskStates, setRunControlState, handlePaused, handleResumed, setArtifacts, canEditArtifacts } = useTaskStore()
+  const {
+    taskStates,
+    setRunControlState,
+    handlePaused,
+    handleResumed,
+    setArtifacts,
+    canEditArtifacts,
+    canSendGuidance,
+    setSendingGuidance,
+    setGuidanceError,
+    handleGuidanceSent,
+    handleGuidanceApplied,
+  } = useTaskStore()
   const runControlState = taskStates[taskId]?.runControlState ?? 'idle'
   const isPaused = runControlState === 'paused'
   const artifacts = taskStates[taskId]?.artifacts
+  const userGuidance = taskStates[taskId]?.userGuidance
+  const isSendingGuidance = taskStates[taskId]?.isSendingGuidance ?? false
+  const guidanceError = taskStates[taskId]?.guidanceError ?? null
   const [isSavingArtifacts, setIsSavingArtifacts] = useState(false)
   const [artifactSaveError, setArtifactSaveError] = useState<string | null>(null)
   const [artifactSaveSuccessVisible, setArtifactSaveSuccessVisible] = useState(false)
@@ -151,6 +167,51 @@ export function RunView() {
     [taskId, setArtifacts],
   )
 
+  // 处理引导发送 ACK
+  const handleGuidanceSendAck = useCallback(
+    (payload: GuidanceSendAckPayload) => {
+      if (payload.taskId !== taskId) return
+      setSendingGuidance(taskId, false)
+      if (!payload.ok) {
+        const reason = payload.reason ?? undefined
+        const message = reason === 'task_not_paused'
+          ? '任务未暂停，无法发送引导。请先暂停任务再发送。'
+          : reason === 'task_not_found_or_forbidden'
+            ? '无法找到任务或权限不足。请刷新后重试，或确认任务归属。'
+            : reason === 'missing_task_id'
+              ? '未识别到任务，请刷新页面后重试。'
+              : '发送失败，请稍后重试。'
+        setGuidanceError(taskId, message)
+      }
+    },
+    [taskId, setSendingGuidance, setGuidanceError],
+  )
+
+  // 处理引导已发送事件（广播）
+  const handleGuidanceSentEvent = useCallback(
+    (payload: GuidanceSentPayload) => {
+      if (payload.taskId !== taskId) return
+      const status = payload.status === 'applied' ? 'applied' : 'pending'
+      handleGuidanceSent(
+        taskId,
+        payload.guidanceId,
+        payload.contentPreview,
+        status,
+        payload.createdAt,
+      )
+    },
+    [taskId, handleGuidanceSent],
+  )
+
+  // 处理引导已应用事件（广播）
+  const handleGuidanceAppliedEvent = useCallback(
+    (payload: GuidanceAppliedPayload) => {
+      if (payload.taskId !== taskId) return
+      handleGuidanceApplied(taskId, payload.guidanceId, payload.appliedAt)
+    },
+    [taskId, handleGuidanceApplied],
+  )
+
   const { isConnected, sendCommand } = useWebSocket({
     onPaused: handlePausedEvent,
     onResumed: handleResumedEvent,
@@ -172,6 +233,16 @@ export function RunView() {
       if (message.type === 'artifact:updated') {
         handleArtifactUpdated(message.payload as ArtifactUpdatedPayload)
       }
+      // 处理引导相关事件
+      if (message.type === 'guidance:send:ack') {
+        handleGuidanceSendAck(message.payload as GuidanceSendAckPayload)
+      }
+      if (message.type === 'guidance:sent') {
+        handleGuidanceSentEvent(message.payload as GuidanceSentPayload)
+      }
+      if (message.type === 'guidance:applied') {
+        handleGuidanceAppliedEvent(message.payload as GuidanceAppliedPayload)
+      }
     },
   })
 
@@ -191,6 +262,16 @@ export function RunView() {
       sendCommand('artifact:update', { taskId, artifacts: updatedArtifacts }, correlationId)
     },
     [taskId, sendCommand],
+  )
+
+  // 发送引导
+  const handleSendGuidance = useCallback(
+    (content: string, correlationId: string) => {
+      setSendingGuidance(taskId, true)
+      setGuidanceError(taskId, null)
+      sendCommand('guidance:send', { taskId, content }, correlationId)
+    },
+    [taskId, sendCommand, setSendingGuidance, setGuidanceError],
   )
 
   useEffect(() => {
@@ -347,6 +428,18 @@ export function RunView() {
           isSaving={isSavingArtifacts}
           saveError={artifactSaveError}
           showSuccess={artifactSaveSuccessVisible}
+        />
+      </div>
+
+      {/* 对话引导输入 */}
+      <div className="mt-6">
+        <GuidanceInput
+          taskId={taskId}
+          onSend={handleSendGuidance}
+          guidance={userGuidance}
+          disabled={!canSendGuidance(taskId)}
+          isSending={isSendingGuidance}
+          sendError={guidanceError}
         />
       </div>
     </section>

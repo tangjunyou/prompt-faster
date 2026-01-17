@@ -4,12 +4,15 @@ pub mod artifacts;
 pub mod extensions;
 pub mod optimization_context;
 
-pub use artifacts::{ArtifactSource, CandidatePrompt, IterationArtifacts, PatternHypothesis};
+pub use artifacts::{
+    ArtifactSource, CandidatePrompt, GuidanceStatus, IterationArtifacts, PatternHypothesis,
+    UserGuidance,
+};
 pub use extensions::{
     CandidateStats, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS,
     EXT_CANDIDATE_RANKING, EXT_CONSECUTIVE_NO_IMPROVEMENT, EXT_CURRENT_PROMPT_STATS,
     EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_FAILURE_ARCHIVE, EXT_RECENT_PRIMARY_SCORES,
-    EXTRA_ADOPT_BEST_CANDIDATE, FAILURE_ARCHIVE_MAX_ENTRIES, METRIC_EPS,
+    EXT_USER_GUIDANCE, EXTRA_ADOPT_BEST_CANDIDATE, FAILURE_ARCHIVE_MAX_ENTRIES, METRIC_EPS,
 };
 pub use optimization_context::{
     ExecutionTargetConfig, OptimizationConfig, OptimizationContext, OscillationAction,

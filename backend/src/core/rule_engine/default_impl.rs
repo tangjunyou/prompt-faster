@@ -4,7 +4,7 @@ use crate::domain::models::{
     EvaluationResult, ExecutionResult, FailurePoint, OutputLength, Rule, RuleConflict, RuleTags,
     TestCase,
 };
-use crate::domain::types::OptimizationContext;
+use crate::domain::types::{EXT_USER_GUIDANCE, OptimizationContext, UserGuidance};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
@@ -89,6 +89,10 @@ impl RuleEngine for DefaultRuleEngine {
                 &layer1_results.evaluations_by_test_case_id,
                 &layer1_results.executions_by_test_case_id,
             ));
+        }
+
+        if let Some(guidance) = read_optional_user_guidance(ctx) {
+            annotate_rules_with_guidance(&mut rules, &guidance);
         }
 
         Ok(rules)
@@ -343,6 +347,26 @@ fn rule_tags_with_polarity(
         must_exclude: vec![],
         tone: None,
         extra,
+    }
+}
+
+fn read_optional_user_guidance(ctx: &OptimizationContext) -> Option<UserGuidance> {
+    ctx.extensions
+        .get(EXT_USER_GUIDANCE)
+        .and_then(|v| serde_json::from_value::<UserGuidance>(v.clone()).ok())
+}
+
+fn annotate_rules_with_guidance(rules: &mut [Rule], guidance: &UserGuidance) {
+    let preview = guidance.content_preview();
+    for rule in rules {
+        rule.tags.extra.insert(
+            "user_guidance_id".to_string(),
+            serde_json::Value::String(guidance.id.clone()),
+        );
+        rule.tags.extra.insert(
+            "user_guidance_preview".to_string(),
+            serde_json::Value::String(preview.clone()),
+        );
     }
 }
 
@@ -703,5 +727,61 @@ mod tests {
             1,
             "重复 failure_points.description 应被去重"
         );
+    }
+
+    #[tokio::test]
+    async fn extract_rules_attaches_user_guidance_preview() {
+        let engine = DefaultRuleEngine::new();
+
+        let tc1 = make_test_case("tc1");
+        let test_cases = vec![tc1.clone()];
+
+        let mut evals = HashMap::new();
+        evals.insert(
+            tc1.id.clone(),
+            crate::domain::models::EvaluationResult {
+                passed: false,
+                score: 0.0,
+                dimensions: HashMap::new(),
+                failure_points: vec![crate::domain::models::FailurePoint {
+                    dimension: "format".to_string(),
+                    description: "bad".to_string(),
+                    severity: Severity::Major,
+                    expected: None,
+                    actual: None,
+                }],
+                evaluator_type: "unit-test".to_string(),
+                confidence: None,
+                reasoning: None,
+                extra: HashMap::new(),
+            },
+        );
+
+        let mut ext = make_layer1_ext(&evals);
+        let guidance = UserGuidance::new("请优先保证结构化输出");
+        ext.insert(
+            EXT_USER_GUIDANCE.to_string(),
+            serde_json::to_value(&guidance).unwrap(),
+        );
+
+        let ctx = make_ctx(ext);
+        let rules = engine.extract_rules(&ctx, &test_cases).await.unwrap();
+
+        assert!(!rules.is_empty());
+        for rule in rules {
+            let preview = rule
+                .tags
+                .extra
+                .get("user_guidance_preview")
+                .and_then(|v| v.as_str());
+            assert_eq!(preview, Some(guidance.content_preview().as_str()));
+
+            let gid = rule
+                .tags
+                .extra
+                .get("user_guidance_id")
+                .and_then(|v| v.as_str());
+            assert_eq!(gid, Some(guidance.id.as_str()));
+        }
     }
 }

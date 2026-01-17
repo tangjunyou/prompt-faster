@@ -95,7 +95,6 @@ describe('StreamingText', () => {
     })
 
     it('复制失败时应提示用户', async () => {
-      vi.useFakeTimers()
       const mockWriteText = vi.fn().mockRejectedValue(new Error('copy failed'))
       Object.assign(navigator, {
         clipboard: { writeText: mockWriteText },
@@ -106,13 +105,13 @@ describe('StreamingText', () => {
       const copyButton = screen.getByTestId('streaming-text-copy')
       fireEvent.click(copyButton)
 
-      const errorPromise = screen.findByText('复制失败')
-      await vi.runAllTimersAsync()
-      expect(await errorPromise).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.getByText('复制失败')).toBeInTheDocument()
+      })
 
-      vi.advanceTimersByTime(2000)
-      await vi.runAllTimersAsync()
-      expect(screen.queryByText('复制失败')).not.toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.queryByText('复制失败')).not.toBeInTheDocument()
+      }, { timeout: 2500 })
     })
   })
 

@@ -42,9 +42,53 @@ pub const EXT_EVALUATIONS_BY_TEST_CASE_ID: &str = "layer1_test_results.evaluatio
 /// Optimizer 输出：是否建议采用 best candidate 更新 current_prompt（由编排层执行写回）。
 pub const EXTRA_ADOPT_BEST_CANDIDATE: &str = "adopt_best_candidate";
 
+/// 用户引导信息（由编排层在 resume 时注入，Layer 1-4 消费）。
+///
+/// 形状：`domain::types::UserGuidance`
+/// 生命周期：
+///   - 注入时机：resume 后、Layer 1 开始前
+///   - 消费时机：Layer 1-4 老师模型调用时读取
+///   - 清理时机：当轮迭代结束后从 extensions 中移除
+pub const EXT_USER_GUIDANCE: &str = "user_guidance";
+
 /// Layer 4：候选统计（由编排层根据 Layer 3 的统计口径注入）。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct CandidateStats {
     pub pass_rate: f64,
     pub mean_score: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ext_user_guidance_key_stable() {
+        // 契约回归测试：确保 key 值不被意外修改
+        assert_eq!(EXT_USER_GUIDANCE, "user_guidance");
+    }
+
+    #[test]
+    fn test_extension_keys_unique() {
+        // 确保所有 extension key 唯一，避免冲突
+        let keys = vec![
+            EXT_BEST_CANDIDATE_INDEX,
+            EXT_BEST_CANDIDATE_PROMPT,
+            EXT_BEST_CANDIDATE_STATS,
+            EXT_CURRENT_PROMPT_STATS,
+            EXT_CONSECUTIVE_NO_IMPROVEMENT,
+            EXT_RECENT_PRIMARY_SCORES,
+            EXT_FAILURE_ARCHIVE,
+            EXT_CANDIDATE_RANKING,
+            EXT_EVALUATIONS_BY_TEST_CASE_ID,
+            EXTRA_ADOPT_BEST_CANDIDATE,
+            EXT_USER_GUIDANCE,
+        ];
+        let unique: std::collections::HashSet<_> = keys.iter().collect();
+        assert_eq!(
+            keys.len(),
+            unique.len(),
+            "Extension keys must be unique"
+        );
+    }
 }

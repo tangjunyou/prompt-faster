@@ -6,6 +6,7 @@
 import { create } from 'zustand'
 import type { IterationArtifacts } from '@/types/generated/models/IterationArtifacts'
 import type { RunControlState } from '@/types/generated/models/RunControlState'
+import type { UserGuidance, GuidanceStatus } from '@/features/user-intervention/GuidanceInput'
 
 /** 任务运行状态 */
 export interface TaskRunState {
@@ -23,6 +24,12 @@ export interface TaskRunState {
   artifacts?: IterationArtifacts
   /** 是否正在编辑产物 */
   isEditingArtifacts?: boolean
+  /** 用户引导信息 */
+  userGuidance?: UserGuidance | null
+  /** 是否正在发送引导 */
+  isSendingGuidance?: boolean
+  /** 发送引导错误 */
+  guidanceError?: string | null
 }
 
 /** 任务 Store 状态 */
@@ -60,6 +67,26 @@ interface TaskActions {
   setArtifacts: (taskId: string, artifacts: IterationArtifacts) => void
   /** 设置编辑产物状态 */
   setEditingArtifacts: (taskId: string, editing: boolean) => void
+  /** 设置用户引导 */
+  setGuidance: (taskId: string, guidance: UserGuidance | null) => void
+  /** 清除用户引导 */
+  clearGuidance: (taskId: string) => void
+  /** 设置发送引导状态 */
+  setSendingGuidance: (taskId: string, sending: boolean) => void
+  /** 设置引导错误 */
+  setGuidanceError: (taskId: string, error: string | null) => void
+  /** 处理引导已发送事件 */
+  handleGuidanceSent: (
+    taskId: string,
+    guidanceId: string,
+    content: string,
+    status: GuidanceStatus,
+    createdAt: string
+  ) => void
+  /** 处理引导已应用事件 */
+  handleGuidanceApplied: (taskId: string, guidanceId: string, appliedAt: string) => void
+  /** 检查是否可以发送引导 */
+  canSendGuidance: (taskId: string) => boolean
   /** 清除任务状态 */
   clearTaskState: (taskId: string) => void
   /** 重置所有状态 */
@@ -120,6 +147,9 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
           pausedStage: undefined,
           artifacts: undefined,
           isEditingArtifacts: false,
+          userGuidance: state.taskStates[taskId]?.userGuidance,
+          isSendingGuidance: false,
+          guidanceError: null,
         },
       },
     })),
@@ -167,6 +197,99 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
         },
       },
     })),
+
+  setGuidance: (taskId, guidance) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          userGuidance: guidance,
+        },
+      },
+    })),
+
+  clearGuidance: (taskId) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          userGuidance: null,
+          guidanceError: null,
+        },
+      },
+    })),
+
+  setSendingGuidance: (taskId, sending) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          isSendingGuidance: sending,
+        },
+      },
+    })),
+
+  setGuidanceError: (taskId, error) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          guidanceError: error,
+          isSendingGuidance: false,
+        },
+      },
+    })),
+
+  handleGuidanceSent: (taskId, guidanceId, content, status, createdAt) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          userGuidance: {
+            id: guidanceId,
+            content,
+            status,
+            createdAt,
+          },
+          isSendingGuidance: false,
+          guidanceError: null,
+        },
+      },
+    })),
+
+  handleGuidanceApplied: (taskId, guidanceId, appliedAt) =>
+    set((state) => {
+      const current = state.taskStates[taskId]?.userGuidance
+      if (!current || current.id !== guidanceId) return state
+      return {
+        taskStates: {
+          ...state.taskStates,
+          [taskId]: {
+            ...state.taskStates[taskId],
+            userGuidance: {
+              ...current,
+              status: 'applied' as GuidanceStatus,
+              appliedAt,
+            },
+          },
+        },
+      }
+    }),
+
+  canSendGuidance: (taskId) => {
+    const taskState = get().taskStates[taskId]
+    return taskState?.runControlState === 'paused'
+  },
 
   clearTaskState: (taskId) =>
     set((state) => {

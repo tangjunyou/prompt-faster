@@ -8,3 +8,6 @@ export type { PauseResumeControlProps } from './PauseResumeControl'
 
 export { ArtifactEditor } from './ArtifactEditor'
 export type { ArtifactEditorProps } from './ArtifactEditor'
+
+export { GuidanceInput } from './GuidanceInput'
+export type { GuidanceInputProps, UserGuidance, GuidanceStatus } from './GuidanceInput'

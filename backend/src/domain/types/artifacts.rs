@@ -8,6 +8,85 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
+/// 引导状态
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema, Default)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum GuidanceStatus {
+    /// 等待应用
+    #[default]
+    Pending,
+    /// 已应用
+    Applied,
+}
+
+/// 用户引导消息
+///
+/// 用户在暂停状态下发送的引导信息，将在下一轮迭代中注入老师模型调用。
+/// 引导仅单轮生效，应用后清理。
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "models/")]
+pub struct UserGuidance {
+    /// 唯一标识
+    pub id: String,
+    /// 引导内容
+    pub content: String,
+    /// 引导状态
+    pub status: GuidanceStatus,
+    /// 创建时间（ISO 8601）
+    pub created_at: String,
+    /// 应用时间（ISO 8601，仅 Applied 状态有值）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub applied_at: Option<String>,
+}
+
+impl UserGuidance {
+    /// 引导内容最大长度（字符数）
+    pub const MAX_CONTENT_LENGTH: usize = 2000;
+
+    /// 创建新的引导消息
+    pub fn new(content: impl Into<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: content.into(),
+            status: GuidanceStatus::Pending,
+            created_at: crate::shared::ws::chrono_timestamp(),
+            applied_at: None,
+        }
+    }
+
+    /// 验证引导内容
+    pub fn validate(&self) -> Result<(), String> {
+        if self.content.trim().is_empty() {
+            return Err("引导内容不能为空".to_string());
+        }
+        if self.content.chars().count() > Self::MAX_CONTENT_LENGTH {
+            return Err(format!(
+                "引导内容超过最大长度限制（{} 字符）",
+                Self::MAX_CONTENT_LENGTH
+            ));
+        }
+        Ok(())
+    }
+
+    /// 标记为已应用
+    pub fn mark_applied(&mut self) {
+        self.status = GuidanceStatus::Applied;
+        self.applied_at = Some(crate::shared::ws::chrono_timestamp());
+    }
+
+    /// 获取内容预览（用于日志，最多 50 字符）
+    pub fn content_preview(&self) -> String {
+        let chars: Vec<char> = self.content.chars().collect();
+        if chars.len() <= 50 {
+            self.content.clone()
+        } else {
+            format!("{}...", chars[..50].iter().collect::<String>())
+        }
+    }
+}
+
 /// 产物来源
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
@@ -77,6 +156,9 @@ pub struct IterationArtifacts {
     /// 候选 Prompt 列表
     #[serde(default)]
     pub candidate_prompts: Vec<CandidatePrompt>,
+    /// 用户引导（可选，单轮生效）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_guidance: Option<UserGuidance>,
     /// 最后更新时间戳（ISO 8601 格式）
     #[serde(default)]
     pub updated_at: String,
@@ -224,6 +306,7 @@ impl IterationArtifacts {
         Self {
             patterns: new_patterns,
             candidate_prompts: new_prompts,
+            user_guidance: updated.user_guidance.clone(),
             updated_at: updated.updated_at.clone(),
         }
     }
@@ -256,6 +339,7 @@ mod tests {
                 confidence: Some(0.9),
             }],
             candidate_prompts: vec![],
+            user_guidance: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
@@ -279,6 +363,7 @@ mod tests {
                 score: None,
                 is_best: false,
             }],
+            user_guidance: None,
             updated_at: "".to_string(),
         };
 
@@ -291,6 +376,7 @@ mod tests {
                 confidence: None,
             }],
             candidate_prompts: vec![],
+            user_guidance: None,
             updated_at: "".to_string(),
         };
         assert!(original.validate_update(&valid_update).is_ok());
@@ -304,6 +390,7 @@ mod tests {
                 confidence: None,
             }],
             candidate_prompts: vec![],
+            user_guidance: None,
             updated_at: "".to_string(),
         };
         assert!(original.validate_update(&invalid_update).is_err());
@@ -325,6 +412,7 @@ mod tests {
                 score: None,
                 is_best: false,
             }],
+            user_guidance: None,
             updated_at: "".to_string(),
         };
 
@@ -342,6 +430,7 @@ mod tests {
                 score: None,
                 is_best: false,
             }],
+            user_guidance: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
@@ -371,6 +460,7 @@ mod tests {
                 },
             ],
             candidate_prompts: vec![],
+            user_guidance: None,
             updated_at: "".to_string(),
         };
 
@@ -383,11 +473,92 @@ mod tests {
                 confidence: None,
             }],
             candidate_prompts: vec![],
+            user_guidance: None,
             updated_at: "".to_string(),
         };
 
         let result = original.apply_update(&updated);
         assert_eq!(result.patterns.len(), 1);
         assert_eq!(result.patterns[0].id, "p1");
+    }
+
+    #[test]
+    fn test_guidance_status_default() {
+        assert_eq!(GuidanceStatus::default(), GuidanceStatus::Pending);
+    }
+
+    #[test]
+    fn test_user_guidance_new() {
+        let guidance = UserGuidance::new("测试引导内容");
+        assert!(!guidance.id.is_empty());
+        assert_eq!(guidance.content, "测试引导内容");
+        assert_eq!(guidance.status, GuidanceStatus::Pending);
+        assert!(!guidance.created_at.is_empty());
+        assert!(guidance.applied_at.is_none());
+    }
+
+    #[test]
+    fn test_user_guidance_validate_empty() {
+        let guidance = UserGuidance::new("   ");
+        assert!(guidance.validate().is_err());
+
+        let guidance = UserGuidance::new("");
+        assert!(guidance.validate().is_err());
+    }
+
+    #[test]
+    fn test_user_guidance_validate_too_long() {
+        let long_content = "a".repeat(UserGuidance::MAX_CONTENT_LENGTH + 1);
+        let guidance = UserGuidance::new(long_content);
+        assert!(guidance.validate().is_err());
+    }
+
+    #[test]
+    fn test_user_guidance_validate_ok() {
+        let guidance = UserGuidance::new("正常的引导内容");
+        assert!(guidance.validate().is_ok());
+
+        let max_content = "a".repeat(UserGuidance::MAX_CONTENT_LENGTH);
+        let guidance = UserGuidance::new(max_content);
+        assert!(guidance.validate().is_ok());
+    }
+
+    #[test]
+    fn test_user_guidance_mark_applied() {
+        let mut guidance = UserGuidance::new("测试");
+        assert_eq!(guidance.status, GuidanceStatus::Pending);
+        assert!(guidance.applied_at.is_none());
+
+        guidance.mark_applied();
+        assert_eq!(guidance.status, GuidanceStatus::Applied);
+        assert!(guidance.applied_at.is_some());
+    }
+
+    #[test]
+    fn test_user_guidance_content_preview() {
+        let short = UserGuidance::new("短内容");
+        assert_eq!(short.content_preview(), "短内容");
+
+        let long = UserGuidance::new("a".repeat(100));
+        let preview = long.content_preview();
+        assert!(preview.ends_with("..."));
+        assert_eq!(preview.chars().count(), 53); // 50 + "..."
+    }
+
+    #[test]
+    fn test_iteration_artifacts_with_guidance() {
+        let guidance = UserGuidance::new("引导内容");
+        let artifacts = IterationArtifacts {
+            patterns: vec![],
+            candidate_prompts: vec![],
+            user_guidance: Some(guidance),
+            updated_at: "2026-01-17T12:00:00Z".to_string(),
+        };
+
+        assert!(artifacts.user_guidance.is_some());
+        assert_eq!(
+            artifacts.user_guidance.as_ref().unwrap().content,
+            "引导内容"
+        );
     }
 }

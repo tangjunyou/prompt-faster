@@ -34,6 +34,15 @@ pub const EVT_ARTIFACT_UPDATE_ACK: &str = "artifact:update:ack";
 /// 产物已更新事件（广播）
 pub const EVT_ARTIFACT_UPDATED: &str = "artifact:updated";
 
+/// 发送引导命令
+pub const CMD_GUIDANCE_SEND: &str = "guidance:send";
+/// 发送引导 ACK
+pub const EVT_GUIDANCE_SEND_ACK: &str = "guidance:send:ack";
+/// 引导已发送事件（广播）
+pub const EVT_GUIDANCE_SENT: &str = "guidance:sent";
+/// 引导已应用事件（Layer 1 开始前触发）
+pub const EVT_GUIDANCE_APPLIED: &str = "guidance:applied";
+
 // ============================================================================
 // WS 命令负载
 // ============================================================================
@@ -165,6 +174,75 @@ pub struct ArtifactUpdatedPayload {
     pub artifacts: IterationArtifacts,
     /// 编辑者 ID
     pub edited_by: String,
+}
+
+// ============================================================================
+// Guidance 相关负载
+// ============================================================================
+
+/// 发送引导命令负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct GuidanceSendPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 引导内容
+    pub content: String,
+}
+
+/// 发送引导 ACK 负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct GuidanceSendAckPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 是否成功
+    pub ok: bool,
+    /// 引导 ID（成功时返回）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance_id: Option<String>,
+    /// 引导状态（成功时返回）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    /// 失败原因
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// 引导已发送事件负载（广播）
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct GuidanceSentPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 引导 ID
+    pub guidance_id: String,
+    /// 引导内容预览（最多 50 字符）
+    pub content_preview: String,
+    /// 引导状态
+    pub status: String,
+    /// 创建时间（ISO 8601）
+    pub created_at: String,
+    /// 发送者 ID
+    pub sent_by: String,
+}
+
+/// 引导已应用事件负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct GuidanceAppliedPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 引导 ID
+    pub guidance_id: String,
+    /// 应用时间（ISO 8601）
+    pub applied_at: String,
+    /// 应用于的迭代轮次
+    pub iteration: u32,
 }
 
 /// WebSocket 消息结构

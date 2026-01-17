@@ -35,6 +35,7 @@ describe('ArtifactEditor', () => {
         isBest: true,
       },
     ],
+    userGuidance: null,
     updatedAt: '2026-01-17T00:00:00Z',
   }
 

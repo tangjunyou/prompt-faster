@@ -139,7 +139,15 @@ const renderWithProviders = (initialEntry: string) => {
 }
 
 describe('App routes', () => {
-  beforeAll(() => server.listen())
+  beforeAll(() =>
+    server.listen({
+      onUnhandledRequest(req, print) {
+        const href = typeof req.url === 'string' ? req.url : req.url.href
+        if (href.startsWith('ws://') || href.startsWith('wss://')) return
+        print.warning()
+      },
+    }),
+  )
   afterEach(() => server.resetHandlers())
   afterAll(() => server.close())
 

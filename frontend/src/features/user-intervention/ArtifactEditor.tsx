@@ -86,6 +86,7 @@ export function ArtifactEditor({
     const updatedArtifacts: IterationArtifacts = {
       patterns: editingPatterns,
       candidatePrompts: editingPrompts,
+      userGuidance: artifacts?.userGuidance ?? null,
       updatedAt: new Date().toISOString(),
     }
     onSave(updatedArtifacts, correlationId)
