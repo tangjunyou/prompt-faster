@@ -396,9 +396,7 @@ impl PauseController {
 
         // 创建引导并验证
         let guidance = UserGuidance::new(content);
-        guidance
-            .validate()
-            .map_err(PauseStateError::Persist)?;
+        guidance.validate().map_err(PauseStateError::Persist)?;
 
         let mut snapshot_guard = self.snapshot.lock().await;
         let snapshot = snapshot_guard
@@ -1029,7 +1027,10 @@ mod tests {
         assert_ne!(g1.id, g2.id);
 
         // 获取当前引导应该是第二次的
-        let current = controller.get_guidance().await.expect("should have guidance");
+        let current = controller
+            .get_guidance()
+            .await
+            .expect("should have guidance");
         assert_eq!(current.id, g2.id);
         assert_eq!(current.content, "第二次引导");
     }

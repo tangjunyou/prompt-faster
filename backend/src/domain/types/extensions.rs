@@ -85,10 +85,6 @@ mod tests {
             EXT_USER_GUIDANCE,
         ];
         let unique: std::collections::HashSet<_> = keys.iter().collect();
-        assert_eq!(
-            keys.len(),
-            unique.len(),
-            "Extension keys must be unique"
-        );
+        assert_eq!(keys.len(), unique.len(), "Extension keys must be unique");
     }
 }

@@ -90,7 +90,7 @@ export function ArtifactEditor({
       updatedAt: new Date().toISOString(),
     }
     onSave(updatedArtifacts, correlationId)
-  }, [editingPatterns, editingPrompts, onSave])
+  }, [editingPatterns, editingPrompts, onSave, artifacts?.userGuidance])
 
   // 更新规律假设内容
   const handlePatternChange = useCallback((value: string | undefined) => {

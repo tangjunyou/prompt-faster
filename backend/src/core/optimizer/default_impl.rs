@@ -9,7 +9,9 @@ use crate::domain::models::{
     CandidateSource, IterationState, OptimizationResult, PromptCandidate, RecommendedAction,
     TerminationReason, UnifiedReflection,
 };
-use crate::domain::types::{CandidateStats, EXT_USER_GUIDANCE, METRIC_EPS, OptimizationContext, UserGuidance};
+use crate::domain::types::{
+    CandidateStats, EXT_USER_GUIDANCE, METRIC_EPS, OptimizationContext, UserGuidance,
+};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -610,9 +612,7 @@ mod tests {
             Some(guidance.content_preview().as_str())
         );
         assert_eq!(
-            out.extra
-                .get("user_guidance_id")
-                .and_then(|v| v.as_str()),
+            out.extra.get("user_guidance_id").and_then(|v| v.as_str()),
             Some(guidance.id.as_str())
         );
     }

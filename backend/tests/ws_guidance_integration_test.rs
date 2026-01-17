@@ -7,12 +7,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpListener;
-use tokio_tungstenite::connect_async;
 use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::connect_async;
 
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
-use prompt_faster::core::iteration_engine::pause_state::{global_pause_registry, PauseController};
+use prompt_faster::core::iteration_engine::pause_state::{PauseController, global_pause_registry};
 use prompt_faster::core::optimization_engine::checkpoint_pause_if_requested;
 use prompt_faster::core::optimization_engine::clear_user_guidance_from_context;
 use prompt_faster::domain::models::{IterationState, OutputLength, Rule, RuleSystem, RuleTags};
@@ -259,16 +259,15 @@ async fn ws_guidance_send_rejected_when_not_paused() {
         "correlationId": "cid-guidance-1"
     });
     socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(cmd.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            cmd.to_string(),
+        ))
         .await
         .expect("send guidance");
 
     let ack = read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
     assert_eq!(ack["payload"]["ok"], false);
-    assert_eq!(
-        ack["payload"]["reason"].as_str(),
-        Some("task_not_paused")
-    );
+    assert_eq!(ack["payload"]["reason"].as_str(), Some("task_not_paused"));
 }
 
 #[tokio::test]
@@ -281,7 +280,13 @@ async fn ws_guidance_send_rejected_when_not_owner() {
     seed_user_workspace_task(&state.db, owner_id, workspace_id, task_id).await;
 
     let other_id = "user-guidance-other";
-    seed_user_workspace_task(&state.db, other_id, "ws-guidance-other", "task-guidance-other").await;
+    seed_user_workspace_task(
+        &state.db,
+        other_id,
+        "ws-guidance-other",
+        "task-guidance-other",
+    )
+    .await;
 
     let token = state
         .session_store
@@ -305,7 +310,9 @@ async fn ws_guidance_send_rejected_when_not_owner() {
         "correlationId": "cid-guidance-2"
     });
     socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(cmd.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            cmd.to_string(),
+        ))
         .await
         .expect("send guidance");
 
@@ -343,7 +350,9 @@ async fn ws_guidance_send_validates_input() {
     let (mut socket, _) = connect_async(ws_url).await.expect("connect ws");
 
     let controller = global_pause_registry().get_or_create(task_id).await;
-    controller.request_pause("cid-guidance-validate", user_id).await;
+    controller
+        .request_pause("cid-guidance-validate", user_id)
+        .await;
     controller
         .checkpoint_pause(
             1,
@@ -360,16 +369,20 @@ async fn ws_guidance_send_validates_input() {
         "correlationId": "cid-guidance-validate-1"
     });
     socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(empty_cmd.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            empty_cmd.to_string(),
+        ))
         .await
         .expect("send guidance empty");
 
     let empty_ack = read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
     assert_eq!(empty_ack["payload"]["ok"], false);
-    assert!(empty_ack["payload"]["reason"]
-        .as_str()
-        .unwrap_or("")
-        .contains("不能为空"));
+    assert!(
+        empty_ack["payload"]["reason"]
+            .as_str()
+            .unwrap_or("")
+            .contains("不能为空")
+    );
 
     let too_long = "a".repeat(UserGuidance::MAX_CONTENT_LENGTH + 1);
     let long_cmd = serde_json::json!({
@@ -378,16 +391,20 @@ async fn ws_guidance_send_validates_input() {
         "correlationId": "cid-guidance-validate-2"
     });
     socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(long_cmd.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            long_cmd.to_string(),
+        ))
         .await
         .expect("send guidance long");
 
     let long_ack = read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
     assert_eq!(long_ack["payload"]["ok"], false);
-    assert!(long_ack["payload"]["reason"]
-        .as_str()
-        .unwrap_or("")
-        .contains("最大长度"));
+    assert!(
+        long_ack["payload"]["reason"]
+            .as_str()
+            .unwrap_or("")
+            .contains("最大长度")
+    );
 }
 
 #[tokio::test]
@@ -433,7 +450,9 @@ async fn ws_guidance_last_one_wins() {
         "correlationId": "cid-guidance-last-1"
     });
     socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(first_cmd.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            first_cmd.to_string(),
+        ))
         .await
         .expect("send guidance first");
     let _ = read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
@@ -445,7 +464,9 @@ async fn ws_guidance_last_one_wins() {
         "correlationId": "cid-guidance-last-2"
     });
     socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(second_cmd.to_string()))
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            second_cmd.to_string(),
+        ))
         .await
         .expect("send guidance second");
     let _ = read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
@@ -519,15 +540,18 @@ async fn ws_pause_send_guidance_resume_applies_and_clears() {
         .await
         .expect("send guidance");
 
-    let guidance_ack = read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
+    let guidance_ack =
+        read_message_of_type_for_task(&mut socket, "guidance:send:ack", task_id).await;
     assert_eq!(guidance_ack["payload"]["ok"], true);
     let sent_evt = read_message_of_type_for_task(&mut socket, "guidance:sent", task_id).await;
     assert_eq!(sent_evt["payload"]["taskId"], task_id);
     assert_eq!(sent_evt["payload"]["status"], "pending");
-    assert!(sent_evt["payload"]["contentPreview"]
-        .as_str()
-        .unwrap_or("")
-        .contains("请更正式"));
+    assert!(
+        sent_evt["payload"]["contentPreview"]
+            .as_str()
+            .unwrap_or("")
+            .contains("请更正式")
+    );
 
     let resume_cmd = serde_json::json!({
         "type": "task:resume",
@@ -561,7 +585,10 @@ async fn ws_pause_send_guidance_resume_applies_and_clears() {
         .and_then(|v| serde_json::from_value::<UserGuidance>(v).ok())
         .expect("guidance injected");
     assert_eq!(guidance.content, "请更正式");
-    assert!(matches!(guidance.status, prompt_faster::domain::types::GuidanceStatus::Applied));
+    assert!(matches!(
+        guidance.status,
+        prompt_faster::domain::types::GuidanceStatus::Applied
+    ));
 
     let controller = global_pause_registry().get_or_create(task_id).await;
     assert!(controller.get_guidance().await.is_none());

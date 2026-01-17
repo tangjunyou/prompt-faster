@@ -15,9 +15,9 @@ use crate::domain::types::{
     EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_USER_GUIDANCE,
     IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
 };
+use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
 use crate::shared::ws_bus::global_ws_bus;
-use crate::shared::ws::chrono_timestamp;
 
 use super::OptimizationEngineError;
 
