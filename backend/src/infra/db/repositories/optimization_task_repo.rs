@@ -275,6 +275,31 @@ impl OptimizationTaskRepo {
         Ok(tasks)
     }
 
+    pub async fn find_by_id_for_user(
+        pool: &SqlitePool,
+        user_id: &str,
+        task_id: &str,
+    ) -> Result<OptimizationTaskEntity, OptimizationTaskRepoError> {
+        let row = sqlx::query(
+            r#"
+            SELECT t.*
+            FROM optimization_tasks t
+            JOIN workspaces w ON w.id = t.workspace_id
+            WHERE t.id = ?1 AND w.user_id = ?2
+            "#,
+        )
+        .bind(task_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        let Some(row) = row else {
+            return Err(OptimizationTaskRepoError::NotFound);
+        };
+
+        row_to_entity(&row)
+    }
+
     pub async fn find_by_id_scoped(
         pool: &SqlitePool,
         user_id: &str,

@@ -1,6 +1,97 @@
 use crate::domain::models::{Checkpoint, IterationState, RuleSystem, TestCase};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use thiserror::Error;
+use ts_rs::TS;
+
+/// 运行控制状态（与 IterationState 正交，控制整体运行/暂停/停止）
+///
+/// 设计说明：
+/// - `RunControlState` 是顶层运行控制状态，与细粒度 `IterationState` 正交
+/// - 暂停时 `IterationState` 保持不变，仅 `RunControlState` 变为 `Paused`
+/// - 状态转换由编排层统一管理，禁止非法跳转（如 Paused → Stopped 需先 Resume）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export_to = "models/")]
+pub enum RunControlState {
+    /// 空闲（任务未开始或已完成）
+    #[default]
+    Idle,
+    /// 运行中
+    Running,
+    /// 已暂停（用户主动暂停，可恢复）
+    Paused,
+    /// 已停止（用户主动终止或发生不可恢复错误，不可恢复）
+    Stopped,
+}
+
+impl RunControlState {
+    /// 检查是否允许转换到目标状态
+    pub fn can_transition_to(&self, target: RunControlState) -> bool {
+        use RunControlState::*;
+        match (*self, target) {
+            // 相同状态，允许（幂等）
+            (s, t) if s == t => true,
+            // Idle → Running：启动任务
+            (Idle, Running) => true,
+            // Running → Paused：暂停
+            (Running, Paused) => true,
+            // Running → Stopped：终止
+            (Running, Stopped) => true,
+            // Running → Idle：正常完成
+            (Running, Idle) => true,
+            // Paused → Running：继续
+            (Paused, Running) => true,
+            // Paused → Stopped：暂停后终止
+            (Paused, Stopped) => true,
+            // Stopped → Idle：重置（用于开始新任务）
+            (Stopped, Idle) => true,
+            // 其他转换禁止
+            _ => false,
+        }
+    }
+
+    /// 尝试转换到目标状态，失败返回错误
+    pub fn try_transition_to(
+        &mut self,
+        target: RunControlState,
+    ) -> Result<(), RunControlStateTransitionError> {
+        if self.can_transition_to(target) {
+            *self = target;
+            Ok(())
+        } else {
+            Err(RunControlStateTransitionError::InvalidTransition {
+                from: *self,
+                to: target,
+            })
+        }
+    }
+
+    /// 是否可以执行暂停操作
+    pub fn can_pause(&self) -> bool {
+        *self == RunControlState::Running
+    }
+
+    /// 是否可以执行继续操作
+    pub fn can_resume(&self) -> bool {
+        *self == RunControlState::Paused
+    }
+
+    /// 是否处于活跃状态（Running 或 Paused）
+    pub fn is_active(&self) -> bool {
+        matches!(self, RunControlState::Running | RunControlState::Paused)
+    }
+}
+
+/// 运行控制状态转换错误
+#[derive(Debug, Clone, Error)]
+pub enum RunControlStateTransitionError {
+    #[error("非法状态转换：{from:?} → {to:?}")]
+    InvalidTransition {
+        from: RunControlState,
+        to: RunControlState,
+    },
+}
 
 /// 优化上下文（贯穿整个迭代流程的共享状态）
 ///
@@ -16,6 +107,9 @@ pub struct OptimizationContext {
     pub rule_system: RuleSystem,
     pub iteration: u32,
     pub state: IterationState,
+    /// 运行控制状态（与 IterationState 正交）
+    #[serde(default)]
+    pub run_control_state: RunControlState,
     pub test_cases: Vec<TestCase>,
     pub config: OptimizationConfig,
     pub checkpoints: Vec<Checkpoint>,
@@ -395,4 +489,135 @@ fn default_survival_threshold() -> f64 {
 }
 fn default_early_stop_confidence() -> f64 {
     0.95
+}
+
+#[cfg(test)]
+mod run_control_state_tests {
+    use super::*;
+
+    #[test]
+    fn default_state_is_idle() {
+        assert_eq!(RunControlState::default(), RunControlState::Idle);
+    }
+
+    #[test]
+    fn valid_transitions_are_allowed() {
+        use RunControlState::*;
+
+        // Idle → Running
+        assert!(Idle.can_transition_to(Running));
+        // Running → Paused
+        assert!(Running.can_transition_to(Paused));
+        // Running → Stopped
+        assert!(Running.can_transition_to(Stopped));
+        // Running → Idle (正常完成)
+        assert!(Running.can_transition_to(Idle));
+        // Paused → Running
+        assert!(Paused.can_transition_to(Running));
+        // Paused → Stopped
+        assert!(Paused.can_transition_to(Stopped));
+        // Stopped → Idle
+        assert!(Stopped.can_transition_to(Idle));
+    }
+
+    #[test]
+    fn invalid_transitions_are_rejected() {
+        use RunControlState::*;
+
+        // Idle 不能直接 → Paused
+        assert!(!Idle.can_transition_to(Paused));
+        // Idle 不能直接 → Stopped
+        assert!(!Idle.can_transition_to(Stopped));
+        // Paused 不能直接 → Idle（需先 Resume 再完成）
+        assert!(!Paused.can_transition_to(Idle));
+        // Stopped 不能直接 → Running
+        assert!(!Stopped.can_transition_to(Running));
+        // Stopped 不能直接 → Paused
+        assert!(!Stopped.can_transition_to(Paused));
+    }
+
+    #[test]
+    fn idempotent_transitions_are_allowed() {
+        use RunControlState::*;
+
+        // 相同状态转换应该成功（幂等）
+        assert!(Idle.can_transition_to(Idle));
+        assert!(Running.can_transition_to(Running));
+        assert!(Paused.can_transition_to(Paused));
+        assert!(Stopped.can_transition_to(Stopped));
+    }
+
+    #[test]
+    fn try_transition_to_mutates_state_on_success() {
+        let mut state = RunControlState::Idle;
+
+        // Idle → Running
+        assert!(state.try_transition_to(RunControlState::Running).is_ok());
+        assert_eq!(state, RunControlState::Running);
+
+        // Running → Paused
+        assert!(state.try_transition_to(RunControlState::Paused).is_ok());
+        assert_eq!(state, RunControlState::Paused);
+
+        // Paused → Running
+        assert!(state.try_transition_to(RunControlState::Running).is_ok());
+        assert_eq!(state, RunControlState::Running);
+    }
+
+    #[test]
+    fn try_transition_to_returns_error_on_invalid() {
+        let mut state = RunControlState::Idle;
+
+        let err = state
+            .try_transition_to(RunControlState::Paused)
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            RunControlStateTransitionError::InvalidTransition { .. }
+        ));
+        // 状态应保持不变
+        assert_eq!(state, RunControlState::Idle);
+    }
+
+    #[test]
+    fn can_pause_only_when_running() {
+        assert!(!RunControlState::Idle.can_pause());
+        assert!(RunControlState::Running.can_pause());
+        assert!(!RunControlState::Paused.can_pause());
+        assert!(!RunControlState::Stopped.can_pause());
+    }
+
+    #[test]
+    fn can_resume_only_when_paused() {
+        assert!(!RunControlState::Idle.can_resume());
+        assert!(!RunControlState::Running.can_resume());
+        assert!(RunControlState::Paused.can_resume());
+        assert!(!RunControlState::Stopped.can_resume());
+    }
+
+    #[test]
+    fn is_active_for_running_and_paused() {
+        assert!(!RunControlState::Idle.is_active());
+        assert!(RunControlState::Running.is_active());
+        assert!(RunControlState::Paused.is_active());
+        assert!(!RunControlState::Stopped.is_active());
+    }
+
+    #[test]
+    fn serializes_to_snake_case() {
+        let json = serde_json::to_string(&RunControlState::Running).unwrap();
+        assert_eq!(json, "\"running\"");
+
+        let json = serde_json::to_string(&RunControlState::Paused).unwrap();
+        assert_eq!(json, "\"paused\"");
+    }
+
+    #[test]
+    fn deserializes_from_snake_case() {
+        let state: RunControlState = serde_json::from_str("\"running\"").unwrap();
+        assert_eq!(state, RunControlState::Running);
+
+        let state: RunControlState = serde_json::from_str("\"paused\"").unwrap();
+        assert_eq!(state, RunControlState::Paused);
+    }
 }

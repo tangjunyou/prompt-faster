@@ -31,6 +31,9 @@ use prompt_faster::api::routes::user_auth::{
 use prompt_faster::api::routes::workspaces::{
     CreateWorkspaceRequest, DeleteWorkspaceResponse, WorkspaceResponse,
 };
+use prompt_faster::api::ws::events::{
+    IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload, TaskControlPayload,
+};
 use prompt_faster::domain::models::{
     Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
     ExecutionResult, ExecutionTargetType, FailurePoint, Iteration, IterationState, LineageType,
@@ -38,6 +41,7 @@ use prompt_faster::domain::models::{
     QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
     RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
+use prompt_faster::domain::types::RunControlState;
 use prompt_faster::infra::external::dify_client::{
     DifyInputVariable, DifyValueType, DifyVariablesResponse, TestConnectionResult,
 };
@@ -155,6 +159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     OutputLength::export_all_to(&out_dir)?;
     IterationState::export_all_to(&out_dir)?;
     LineageType::export_all_to(&out_dir)?;
+    RunControlState::export_all_to(&out_dir)?;
+
+    // WS 事件负载
+    TaskControlPayload::export_all_to(&out_dir)?;
+    TaskControlAckPayload::export_all_to(&out_dir)?;
+    IterationPausedPayload::export_all_to(&out_dir)?;
+    IterationResumedPayload::export_all_to(&out_dir)?;
 
     Ok(())
 }

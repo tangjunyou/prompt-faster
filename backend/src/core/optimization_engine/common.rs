@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
 use crate::core::iteration_engine::orchestrator::IterationEngine;
+use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
     Checkpoint, EvaluationResult, IterationState, OptimizationTaskConfig, TestCase,
@@ -11,7 +12,7 @@ use crate::domain::models::{
 use crate::domain::types::{
     CandidateStats, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS,
     EXT_CANDIDATE_RANKING, EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID,
-    OptimizationContext,
+    OptimizationContext, RunControlState,
 };
 
 use super::OptimizationEngineError;
@@ -48,6 +49,62 @@ pub fn apply_checkpoint(checkpoint: Checkpoint, ctx: &mut OptimizationContext) {
     ctx.state = checkpoint.state;
     ctx.current_prompt = checkpoint.prompt;
     ctx.rule_system = checkpoint.rule_system;
+}
+
+fn build_context_snapshot(ctx: &OptimizationContext) -> serde_json::Value {
+    serde_json::json!({
+        "taskId": ctx.task_id,
+        "iteration": ctx.iteration,
+        "iterationState": ctx.state,
+        "runControlState": ctx.run_control_state,
+    })
+}
+
+fn iteration_state_label(state: IterationState) -> String {
+    serde_json::to_value(state)
+        .ok()
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn transition_run_control_state(
+    ctx: &mut OptimizationContext,
+    target: RunControlState,
+) -> Result<(), OptimizationEngineError> {
+    ctx.run_control_state
+        .try_transition_to(target)
+        .map_err(|err| OptimizationEngineError::Internal(format!("{err}")))
+}
+
+pub async fn checkpoint_pause_if_requested(
+    ctx: &mut OptimizationContext,
+) -> Result<bool, OptimizationEngineError> {
+    let registry = global_pause_registry();
+    let controller = registry.get_or_create(&ctx.task_id).await;
+
+    if controller.is_paused() {
+        transition_run_control_state(ctx, RunControlState::Paused)?;
+        controller.wait_for_resume().await;
+        transition_run_control_state(ctx, RunControlState::Running)?;
+        return Ok(true);
+    }
+
+    if !controller.is_pause_requested() {
+        return Ok(false);
+    }
+
+    let stage = iteration_state_label(ctx.state);
+    if controller
+        .checkpoint_pause(ctx.iteration, &stage, None, build_context_snapshot(ctx))
+        .await?
+    {
+        transition_run_control_state(ctx, RunControlState::Paused)?;
+        controller.wait_for_resume().await;
+        transition_run_control_state(ctx, RunControlState::Running)?;
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 pub async fn run_tests_and_evaluate(

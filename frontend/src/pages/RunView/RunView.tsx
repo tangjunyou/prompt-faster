@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { IterationGraph } from '@/components/nodes/IterationGraph'
 import { StageHistoryPanel, StageIndicator, StreamingText } from '@/components/streaming'
 import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
-import { usePrefersReducedMotion } from '@/hooks'
+import { usePrefersReducedMotion, useWebSocket } from '@/hooks'
+import { PauseResumeControl } from '@/features/user-intervention'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
   createInitialIterationGraphEdgeFlowStates,
@@ -21,8 +22,15 @@ import {
   setAutoScrollLocked,
   type ThinkingStreamState,
 } from '@/features/visualization/thinkingStreamReducer'
+import { useTaskStore } from '@/stores/useTaskStore'
+import type { IterationPausedPayload, IterationResumedPayload } from '@/types/generated/ws'
 
 export function RunView() {
+  const taskId = useMemo(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('taskId') ?? 'demo-task'
+  }, [])
+
   const demoMessages = useMemo(
     () =>
       createDeterministicDemoWsMessages({
@@ -49,6 +57,60 @@ export function RunView() {
   const edgeFlowMachineRef = useRef<IterationGraphEdgeFlowMachine | null>(null)
   const pendingThinkingMessagesRef = useRef(demoMessages.slice(0, 0))
   const thinkingFlushRafRef = useRef<number | null>(null)
+  const pausedNodeStatesRef = useRef<IterationGraphNodeStates | null>(null)
+  const isPausedRef = useRef(false)
+
+  const { taskStates, setRunControlState, handlePaused, handleResumed } = useTaskStore()
+  const runControlState = taskStates[taskId]?.runControlState ?? 'idle'
+  const isPaused = runControlState === 'paused'
+
+  const handlePausedEvent = useCallback(
+    (payload: IterationPausedPayload) => {
+      if (payload.taskId !== taskId) return
+      handlePaused(payload.taskId, payload.pausedAt, payload.stage, payload.iteration)
+      setNodeStates((prev) => {
+        if (!isPausedRef.current) {
+          pausedNodeStatesRef.current = prev
+        }
+        isPausedRef.current = true
+        return {
+          pattern_extractor: 'paused',
+          prompt_engineer: 'paused',
+          quality_assessor: 'paused',
+          reflection_agent: 'paused',
+        }
+      })
+    },
+    [taskId, handlePaused],
+  )
+
+  const handleResumedEvent = useCallback(
+    (payload: IterationResumedPayload) => {
+      if (payload.taskId !== taskId) return
+      handleResumed(payload.taskId)
+      setNodeStates((prev) => {
+        const restored = pausedNodeStatesRef.current ?? prev
+        pausedNodeStatesRef.current = null
+        isPausedRef.current = false
+        return restored
+      })
+    },
+    [taskId, handleResumed],
+  )
+
+  const { isConnected, sendCommand } = useWebSocket({
+    onPaused: handlePausedEvent,
+    onResumed: handleResumedEvent,
+    onMessage: (message) => {
+      if (
+        message.type === 'iteration:started' ||
+        message.type === 'iteration:progress' ||
+        message.type === 'iteration:resumed'
+      ) {
+        setRunControlState(taskId, 'running')
+      }
+    },
+  })
 
   useEffect(() => {
     edgeFlowMachineRef.current = createIterationGraphEdgeFlowMachine(setEdgeFlowStates)
@@ -119,17 +181,29 @@ export function RunView() {
 
       <div className="mt-6 flex items-center justify-between gap-3">
         <div className="text-sm text-muted-foreground">节点图（基础渲染）</div>
-        {import.meta.env.DEV ? (
-          <button
-            type="button"
-            className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-            onClick={handleReplay}
-            disabled={isReplaying}
-            data-testid="runview-demo-replay"
-          >
-            回放/模拟运行
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          <PauseResumeControl
+            taskId={taskId}
+            onPause={(id, correlationId) =>
+              sendCommand('task:pause', { taskId: id }, correlationId)
+            }
+            onResume={(id, correlationId) =>
+              sendCommand('task:resume', { taskId: id }, correlationId)
+            }
+            disabled={!isConnected}
+          />
+          {import.meta.env.DEV ? (
+            <button
+              type="button"
+              className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={handleReplay}
+              disabled={isReplaying}
+              data-testid="runview-demo-replay"
+            >
+              回放/模拟运行
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -146,6 +220,14 @@ export function RunView() {
         >
           <div className="border-b px-4 py-2">
             <div className="text-sm font-medium text-muted-foreground">思考过程</div>
+            {isPaused ? (
+              <div
+                className="mt-2 inline-flex items-center rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-900"
+                data-testid="thinking-paused-indicator"
+              >
+                已暂停
+              </div>
+            ) : null}
             <StageIndicator
               stage={thinkingState.currentStage}
               prefersReducedMotion={prefersReducedMotion}

@@ -8,15 +8,17 @@
 
 ## A) 开工门槛（Epic 6 前置）
 
-- [ ] A1 明确“暂停/编辑/继续”的状态一致性与权限边界
+- [x] A1 明确"暂停/编辑/继续"的状态一致性与权限边界
   - Owner：Winston（Architect）+ Charlie（Senior Dev）
   - 成功标准：形成一份状态与权限边界说明（包含状态机、允许的操作与触发条件），并在实现前完成评审确认。
-  - 证据：设计说明文档或 Story 文件中的明确边界描述
+  - 证据：`docs/implementation-artifacts/epic-6-run-control-state-design.md`
+  - 完成日期：2026-01-16
 
-- [ ] A2 用户介入的可追踪证据链
+- [x] A2 用户介入的可追踪证据链
   - Owner：Dana（QA Engineer）+ Amelia（Dev Agent）
-  - 成功标准：定义并落地“日志/状态回放入口”的最小证据链要求，确保用户介入操作可追踪与可回放。
-  - 证据：测试用例或验收清单中包含可追踪性验证点
+  - 成功标准：定义并落地"日志/状态回放入口"的最小证据链要求，确保用户介入操作可追踪与可回放。
+  - 证据：`docs/implementation-artifacts/epic-6-traceability-verification.md`
+  - 完成日期：2026-01-16
 
 - [ ] A3 构建体积告警拆分评估
   - Owner：Winston（Architect）

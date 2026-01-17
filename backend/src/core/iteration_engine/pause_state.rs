@@ -1,0 +1,546 @@
+//! 暂停状态管理
+//!
+//! 本模块实现最小暂停持久化与恢复机制。
+//! 注意：这是临时实现，Epic 7 完成后将替换为完整 Checkpoint 机制。
+
+use crate::domain::types::RunControlState;
+use crate::shared::ws::{
+    EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED, IterationPausedPayload, IterationResumedPayload,
+    WsMessage, chrono_timestamp,
+};
+use crate::shared::ws_bus::global_ws_bus;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
+use tokio::sync::{Mutex, Notify};
+use tracing::{info, warn};
+
+/// 暂停状态快照（用于持久化）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseStateSnapshot {
+    /// 任务 ID
+    pub task_id: String,
+    /// 暂停时间（ISO 8601）
+    pub paused_at: String,
+    /// 触发暂停的 correlationId（AR2）
+    pub correlation_id: String,
+    /// 用户 ID（用于审计）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    /// 暂停时的运行控制状态
+    pub run_control_state: RunControlState,
+    /// 暂停时的迭代轮次
+    pub iteration: u32,
+    /// 暂停时所处的阶段
+    pub stage: String,
+    /// 最小上下文快照（用于重启恢复）
+    #[serde(default)]
+    pub context_snapshot: Value,
+}
+
+/// 暂停控制器（每个任务一个实例）
+#[derive(Debug)]
+pub struct PauseController {
+    /// 任务 ID
+    task_id: String,
+    /// 暂停请求标志（原子布尔值，支持并发安全检查）
+    pause_requested: AtomicBool,
+    /// 当前是否处于暂停状态
+    is_paused: AtomicBool,
+    /// 继续通知器（用于 await 暂停恢复）
+    resume_notify: Notify,
+    /// 暂停状态快照（用于持久化）
+    snapshot: Mutex<Option<PauseStateSnapshot>>,
+    /// 最后一次操作的 correlationId（用于幂等性检查）
+    last_correlation_id: Mutex<Option<String>>,
+    /// 最后一次操作的用户 ID
+    last_user_id: Mutex<Option<String>>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PauseStateError {
+    #[error("暂停状态持久化失败: {0}")]
+    Persist(String),
+    #[error("暂停状态恢复失败: {0}")]
+    Restore(String),
+}
+
+impl PauseController {
+    /// 创建新的暂停控制器
+    pub fn new(task_id: impl Into<String>) -> Self {
+        Self {
+            task_id: task_id.into(),
+            pause_requested: AtomicBool::new(false),
+            is_paused: AtomicBool::new(false),
+            resume_notify: Notify::new(),
+            snapshot: Mutex::new(None),
+            last_correlation_id: Mutex::new(None),
+            last_user_id: Mutex::new(None),
+        }
+    }
+
+    /// 获取任务 ID
+    pub fn task_id(&self) -> &str {
+        &self.task_id
+    }
+
+    /// 请求暂停（幂等）
+    ///
+    /// 返回 `true` 表示暂停请求已被接受（首次或状态变更）
+    /// 返回 `false` 表示已经在暂停状态或已请求暂停（幂等）
+    pub async fn request_pause(&self, correlation_id: &str, user_id: &str) -> bool {
+        // 幂等性检查：如果已经暂停或已请求暂停，不重复处理
+        if self.is_paused.load(Ordering::SeqCst) {
+            info!(
+                task_id = %self.task_id,
+                correlation_id = %correlation_id,
+                "暂停请求被忽略：任务已处于暂停状态（幂等）"
+            );
+            return false;
+        }
+
+        let was_requested = self.pause_requested.swap(true, Ordering::SeqCst);
+        if was_requested {
+            info!(
+                task_id = %self.task_id,
+                correlation_id = %correlation_id,
+                "暂停请求被忽略：已有暂停请求待处理（幂等）"
+            );
+            return false;
+        }
+
+        // 记录 correlationId / user_id
+        *self.last_correlation_id.lock().await = Some(correlation_id.to_string());
+        *self.last_user_id.lock().await = Some(user_id.to_string());
+
+        info!(
+            task_id = %self.task_id,
+            correlation_id = %correlation_id,
+            "暂停请求已接受，将在下一个安全点生效"
+        );
+        true
+    }
+
+    /// 请求继续（幂等）
+    ///
+    /// 返回 `true` 表示继续请求已被接受
+    /// 返回 `false` 表示未处于暂停状态（幂等）
+    pub async fn request_resume(&self, correlation_id: &str, user_id: &str) -> bool {
+        if !self.is_paused.load(Ordering::SeqCst) {
+            info!(
+                task_id = %self.task_id,
+                correlation_id = %correlation_id,
+                "继续请求被忽略：任务未处于暂停状态（幂等）"
+            );
+            return false;
+        }
+
+        // 记录 correlationId / user_id
+        *self.last_correlation_id.lock().await = Some(correlation_id.to_string());
+        *self.last_user_id.lock().await = Some(user_id.to_string());
+
+        // 清除暂停状态
+        self.is_paused.store(false, Ordering::SeqCst);
+        self.pause_requested.store(false, Ordering::SeqCst);
+
+        // 清除快照（落盘也需清除）
+        *self.snapshot.lock().await = None;
+        if let Err(err) = clear_snapshot_file(&self.task_id) {
+            warn!(task_id = %self.task_id, error = %err, "清理暂停快照文件失败");
+        }
+
+        // 通知等待的任务继续执行
+        self.resume_notify.notify_waiters();
+
+        // 推送 resumed 事件（不阻塞）
+        emit_resumed_event(&self.task_id, correlation_id);
+
+        info!(
+            task_id = %self.task_id,
+            correlation_id = %correlation_id,
+            "继续请求已接受，任务将恢复执行"
+        );
+        true
+    }
+
+    /// 检查是否有暂停请求
+    pub fn is_pause_requested(&self) -> bool {
+        self.pause_requested.load(Ordering::SeqCst)
+    }
+
+    /// 检查是否处于暂停状态
+    pub fn is_paused(&self) -> bool {
+        self.is_paused.load(Ordering::SeqCst)
+    }
+
+    /// 在安全点执行暂停（Layer 完成后调用）
+    ///
+    /// 如果有暂停请求，设置暂停状态并保存快照
+    pub async fn checkpoint_pause(
+        &self,
+        iteration: u32,
+        stage: &str,
+        correlation_id: Option<&str>,
+        context_snapshot: Value,
+    ) -> Result<bool, PauseStateError> {
+        if !self.pause_requested.load(Ordering::SeqCst) {
+            return Ok(false);
+        }
+
+        // 设置暂停状态
+        self.is_paused.store(true, Ordering::SeqCst);
+
+        let last_correlation_id = self.last_correlation_id.lock().await.clone();
+        let correlation_id = correlation_id
+            .map(|s| s.to_string())
+            .or(last_correlation_id)
+            .unwrap_or_else(|| format!("system-{}", chrono_timestamp()));
+        let user_id = self.last_user_id.lock().await.clone();
+
+        // 创建快照
+        let snapshot = PauseStateSnapshot {
+            task_id: self.task_id.clone(),
+            paused_at: chrono_timestamp(),
+            correlation_id: correlation_id.clone(),
+            user_id: user_id.clone(),
+            run_control_state: RunControlState::Paused,
+            iteration,
+            stage: stage.to_string(),
+            context_snapshot,
+        };
+
+        *self.snapshot.lock().await = Some(snapshot.clone());
+        persist_snapshot(&snapshot)?;
+
+        // 推送 paused 事件（不阻塞）
+        emit_paused_event(&snapshot);
+
+        info!(
+            task_id = %self.task_id,
+            iteration = iteration,
+            stage = %stage,
+            correlation_id = %snapshot.correlation_id,
+            user_id = %user_id.clone().unwrap_or_else(|| "unknown".to_string()),
+            prev_state = ?RunControlState::Running,
+            new_state = ?RunControlState::Paused,
+            "任务已在安全点暂停"
+        );
+
+        Ok(true)
+    }
+
+    /// 等待继续信号
+    pub async fn wait_for_resume(&self) {
+        if self.is_paused.load(Ordering::SeqCst) {
+            info!(task_id = %self.task_id, "等待继续信号...");
+            self.resume_notify.notified().await;
+            info!(task_id = %self.task_id, "收到继续信号，恢复执行");
+        }
+    }
+
+    /// 获取暂停状态快照
+    pub async fn get_snapshot(&self) -> Option<PauseStateSnapshot> {
+        self.snapshot.lock().await.clone()
+    }
+
+    /// 获取最后一次操作的 correlationId
+    pub async fn get_last_correlation_id(&self) -> Option<String> {
+        self.last_correlation_id.lock().await.clone()
+    }
+
+    /// 恢复已持久化的暂停状态
+    pub async fn restore_snapshot(&self, snapshot: PauseStateSnapshot) {
+        self.is_paused.store(true, Ordering::SeqCst);
+        self.pause_requested.store(false, Ordering::SeqCst);
+        let cid = snapshot.correlation_id.clone();
+        let uid = snapshot.user_id.clone();
+        let task_id = snapshot.task_id.clone();
+        let snap = Some(snapshot);
+
+        *self.snapshot.lock().await = snap;
+        *self.last_correlation_id.lock().await = Some(cid);
+        *self.last_user_id.lock().await = uid;
+        info!(task_id = %task_id, "已恢复暂停快照");
+    }
+
+    /// 重置控制器状态（用于任务完成或取消）
+    pub async fn reset(&self) {
+        self.pause_requested.store(false, Ordering::SeqCst);
+        self.is_paused.store(false, Ordering::SeqCst);
+        *self.snapshot.lock().await = None;
+        *self.last_correlation_id.lock().await = None;
+        *self.last_user_id.lock().await = None;
+        let _ = clear_snapshot_file(&self.task_id);
+    }
+}
+
+/// 暂停控制器注册表（全局管理所有任务的暂停控制器）
+#[derive(Debug, Default)]
+pub struct PauseControllerRegistry {
+    controllers: Mutex<HashMap<String, Arc<PauseController>>>,
+}
+
+impl PauseControllerRegistry {
+    /// 创建新的注册表
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// 获取或创建任务的暂停控制器
+    pub async fn get_or_create(&self, task_id: &str) -> Arc<PauseController> {
+        let mut controllers = self.controllers.lock().await;
+        if let Some(controller) = controllers.get(task_id) {
+            return controller.clone();
+        }
+
+        let controller = Arc::new(PauseController::new(task_id));
+        if let Ok(Some(snapshot)) = load_snapshot(task_id) {
+            controller.restore_snapshot(snapshot).await;
+        }
+        controllers.insert(task_id.to_string(), controller.clone());
+        controller
+    }
+
+    /// 获取任务的暂停控制器（如果存在）
+    pub async fn get(&self, task_id: &str) -> Option<Arc<PauseController>> {
+        self.controllers.lock().await.get(task_id).cloned()
+    }
+
+    /// 移除任务的暂停控制器
+    pub async fn remove(&self, task_id: &str) -> Option<Arc<PauseController>> {
+        self.controllers.lock().await.remove(task_id)
+    }
+
+    /// 获取所有处于暂停状态的任务快照
+    pub async fn get_all_paused_snapshots(&self) -> Vec<PauseStateSnapshot> {
+        let controllers = self.controllers.lock().await;
+        let controller_list: Vec<Arc<PauseController>> = controllers.values().cloned().collect();
+        drop(controllers);
+
+        let mut snapshots = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+
+        for controller in controller_list {
+            if controller.is_paused() {
+                if let Some(snapshot) = controller.get_snapshot().await {
+                    seen.insert(snapshot.task_id.clone());
+                    snapshots.push(snapshot);
+                }
+            }
+        }
+
+        if let Ok(entries) = std::fs::read_dir(pause_state_dir()) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                    continue;
+                }
+                let bytes = match std::fs::read(&path) {
+                    Ok(bytes) => bytes,
+                    Err(_) => continue,
+                };
+                let snapshot: PauseStateSnapshot = match serde_json::from_slice(&bytes) {
+                    Ok(snapshot) => snapshot,
+                    Err(_) => continue,
+                };
+                if seen.insert(snapshot.task_id.clone()) {
+                    let _ = self.get_or_create(&snapshot.task_id).await;
+                    snapshots.push(snapshot);
+                }
+            }
+        }
+
+        snapshots
+    }
+}
+
+static PAUSE_REGISTRY: OnceLock<Arc<PauseControllerRegistry>> = OnceLock::new();
+
+/// 获取全局暂停控制器注册表
+pub fn global_pause_registry() -> Arc<PauseControllerRegistry> {
+    PAUSE_REGISTRY
+        .get_or_init(|| Arc::new(PauseControllerRegistry::new()))
+        .clone()
+}
+
+static PAUSE_STATE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+fn pause_state_dir() -> PathBuf {
+    PAUSE_STATE_DIR
+        .get_or_init(|| {
+            if let Ok(dir) = std::env::var("PAUSE_STATE_DIR") {
+                return PathBuf::from(dir);
+            }
+            if cfg!(test) {
+                return std::env::temp_dir().join("prompt_faster_pause_state");
+            }
+            PathBuf::from("data/pause_state")
+        })
+        .clone()
+}
+
+fn snapshot_path(task_id: &str) -> PathBuf {
+    let sanitized = task_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    pause_state_dir().join(format!("{sanitized}.json"))
+}
+
+fn persist_snapshot(snapshot: &PauseStateSnapshot) -> Result<(), PauseStateError> {
+    let dir = pause_state_dir();
+    if let Err(err) = std::fs::create_dir_all(&dir) {
+        return Err(PauseStateError::Persist(err.to_string()));
+    }
+    let path = snapshot_path(&snapshot.task_id);
+    let json =
+        serde_json::to_vec_pretty(snapshot).map_err(|e| PauseStateError::Persist(e.to_string()))?;
+    std::fs::write(path, json).map_err(|e| PauseStateError::Persist(e.to_string()))?;
+    Ok(())
+}
+
+fn clear_snapshot_file(task_id: &str) -> Result<(), PauseStateError> {
+    let path = snapshot_path(task_id);
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| PauseStateError::Persist(e.to_string()))?;
+    }
+    Ok(())
+}
+
+fn load_snapshot(task_id: &str) -> Result<Option<PauseStateSnapshot>, PauseStateError> {
+    let path = snapshot_path(task_id);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let bytes = std::fs::read(path).map_err(|e| PauseStateError::Restore(e.to_string()))?;
+    let snapshot =
+        serde_json::from_slice(&bytes).map_err(|e| PauseStateError::Restore(e.to_string()))?;
+    Ok(Some(snapshot))
+}
+
+fn emit_paused_event(snapshot: &PauseStateSnapshot) {
+    let payload = IterationPausedPayload {
+        task_id: snapshot.task_id.clone(),
+        paused_at: snapshot.paused_at.clone(),
+        stage: snapshot.stage.clone(),
+        iteration: snapshot.iteration,
+    };
+    let msg = WsMessage::new(
+        EVT_ITERATION_PAUSED,
+        payload,
+        snapshot.correlation_id.clone(),
+    );
+    if let Ok(text) = serde_json::to_string(&msg) {
+        global_ws_bus().publish(text);
+    }
+}
+
+fn emit_resumed_event(task_id: &str, correlation_id: &str) {
+    let payload = IterationResumedPayload {
+        task_id: task_id.to_string(),
+        resumed_at: chrono_timestamp(),
+    };
+    let msg = WsMessage::new(EVT_ITERATION_RESUMED, payload, correlation_id.to_string());
+    if let Ok(text) = serde_json::to_string(&msg) {
+        global_ws_bus().publish(text);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn pause_controller_idempotent_pause() {
+        let controller = PauseController::new("task-1");
+
+        // 第一次暂停请求应该成功
+        assert!(controller.request_pause("cid-1", "user-1").await);
+
+        // 第二次暂停请求应该返回 false（幂等）
+        assert!(!controller.request_pause("cid-2", "user-1").await);
+    }
+
+    #[tokio::test]
+    async fn pause_controller_idempotent_resume() {
+        let controller = PauseController::new("task-1");
+
+        // 未暂停时继续请求应该返回 false
+        assert!(!controller.request_resume("cid-1", "user-1").await);
+
+        // 设置暂停状态
+        controller.request_pause("cid-1", "user-1").await;
+        let _ = controller
+            .checkpoint_pause(1, "test", Some("cid-1"), serde_json::json!({}))
+            .await
+            .expect("checkpoint pause");
+
+        // 第一次继续请求应该成功
+        assert!(controller.request_resume("cid-2", "user-1").await);
+
+        // 第二次继续请求应该返回 false（幂等）
+        assert!(!controller.request_resume("cid-3", "user-1").await);
+    }
+
+    #[tokio::test]
+    async fn pause_controller_checkpoint_creates_snapshot() {
+        let controller = PauseController::new("task-1");
+
+        // 无暂停请求时 checkpoint 应该返回 false
+        assert!(
+            !controller
+                .checkpoint_pause(1, "running_tests", None, serde_json::json!({}))
+                .await
+                .expect("checkpoint pause")
+        );
+
+        // 有暂停请求时 checkpoint 应该返回 true 并创建快照
+        controller.request_pause("cid-1", "user-1").await;
+        assert!(
+            controller
+                .checkpoint_pause(2, "reflecting", Some("cid-1"), serde_json::json!({"k":"v"}))
+                .await
+                .expect("checkpoint pause")
+        );
+
+        let snapshot = controller.get_snapshot().await.unwrap();
+        assert_eq!(snapshot.task_id, "task-1");
+        assert_eq!(snapshot.iteration, 2);
+        assert_eq!(snapshot.stage, "reflecting");
+        assert_eq!(snapshot.run_control_state, RunControlState::Paused);
+        assert_eq!(snapshot.correlation_id, "cid-1");
+        assert_eq!(snapshot.user_id.as_deref(), Some("user-1"));
+    }
+
+    #[tokio::test]
+    async fn registry_get_or_create() {
+        let registry = PauseControllerRegistry::new();
+
+        let c1 = registry.get_or_create("task-1").await;
+        let c2 = registry.get_or_create("task-1").await;
+
+        // 应该返回同一个实例
+        assert!(Arc::ptr_eq(&c1, &c2));
+    }
+
+    #[tokio::test]
+    async fn registry_remove() {
+        let registry = PauseControllerRegistry::new();
+
+        registry.get_or_create("task-1").await;
+        assert!(registry.get("task-1").await.is_some());
+
+        registry.remove("task-1").await;
+        assert!(registry.get("task-1").await.is_none());
+    }
+}
