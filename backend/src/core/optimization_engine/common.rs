@@ -10,10 +10,10 @@ use crate::domain::models::{
     Checkpoint, EvaluationResult, IterationState, OptimizationTaskConfig, TestCase,
 };
 use crate::domain::types::{
-    ArtifactSource, CandidatePrompt, CandidateStats, IterationArtifacts, PatternHypothesis,
-    EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS,
-    EXT_CANDIDATE_RANKING, EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID,
-    OptimizationContext, RunControlState,
+    ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
+    EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
+    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, IterationArtifacts,
+    OptimizationContext, PatternHypothesis, RunControlState,
 };
 use crate::shared::ws::chrono_timestamp;
 
@@ -60,7 +60,10 @@ fn read_optional_string(ctx: &OptimizationContext, key: &str) -> Option<String> 
 }
 
 fn read_optional_usize(ctx: &OptimizationContext, key: &str) -> Option<usize> {
-    ctx.extensions.get(key).and_then(|v| v.as_u64()).map(|n| n as usize)
+    ctx.extensions
+        .get(key)
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
 }
 
 fn build_iteration_artifacts(ctx: &OptimizationContext) -> IterationArtifacts {

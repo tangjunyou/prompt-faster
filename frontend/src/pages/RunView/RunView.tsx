@@ -68,7 +68,9 @@ export function RunView() {
   const artifacts = taskStates[taskId]?.artifacts
   const [isSavingArtifacts, setIsSavingArtifacts] = useState(false)
   const [artifactSaveError, setArtifactSaveError] = useState<string | null>(null)
-  const [artifactSaveSucceededAt, setArtifactSaveSucceededAt] = useState<number | null>(null)
+  const [artifactSaveSuccessVisible, setArtifactSaveSuccessVisible] = useState(false)
+  const [artifactSaveResetVersion, setArtifactSaveResetVersion] = useState(0)
+  const artifactSaveTimerRef = useRef<number | null>(null)
 
   const handlePausedEvent = useCallback(
     (payload: IterationPausedPayload) => {
@@ -123,9 +125,18 @@ export function RunView() {
       if (payload.ok && payload.artifacts) {
         setArtifacts(taskId, payload.artifacts)
         setArtifactSaveError(null)
-        setArtifactSaveSucceededAt(Date.now())
+        setArtifactSaveResetVersion((prev) => prev + 1)
+        setArtifactSaveSuccessVisible(true)
+        if (artifactSaveTimerRef.current) {
+          window.clearTimeout(artifactSaveTimerRef.current)
+        }
+        artifactSaveTimerRef.current = window.setTimeout(
+          () => setArtifactSaveSuccessVisible(false),
+          3000,
+        )
       } else {
         setArtifactSaveError(payload.reason || '保存失败，请稍后重试')
+        setArtifactSaveSuccessVisible(false)
       }
     },
     [taskId, setArtifacts],
@@ -328,13 +339,14 @@ export function RunView() {
       {/* 中间产物编辑器 */}
       <div className="mt-6">
         <ArtifactEditor
+          key={`${taskId}-${artifactSaveResetVersion}`}
           taskId={taskId}
           artifacts={artifacts}
           onSave={handleSaveArtifacts}
           disabled={!canEditArtifacts(taskId)}
           isSaving={isSavingArtifacts}
           saveError={artifactSaveError}
-          saveSucceededAt={artifactSaveSucceededAt}
+          showSuccess={artifactSaveSuccessVisible}
         />
       </div>
     </section>

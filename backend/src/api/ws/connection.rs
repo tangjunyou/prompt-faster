@@ -495,8 +495,11 @@ async fn handle_artifact_update(
                 artifacts: updated_artifacts,
                 edited_by: user_id.to_string(),
             };
-            let broadcast_msg =
-                WsMessage::new(EVT_ARTIFACT_UPDATED, broadcast_payload, cmd.correlation_id.clone());
+            let broadcast_msg = WsMessage::new(
+                EVT_ARTIFACT_UPDATED,
+                broadcast_payload,
+                cmd.correlation_id.clone(),
+            );
             if let Ok(text) = serde_json::to_string(&broadcast_msg) {
                 global_ws_bus().publish(text);
             }

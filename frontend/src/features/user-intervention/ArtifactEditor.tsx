@@ -3,7 +3,7 @@
  * 支持编辑规律假设和候选 Prompt
  */
 
-import { useState, useCallback, useMemo, useEffect, lazy, Suspense } from 'react'
+import { useState, useCallback, useMemo, lazy, Suspense } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -28,8 +28,8 @@ export interface ArtifactEditorProps {
   isSaving?: boolean
   /** 保存失败错误信息 */
   saveError?: string | null
-  /** 保存成功时间戳 */
-  saveSucceededAt?: number | null
+  /** 保存成功提示是否显示 */
+  showSuccess?: boolean
 }
 
 /**
@@ -43,7 +43,7 @@ export function ArtifactEditor({
   disabled = false,
   isSaving = false,
   saveError = null,
-  saveSucceededAt = null,
+  showSuccess = false,
 }: ArtifactEditorProps) {
   // taskId 保留用于未来扩展（如日志记录）
   void _taskId
@@ -57,8 +57,6 @@ export function ArtifactEditor({
   const [activeTab, setActiveTab] = useState<'patterns' | 'prompts'>('patterns')
   // 当前编辑的项目索引
   const [selectedIndex, setSelectedIndex] = useState<number>(0)
-  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
-  const [showSuccess, setShowSuccess] = useState(false)
   const editorFallback = (
     <div className="p-4 h-[300px] text-sm text-muted-foreground">
       正在加载编辑器...
@@ -150,16 +148,6 @@ export function ArtifactEditor({
     }
     return editingPrompts[selectedIndex]?.content ?? ''
   }, [isEditing, activeTab, editingPatterns, editingPrompts, selectedIndex])
-
-  useEffect(() => {
-    if (!saveSucceededAt) return
-    if (lastSuccessAt === saveSucceededAt) return
-    setLastSuccessAt(saveSucceededAt)
-    setIsEditing(false)
-    setShowSuccess(true)
-    const timer = window.setTimeout(() => setShowSuccess(false), 3000)
-    return () => window.clearTimeout(timer)
-  }, [saveSucceededAt, lastSuccessAt])
 
   // 空状态
   if (!artifacts || (artifacts.patterns.length === 0 && artifacts.candidatePrompts.length === 0)) {

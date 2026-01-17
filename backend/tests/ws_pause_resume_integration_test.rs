@@ -12,12 +12,12 @@ use tokio_tungstenite::connect_async;
 
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
-use prompt_faster::core::optimization_engine::checkpoint_pause_if_requested;
 use prompt_faster::core::iteration_engine::pause_state::global_pause_registry;
+use prompt_faster::core::optimization_engine::checkpoint_pause_if_requested;
 use prompt_faster::domain::models::{IterationState, OutputLength, Rule, RuleSystem, RuleTags};
 use prompt_faster::domain::types::{
-    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState,
-    EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT,
+    EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, ExecutionTargetConfig, OptimizationConfig,
+    OptimizationContext, RunControlState,
 };
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
@@ -318,8 +318,7 @@ async fn ws_pause_resume_ack_and_events() {
         .await
         .expect("checkpoint pause");
 
-    let paused_evt =
-        read_message_of_type_for_task(&mut socket, "iteration:paused", task_id).await;
+    let paused_evt = read_message_of_type_for_task(&mut socket, "iteration:paused", task_id).await;
     assert_eq!(paused_evt["payload"]["taskId"], task_id);
     assert_eq!(paused_evt["correlationId"], "cid-1");
 
@@ -512,7 +511,10 @@ async fn ws_artifact_update_rejected_when_not_paused() {
 
     let update_ack = read_message_of_type(&mut socket, "artifact:update:ack").await;
     assert_eq!(update_ack["payload"]["ok"], false);
-    assert_eq!(update_ack["payload"]["reason"].as_str(), Some("task_not_paused"));
+    assert_eq!(
+        update_ack["payload"]["reason"].as_str(),
+        Some("task_not_paused")
+    );
 }
 
 #[tokio::test]
@@ -567,8 +569,7 @@ async fn ws_pause_edit_resume_flow_applies_artifacts() {
         (paused, ctx)
     });
 
-    let paused_evt =
-        read_message_of_type_for_task(&mut socket, "iteration:paused", task_id).await;
+    let paused_evt = read_message_of_type_for_task(&mut socket, "iteration:paused", task_id).await;
     assert_eq!(paused_evt["payload"]["taskId"], task_id);
 
     let update_cmd = serde_json::json!({

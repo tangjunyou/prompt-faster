@@ -281,9 +281,9 @@ impl PauseController {
         }
 
         let mut snapshot_guard = self.snapshot.lock().await;
-        let snapshot = snapshot_guard.as_mut().ok_or_else(|| {
-            PauseStateError::Persist("暂停快照不存在".to_string())
-        })?;
+        let snapshot = snapshot_guard
+            .as_mut()
+            .ok_or_else(|| PauseStateError::Persist("暂停快照不存在".to_string()))?;
 
         // 获取当前产物用于验证
         let current_artifacts: Option<IterationArtifacts> = snapshot
@@ -299,9 +299,9 @@ impl PauseController {
 
         // 验证更新合法性（禁止新增 ID）
         if let Some(ref current) = current_artifacts {
-            current.validate_update(updated).map_err(|reason| {
-                PauseStateError::Persist(reason)
-            })?;
+            current
+                .validate_update(updated)
+                .map_err(|reason| PauseStateError::Persist(reason))?;
         }
 
         // 验证内容长度限制

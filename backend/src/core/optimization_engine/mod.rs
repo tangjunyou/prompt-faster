@@ -20,8 +20,8 @@ use crate::domain::models::{
 };
 use crate::domain::types::OptimizationContext;
 
-pub use error::OptimizationEngineError;
 pub use common::checkpoint_pause_if_requested;
+pub use error::OptimizationEngineError;
 
 #[async_trait]
 pub trait OptimizationEngine: Send + Sync {

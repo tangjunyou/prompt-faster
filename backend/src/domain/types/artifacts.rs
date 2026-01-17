@@ -3,10 +3,10 @@
 //! 定义用于用户编辑的中间产物类型，支持规律假设和候选 Prompt 的查看与编辑。
 //! 注意：这些类型是面向编辑视图的轻量结构，与 `RuleSystem` 有映射关系。
 
+use crate::domain::models::optimization_task_config::OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
-use crate::domain::models::optimization_task_config::OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
 
 /// 产物来源
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
@@ -115,7 +115,10 @@ impl IterationArtifacts {
 
     /// 获取所有候选 Prompt 的 ID 集合
     pub fn candidate_prompt_ids(&self) -> Vec<&str> {
-        self.candidate_prompts.iter().map(|p| p.id.as_str()).collect()
+        self.candidate_prompts
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect()
     }
 
     /// 验证更新操作的合法性（仅允许修改/删除已有 id，禁止新增）
@@ -124,8 +127,11 @@ impl IterationArtifacts {
     pub fn validate_update(&self, updated: &IterationArtifacts) -> Result<(), String> {
         let existing_pattern_ids: std::collections::HashSet<&str> =
             self.patterns.iter().map(|p| p.id.as_str()).collect();
-        let existing_prompt_ids: std::collections::HashSet<&str> =
-            self.candidate_prompts.iter().map(|p| p.id.as_str()).collect();
+        let existing_prompt_ids: std::collections::HashSet<&str> = self
+            .candidate_prompts
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect();
 
         // 检查是否有新增的规律假设 ID
         for pattern in &updated.patterns {
@@ -156,17 +162,13 @@ impl IterationArtifacts {
 
         for pattern in &self.patterns {
             if pattern.pattern.as_bytes().len() > max_bytes {
-                return Err(format!(
-                    "规律假设内容过长（超过 {max_bytes} 字节）"
-                ));
+                return Err(format!("规律假设内容过长（超过 {max_bytes} 字节）"));
             }
         }
 
         for prompt in &self.candidate_prompts {
             if prompt.content.as_bytes().len() > max_bytes {
-                return Err(format!(
-                    "候选 Prompt 内容过长（超过 {max_bytes} 字节）"
-                ));
+                return Err(format!("候选 Prompt 内容过长（超过 {max_bytes} 字节）"));
             }
         }
 
@@ -179,24 +181,32 @@ impl IterationArtifacts {
     /// - 将编辑后的条目来源标记为 `UserEdited`
     /// - 删除的条目不会出现在结果中
     pub fn apply_update(&self, updated: &IterationArtifacts) -> Self {
-        let updated_pattern_map: std::collections::HashMap<&str, &PatternHypothesis> =
-            updated.patterns.iter().map(|p| (p.id.as_str(), p)).collect();
-        let updated_prompt_map: std::collections::HashMap<&str, &CandidatePrompt> =
-            updated.candidate_prompts.iter().map(|p| (p.id.as_str(), p)).collect();
+        let updated_pattern_map: std::collections::HashMap<&str, &PatternHypothesis> = updated
+            .patterns
+            .iter()
+            .map(|p| (p.id.as_str(), p))
+            .collect();
+        let updated_prompt_map: std::collections::HashMap<&str, &CandidatePrompt> = updated
+            .candidate_prompts
+            .iter()
+            .map(|p| (p.id.as_str(), p))
+            .collect();
 
         // 应用规律假设更新
         let new_patterns: Vec<PatternHypothesis> = self
             .patterns
             .iter()
             .filter_map(|original| {
-                updated_pattern_map.get(original.id.as_str()).map(|updated| {
-                    let mut result = (*updated).clone();
-                    // 如果内容有变化，标记为用户编辑
-                    if result.pattern != original.pattern {
-                        result.source = ArtifactSource::UserEdited;
-                    }
-                    result
-                })
+                updated_pattern_map
+                    .get(original.id.as_str())
+                    .map(|updated| {
+                        let mut result = (*updated).clone();
+                        // 如果内容有变化，标记为用户编辑
+                        if result.pattern != original.pattern {
+                            result.source = ArtifactSource::UserEdited;
+                        }
+                        result
+                    })
             })
             .collect();
 

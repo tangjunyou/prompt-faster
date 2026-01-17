@@ -58,10 +58,8 @@ describe('ArtifactEditor', () => {
 
   it('keeps editing until save succeeds and shows success message', async () => {
     const onSave = vi.fn()
-    const successAt = Date.now()
-
     const { rerender } = render(
-      <ArtifactEditor taskId="task-1" artifacts={baseArtifacts} onSave={onSave} />
+      <ArtifactEditor key="initial" taskId="task-1" artifacts={baseArtifacts} onSave={onSave} />
     )
 
     fireEvent.click(screen.getByText('编辑'))
@@ -76,10 +74,11 @@ describe('ArtifactEditor', () => {
 
     rerender(
       <ArtifactEditor
+        key="success"
         taskId="task-1"
         artifacts={baseArtifacts}
         onSave={onSave}
-        saveSucceededAt={successAt}
+        showSuccess
       />
     )
 
