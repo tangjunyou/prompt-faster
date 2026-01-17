@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::domain::types::{
     EvaluationResultSummary, IterationArtifacts, IterationHistoryDetail, IterationHistorySummary,
-    IterationStatus, unix_ms_to_iso8601,
+    unix_ms_to_iso8601,
 };
 
 /// 迭代历史数据库行
@@ -180,7 +180,7 @@ impl IterationRepo {
             pass_rate: row.pass_rate,
             total_cases: row.total_cases,
             passed_cases: row.passed_cases,
-            status: IterationStatus::from_str(&row.status),
+            status: row.status.parse().unwrap_or_default(),
         }
     }
 
@@ -216,7 +216,7 @@ impl IterationRepo {
             pass_rate: row.pass_rate,
             total_cases: row.total_cases,
             passed_cases: row.passed_cases,
-            status: IterationStatus::from_str(&row.status),
+            status: row.status.parse().unwrap_or_default(),
             artifacts,
             evaluation_results,
             reflection_summary: row.reflection_summary,
@@ -227,6 +227,7 @@ impl IterationRepo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::types::IterationStatus;
 
     #[test]
     fn test_row_to_summary() {

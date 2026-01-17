@@ -4,6 +4,7 @@
 //! 这些类型是面向 API 响应的结构，与数据库表结构有映射关系。
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use ts_rs::TS;
 use utoipa::ToSchema;
 
@@ -26,17 +27,6 @@ pub enum IterationStatus {
 }
 
 impl IterationStatus {
-    /// 从字符串解析状态
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "running" => Self::Running,
-            "completed" => Self::Completed,
-            "failed" => Self::Failed,
-            "terminated" => Self::Terminated,
-            _ => Self::Running,
-        }
-    }
-
     /// 转换为字符串
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -45,6 +35,20 @@ impl IterationStatus {
             Self::Failed => "failed",
             Self::Terminated => "terminated",
         }
+    }
+}
+
+impl FromStr for IterationStatus {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "running" => Self::Running,
+            "completed" => Self::Completed,
+            "failed" => Self::Failed,
+            "terminated" => Self::Terminated,
+            _ => Self::Running,
+        })
     }
 }
 
@@ -124,7 +128,7 @@ pub struct IterationHistoryDetail {
 pub fn unix_ms_to_iso8601(unix_ms: i64) -> String {
     use time::OffsetDateTime;
     let secs = unix_ms / 1000;
-    let nanos = ((unix_ms % 1000) * 1_000_000) as i64;
+    let nanos = (unix_ms % 1000) * 1_000_000;
     OffsetDateTime::from_unix_timestamp(secs)
         .ok()
         .and_then(|dt| dt.checked_add(time::Duration::nanoseconds(nanos)))
@@ -142,20 +146,23 @@ mod tests {
     #[test]
     fn test_iteration_status_from_str() {
         assert_eq!(
-            IterationStatus::from_str("running"),
+            "running".parse::<IterationStatus>().unwrap(),
             IterationStatus::Running
         );
         assert_eq!(
-            IterationStatus::from_str("completed"),
+            "completed".parse::<IterationStatus>().unwrap(),
             IterationStatus::Completed
         );
-        assert_eq!(IterationStatus::from_str("failed"), IterationStatus::Failed);
         assert_eq!(
-            IterationStatus::from_str("terminated"),
+            "failed".parse::<IterationStatus>().unwrap(),
+            IterationStatus::Failed
+        );
+        assert_eq!(
+            "terminated".parse::<IterationStatus>().unwrap(),
             IterationStatus::Terminated
         );
         assert_eq!(
-            IterationStatus::from_str("unknown"),
+            "unknown".parse::<IterationStatus>().unwrap(),
             IterationStatus::Running
         );
     }
