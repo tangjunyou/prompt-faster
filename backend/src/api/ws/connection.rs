@@ -15,8 +15,11 @@ use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::types::RunControlState;
 use crate::infra::db::repositories::{OptimizationTaskRepo, OptimizationTaskRepoError};
 use crate::shared::ws::{
-    CMD_TASK_PAUSE, CMD_TASK_RESUME, EVT_ITERATION_PAUSED, EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK,
-    IterationPausedPayload, TaskControlAckPayload, TaskControlPayload, WsMessage,
+    ArtifactGetAckPayload, ArtifactGetPayload, ArtifactUpdateAckPayload, ArtifactUpdatePayload,
+    ArtifactUpdatedPayload, CMD_ARTIFACT_GET, CMD_ARTIFACT_UPDATE, CMD_TASK_PAUSE, CMD_TASK_RESUME,
+    EVT_ARTIFACT_GET_ACK, EVT_ARTIFACT_UPDATE_ACK, EVT_ARTIFACT_UPDATED, EVT_ITERATION_PAUSED,
+    EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK, IterationPausedPayload, TaskControlAckPayload,
+    TaskControlPayload, WsMessage,
 };
 use crate::shared::ws_bus::global_ws_bus;
 
@@ -64,6 +67,8 @@ fn ack_event_type(event_type: &str) -> Option<&'static str> {
     match event_type {
         CMD_TASK_PAUSE => Some(EVT_TASK_PAUSE_ACK),
         CMD_TASK_RESUME => Some(EVT_TASK_RESUME_ACK),
+        CMD_ARTIFACT_GET => Some(EVT_ARTIFACT_GET_ACK),
+        CMD_ARTIFACT_UPDATE => Some(EVT_ARTIFACT_UPDATE_ACK),
         _ => None,
     }
 }
@@ -74,6 +79,29 @@ async fn handle_command(
     text: &str,
     ack_sender: &tokio::sync::mpsc::UnboundedSender<Message>,
 ) {
+    // 先解析基础结构获取命令类型
+    let base: ClientCommand<serde_json::Value> = match serde_json::from_str(text) {
+        Ok(cmd) => cmd,
+        Err(err) => {
+            warn!(error = %err, "WS command parse failed");
+            return;
+        }
+    };
+
+    // 根据命令类型分发处理
+    match base.event_type.as_str() {
+        CMD_ARTIFACT_GET => {
+            handle_artifact_get(state, user_id, text, ack_sender).await;
+            return;
+        }
+        CMD_ARTIFACT_UPDATE => {
+            handle_artifact_update(state, user_id, text, ack_sender).await;
+            return;
+        }
+        _ => {}
+    }
+
+    // 处理任务控制命令（pause/resume）
     let cmd: ClientCommand<TaskControlPayload> = match serde_json::from_str(text) {
         Ok(cmd) => cmd,
         Err(err) => {
@@ -263,6 +291,234 @@ async fn handle_command(
                 if let Ok(text) = serde_json::to_string(&msg) {
                     let _ = ack_sender.send(Message::Text(text.into()));
                 }
+            }
+        }
+    }
+}
+
+/// 处理 artifact:get 命令
+async fn handle_artifact_get(
+    state: &AppState,
+    user_id: &str,
+    text: &str,
+    ack_sender: &tokio::sync::mpsc::UnboundedSender<Message>,
+) {
+    let cmd: ClientCommand<ArtifactGetPayload> = match serde_json::from_str(text) {
+        Ok(cmd) => cmd,
+        Err(err) => {
+            warn!(error = %err, "artifact:get command parse failed");
+            return;
+        }
+    };
+
+    if cmd.correlation_id.trim().is_empty() {
+        warn!("artifact:get command missing correlationId");
+        return;
+    }
+
+    let task_id = cmd.payload.task_id.trim().to_string();
+    if task_id.is_empty() {
+        let ack = ArtifactGetAckPayload {
+            task_id: "".to_string(),
+            ok: false,
+            artifacts: None,
+            reason: Some("missing_task_id".to_string()),
+        };
+        let msg = WsMessage::new(EVT_ARTIFACT_GET_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    // 权限校验
+    if let Err(err) = validate_task_ownership(state, user_id, &task_id).await {
+        warn!(
+            correlation_id = %cmd.correlation_id,
+            user_id = %user_id,
+            task_id = %task_id,
+            error = %err,
+            "artifact:get rejected: task ownership check failed"
+        );
+        let ack = ArtifactGetAckPayload {
+            task_id: task_id.clone(),
+            ok: false,
+            artifacts: None,
+            reason: Some("task_not_found_or_forbidden".to_string()),
+        };
+        let msg = WsMessage::new(EVT_ARTIFACT_GET_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    let registry = global_pause_registry();
+    let controller = registry.get_or_create(&task_id).await;
+
+    // 获取产物
+    let artifacts = controller.get_artifacts().await;
+
+    info!(
+        correlation_id = %cmd.correlation_id,
+        user_id = %user_id,
+        task_id = %task_id,
+        has_artifacts = artifacts.is_some(),
+        "artifact:get request"
+    );
+
+    let ack = ArtifactGetAckPayload {
+        task_id: task_id.clone(),
+        ok: true,
+        artifacts,
+        reason: None,
+    };
+    let msg = WsMessage::new(EVT_ARTIFACT_GET_ACK, ack, cmd.correlation_id.clone());
+    if let Ok(text) = serde_json::to_string(&msg) {
+        let _ = ack_sender.send(Message::Text(text.into()));
+    }
+}
+
+/// 处理 artifact:update 命令
+async fn handle_artifact_update(
+    state: &AppState,
+    user_id: &str,
+    text: &str,
+    ack_sender: &tokio::sync::mpsc::UnboundedSender<Message>,
+) {
+    let cmd: ClientCommand<ArtifactUpdatePayload> = match serde_json::from_str(text) {
+        Ok(cmd) => cmd,
+        Err(err) => {
+            warn!(error = %err, "artifact:update command parse failed");
+            return;
+        }
+    };
+
+    if cmd.correlation_id.trim().is_empty() {
+        warn!("artifact:update command missing correlationId");
+        return;
+    }
+
+    let task_id = cmd.payload.task_id.trim().to_string();
+    if task_id.is_empty() {
+        let ack = ArtifactUpdateAckPayload {
+            task_id: "".to_string(),
+            ok: false,
+            applied: false,
+            artifacts: None,
+            reason: Some("missing_task_id".to_string()),
+        };
+        let msg = WsMessage::new(EVT_ARTIFACT_UPDATE_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    // 权限校验
+    if let Err(err) = validate_task_ownership(state, user_id, &task_id).await {
+        warn!(
+            correlation_id = %cmd.correlation_id,
+            user_id = %user_id,
+            task_id = %task_id,
+            error = %err,
+            "artifact:update rejected: task ownership check failed"
+        );
+        let ack = ArtifactUpdateAckPayload {
+            task_id: task_id.clone(),
+            ok: false,
+            applied: false,
+            artifacts: None,
+            reason: Some("task_not_found_or_forbidden".to_string()),
+        };
+        let msg = WsMessage::new(EVT_ARTIFACT_UPDATE_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    let registry = global_pause_registry();
+    let controller = registry.get_or_create(&task_id).await;
+
+    // 状态二次校验：必须处于 Paused 状态
+    if !controller.is_paused() {
+        warn!(
+            correlation_id = %cmd.correlation_id,
+            user_id = %user_id,
+            task_id = %task_id,
+            "artifact:update rejected: task not paused"
+        );
+        let ack = ArtifactUpdateAckPayload {
+            task_id: task_id.clone(),
+            ok: false,
+            applied: false,
+            artifacts: None,
+            reason: Some("task_not_paused".to_string()),
+        };
+        let msg = WsMessage::new(EVT_ARTIFACT_UPDATE_ACK, ack, cmd.correlation_id.clone());
+        if let Ok(text) = serde_json::to_string(&msg) {
+            let _ = ack_sender.send(Message::Text(text.into()));
+        }
+        return;
+    }
+
+    // 执行更新
+    match controller
+        .update_artifacts(&cmd.payload.artifacts, &cmd.correlation_id, user_id)
+        .await
+    {
+        Ok(updated_artifacts) => {
+            info!(
+                correlation_id = %cmd.correlation_id,
+                user_id = %user_id,
+                task_id = %task_id,
+                "artifact:update success"
+            );
+
+            // 发送 ACK
+            let ack = ArtifactUpdateAckPayload {
+                task_id: task_id.clone(),
+                ok: true,
+                applied: true,
+                artifacts: Some(updated_artifacts.clone()),
+                reason: None,
+            };
+            let msg = WsMessage::new(EVT_ARTIFACT_UPDATE_ACK, ack, cmd.correlation_id.clone());
+            if let Ok(text) = serde_json::to_string(&msg) {
+                let _ = ack_sender.send(Message::Text(text.into()));
+            }
+
+            // 广播 artifact:updated 事件
+            let broadcast_payload = ArtifactUpdatedPayload {
+                task_id: task_id.clone(),
+                artifacts: updated_artifacts,
+                edited_by: user_id.to_string(),
+            };
+            let broadcast_msg =
+                WsMessage::new(EVT_ARTIFACT_UPDATED, broadcast_payload, cmd.correlation_id.clone());
+            if let Ok(text) = serde_json::to_string(&broadcast_msg) {
+                global_ws_bus().publish(text);
+            }
+        }
+        Err(err) => {
+            warn!(
+                correlation_id = %cmd.correlation_id,
+                user_id = %user_id,
+                task_id = %task_id,
+                error = %err,
+                "artifact:update failed"
+            );
+            let ack = ArtifactUpdateAckPayload {
+                task_id: task_id.clone(),
+                ok: false,
+                applied: false,
+                artifacts: None,
+                reason: Some(err.to_string()),
+            };
+            let msg = WsMessage::new(EVT_ARTIFACT_UPDATE_ACK, ack, cmd.correlation_id.clone());
+            if let Ok(text) = serde_json::to_string(&msg) {
+                let _ = ack_sender.send(Message::Text(text.into()));
             }
         }
     }
