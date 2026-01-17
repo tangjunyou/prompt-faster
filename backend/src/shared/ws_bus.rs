@@ -29,6 +29,12 @@ impl WsEventBus {
     }
 }
 
+impl Default for WsEventBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 static WS_BUS: OnceLock<Arc<WsEventBus>> = OnceLock::new();
 
 /// 获取全局 WS 事件总线
