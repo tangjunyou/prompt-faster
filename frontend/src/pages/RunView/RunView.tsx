@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router'
 
 import { IterationGraph } from '@/components/nodes/IterationGraph'
 import { StageHistoryPanel, StageIndicator, StreamingText } from '@/components/streaming'
 import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
 import { usePrefersReducedMotion, useWebSocket } from '@/hooks'
-import { ArtifactEditor, GuidanceInput, PauseResumeControl } from '@/features/user-intervention'
+import { ArtifactEditor, GuidanceInput, PauseResumeControl, HistoryPanel } from '@/features/user-intervention'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
   createInitialIterationGraphEdgeFlowStates,
@@ -27,8 +28,10 @@ import type { IterationArtifacts } from '@/types/generated/models/IterationArtif
 import type { IterationPausedPayload, IterationResumedPayload } from '@/types/generated/ws'
 import type { ArtifactGetAckPayload, ArtifactUpdateAckPayload, ArtifactUpdatedPayload } from '@/types/generated/ws'
 import type { GuidanceSendAckPayload, GuidanceSentPayload, GuidanceAppliedPayload } from '@/types/generated/ws'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export function RunView() {
+  const navigate = useNavigate()
   const taskId = useMemo(() => {
     const params = new URLSearchParams(window.location.search)
     return params.get('taskId') ?? 'demo-task'
@@ -87,6 +90,7 @@ export function RunView() {
   const [artifactSaveSuccessVisible, setArtifactSaveSuccessVisible] = useState(false)
   const [artifactSaveResetVersion, setArtifactSaveResetVersion] = useState(0)
   const artifactSaveTimerRef = useRef<number | null>(null)
+  const [rightPanelTab, setRightPanelTab] = useState<'current' | 'history'>('current')
 
   const handlePausedEvent = useCallback(
     (payload: IterationPausedPayload) => {
@@ -274,6 +278,10 @@ export function RunView() {
     [taskId, sendCommand, setSendingGuidance, setGuidanceError],
   )
 
+  const handleStartOptimization = useCallback(() => {
+    navigate('/workspace')
+  }, [navigate])
+
   useEffect(() => {
     edgeFlowMachineRef.current = createIterationGraphEdgeFlowMachine(setEdgeFlowStates)
     return () => {
@@ -377,7 +385,7 @@ export function RunView() {
         />
 
         <aside
-          className="flex flex-col rounded-lg border bg-white lg:col-span-1"
+          className="flex h-[560px] flex-col rounded-lg border bg-white lg:col-span-1"
           data-testid="thinking-panel"
         >
           <div className="border-b px-4 py-2">
@@ -407,28 +415,40 @@ export function RunView() {
               setThinkingState((prev) => setAutoScrollLocked(prev, isLocked))
             }
             prefersReducedMotion={prefersReducedMotion}
-            className="m-2 h-[500px] flex-1"
+            className="m-2 flex-1"
           />
           <StageHistoryPanel
             history={thinkingState.stageHistory}
             prefersReducedMotion={prefersReducedMotion}
             className="border-t"
           />
+          <div className="border-t p-3">
+            <Tabs
+              value={rightPanelTab}
+              onValueChange={(value) => setRightPanelTab(value as 'current' | 'history')}
+            >
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="current">当前产物</TabsTrigger>
+                <TabsTrigger value="history">历史记录</TabsTrigger>
+              </TabsList>
+              <TabsContent value="current" className="mt-3 max-h-[280px] overflow-y-auto">
+                <ArtifactEditor
+                  key={`${taskId}-${artifactSaveResetVersion}`}
+                  taskId={taskId}
+                  artifacts={artifacts}
+                  onSave={handleSaveArtifacts}
+                  disabled={!canEditArtifacts(taskId)}
+                  isSaving={isSavingArtifacts}
+                  saveError={artifactSaveError}
+                  showSuccess={artifactSaveSuccessVisible}
+                />
+              </TabsContent>
+              <TabsContent value="history" className="mt-3 max-h-[280px] overflow-y-auto">
+                <HistoryPanel taskId={taskId} onStartOptimization={handleStartOptimization} />
+              </TabsContent>
+            </Tabs>
+          </div>
         </aside>
-      </div>
-
-      {/* 中间产物编辑器 */}
-      <div className="mt-6">
-        <ArtifactEditor
-          key={`${taskId}-${artifactSaveResetVersion}`}
-          taskId={taskId}
-          artifacts={artifacts}
-          onSave={handleSaveArtifacts}
-          disabled={!canEditArtifacts(taskId)}
-          isSaving={isSavingArtifacts}
-          saveError={artifactSaveError}
-          showSuccess={artifactSaveSuccessVisible}
-        />
       </div>
 
       {/* 对话引导输入 */}
@@ -442,6 +462,7 @@ export function RunView() {
           sendError={guidanceError}
         />
       </div>
+
     </section>
   )
 }

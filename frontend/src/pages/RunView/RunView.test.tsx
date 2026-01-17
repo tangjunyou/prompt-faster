@@ -1,5 +1,26 @@
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router'
+
+const createTestQueryClient = () =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: 0,
+      },
+    },
+  })
+
+function renderWithQueryClient(ui: React.ReactElement) {
+  const queryClient = createTestQueryClient()
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>
+  )
+}
 
 describe('RunView', () => {
   beforeEach(() => {
@@ -18,7 +39,7 @@ describe('RunView', () => {
 
   it('renders node graph container and 4 base nodes', async () => {
     const { RunView } = await import('./RunView')
-    render(<RunView />)
+    renderWithQueryClient(<RunView />)
 
     expect(screen.getByTestId('run-view')).toBeInTheDocument()
     expect(screen.getByTestId('iteration-graph')).toBeInTheDocument()
@@ -32,7 +53,7 @@ describe('RunView', () => {
   it('回放后 Thinking Panel 内容应追加', async () => {
     vi.useFakeTimers()
     const { RunView } = await import('./RunView')
-    render(<RunView />)
+    renderWithQueryClient(<RunView />)
 
     const replayButton = screen.getByTestId('runview-demo-replay')
     fireEvent.click(replayButton)

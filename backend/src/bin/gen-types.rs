@@ -45,7 +45,9 @@ use prompt_faster::domain::models::{
     RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
 use prompt_faster::domain::types::{
-    ArtifactSource, CandidatePrompt, IterationArtifacts, PatternHypothesis, RunControlState,
+    ArtifactSource, CandidatePrompt, EvaluationResultSummary, IterationArtifacts,
+    IterationHistoryDetail, IterationHistorySummary, IterationStatus, PatternHypothesis,
+    RunControlState,
 };
 use prompt_faster::infra::external::dify_client::{
     DifyInputVariable, DifyValueType, DifyVariablesResponse, TestConnectionResult,
@@ -186,6 +188,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ArtifactUpdatePayload::export_all_to(&out_dir)?;
     ArtifactUpdateAckPayload::export_all_to(&out_dir)?;
     ArtifactUpdatedPayload::export_all_to(&out_dir)?;
+
+    // 历史迭代类型
+    IterationStatus::export_all_to(&out_dir)?;
+    EvaluationResultSummary::export_all_to(&out_dir)?;
+    IterationHistorySummary::export_all_to(&out_dir)?;
+    IterationHistoryDetail::export_all_to(&out_dir)?;
 
     Ok(())
 }

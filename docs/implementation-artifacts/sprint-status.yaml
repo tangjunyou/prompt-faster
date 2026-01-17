@@ -118,7 +118,7 @@ development_status:
   6-1-pause-and-resume-iteration: done
   6-2-edit-intermediate-artifacts: done
   6-3-dialogue-guidance-for-teacher-model: done
-  6-4-historical-iteration-artifacts-view: backlog
+  6-4-historical-iteration-artifacts-view: done
   6-5-iteration-control-add-rounds-manual-terminate: backlog
   epic-6-retrospective: optional
 

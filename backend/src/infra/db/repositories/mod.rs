@@ -2,6 +2,7 @@
 //! 数据库访问的唯一入口
 
 pub mod credential_repo;
+pub mod iteration_repo;
 pub mod migration_repo;
 pub mod optimization_task_repo;
 pub mod teacher_settings_repo;
@@ -22,4 +23,5 @@ pub use teacher_settings_repo::{
 };
 pub use test_set_repo::{TestSetRepo, TestSetRepoError};
 pub use user_repo::{UserRepo, UserRepoError};
+pub use iteration_repo::{IterationRepo, IterationRepoError};
 pub use workspace_repo::{WorkspaceRepo, WorkspaceRepoError};

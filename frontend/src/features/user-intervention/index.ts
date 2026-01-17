@@ -11,3 +11,11 @@ export type { ArtifactEditorProps } from './ArtifactEditor'
 
 export { GuidanceInput } from './GuidanceInput'
 export type { GuidanceInputProps, UserGuidance, GuidanceStatus } from './GuidanceInput'
+
+export {
+  HistoryPanel,
+  IterationHistoryItem,
+  HistoryDetailView,
+  useIterationHistory,
+  useIterationDetail,
+} from './history'

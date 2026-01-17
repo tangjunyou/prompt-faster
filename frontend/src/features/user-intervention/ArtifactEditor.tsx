@@ -21,9 +21,11 @@ export interface ArtifactEditorProps {
   /** 产物数据 */
   artifacts: IterationArtifacts | undefined
   /** 保存回调 */
-  onSave: (artifacts: IterationArtifacts, correlationId: string) => void
+  onSave?: (artifacts: IterationArtifacts, correlationId: string) => void
   /** 是否禁用（非 Paused 状态） */
   disabled?: boolean
+  /** 是否只读模式（历史产物查看） */
+  readOnly?: boolean
   /** 是否正在保存 */
   isSaving?: boolean
   /** 保存失败错误信息 */
@@ -41,6 +43,7 @@ export function ArtifactEditor({
   artifacts,
   onSave,
   disabled = false,
+  readOnly = false,
   isSaving = false,
   saveError = null,
   showSuccess = false,
@@ -63,6 +66,26 @@ export function ArtifactEditor({
     </div>
   )
 
+  const renderReadOnlyViewer = (value: string) => (
+    <Suspense fallback={editorFallback}>
+      <MonacoEditor
+        height="300px"
+        language="markdown"
+        value={value}
+        options={{
+          minimap: { enabled: false },
+          lineNumbers: 'off',
+          wordWrap: 'on',
+          fontSize: 14,
+          padding: { top: 12 },
+          readOnly: true,
+          domReadOnly: true,
+        }}
+        theme="vs-light"
+      />
+    </Suspense>
+  )
+
   // 进入编辑模式
   const handleStartEdit = useCallback(() => {
     if (!artifacts) return
@@ -82,6 +105,7 @@ export function ArtifactEditor({
 
   // 保存编辑
   const handleSave = useCallback(() => {
+    if (!onSave) return
     const correlationId = `cid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
     const updatedArtifacts: IterationArtifacts = {
       patterns: editingPatterns,
@@ -157,12 +181,14 @@ export function ArtifactEditor({
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            中间产物
+            {readOnly ? '历史产物' : '中间产物'}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground text-sm">暂无可编辑的产物</p>
-          {disabled ? (
+          <p className="text-muted-foreground text-sm">
+            {readOnly ? '暂无历史产物' : '暂无可编辑的产物'}
+          </p>
+          {!readOnly && disabled ? (
             <>
               <div className="mt-3">
                 <Button
@@ -190,52 +216,59 @@ export function ArtifactEditor({
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            中间产物
+            {readOnly ? '历史产物' : '中间产物'}
           </CardTitle>
-          <div className="flex items-center gap-2">
-            {isEditing ? (
-              <>
+          {!readOnly && (
+            <div className="flex items-center gap-2">
+              {isEditing ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancel}
+                    disabled={isSaving}
+                    className="min-w-[44px] min-h-[44px]"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    取消
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="min-w-[44px] min-h-[44px]"
+                  >
+                    <Save className="h-4 w-4 mr-1" />
+                    {isSaving ? '保存中...' : '保存'}
+                  </Button>
+                </>
+              ) : (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleCancel}
-                  disabled={isSaving}
+                  onClick={handleStartEdit}
+                  disabled={disabled}
                   className="min-w-[44px] min-h-[44px]"
+                  title={disabled ? '请先暂停任务再编辑' : '编辑产物'}
                 >
-                  <X className="h-4 w-4 mr-1" />
-                  取消
+                  <Pencil className="h-4 w-4 mr-1" />
+                  编辑
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="min-w-[44px] min-h-[44px]"
-                >
-                  <Save className="h-4 w-4 mr-1" />
-                  {isSaving ? '保存中...' : '保存'}
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleStartEdit}
-                disabled={disabled}
-                className="min-w-[44px] min-h-[44px]"
-                title={disabled ? '请先暂停任务再编辑' : '编辑产物'}
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                编辑
-              </Button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
-        {isEditing && (
+        {readOnly && (
+          <p className="text-sm text-muted-foreground mt-2">
+            📜 历史记录仅供查看
+          </p>
+        )}
+        {!readOnly && isEditing && (
           <p className="text-sm text-muted-foreground mt-2">
             💡 修改后的内容将用于后续迭代
           </p>
         )}
-        {disabled && !isEditing && (
+        {!readOnly && disabled && !isEditing && (
           <p className="text-sm text-amber-600 mt-2">
             ⚠️ 请先暂停任务再编辑
           </p>
@@ -335,6 +368,8 @@ export function ArtifactEditor({
                       theme="vs-light"
                     />
                   </Suspense>
+                ) : readOnly ? (
+                  renderReadOnlyViewer(artifacts.patterns[selectedIndex]?.pattern ?? '')
                 ) : (
                   <div className="p-4 h-[300px] overflow-y-auto">
                     {artifacts.patterns[selectedIndex] ? (
@@ -427,6 +462,8 @@ export function ArtifactEditor({
                       theme="vs-light"
                     />
                   </Suspense>
+                ) : readOnly ? (
+                  renderReadOnlyViewer(artifacts.candidatePrompts[selectedIndex]?.content ?? '')
                 ) : (
                   <div className="p-4 h-[300px] overflow-y-auto">
                     {artifacts.candidatePrompts[selectedIndex] ? (

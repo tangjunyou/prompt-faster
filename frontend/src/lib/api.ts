@@ -18,6 +18,14 @@ const IS_TEST_ENV = import.meta.env.MODE === 'test'
 const DEFAULT_TIMEOUT_MS = 30000
 
 /**
+ * 生成 correlationId
+ * 避免依赖 store，保持 API 层可独立复用
+ */
+function createCorrelationId(): string {
+  return `cid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+/**
  * 未授权错误（401）
  * 用于 TanStack Query retry 判断，避免对 401 进行重试
  */
@@ -193,16 +201,20 @@ export async function apiRequestWithAuth<T>(
   endpoint: string,
   options: RequestInit = {},
   token: string,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  correlationId?: string
 ): Promise<ApiResponse<T>> {
+  const headerEntries = new Headers(options.headers ?? {})
+  headerEntries.set('Authorization', `Bearer ${token}`)
+  if (!headerEntries.has('x-correlation-id')) {
+    headerEntries.set('x-correlation-id', correlationId ?? createCorrelationId())
+  }
+
   const response = await apiRequest<T>(
     endpoint,
     {
       ...options,
-      headers: {
-        ...options.headers,
-        Authorization: `Bearer ${token}`,
-      },
+      headers: Object.fromEntries(headerEntries.entries()),
     },
     timeoutMs
   )
@@ -221,21 +233,32 @@ export async function apiRequestWithAuth<T>(
 /**
  * 带鉴权的 GET 请求
  */
-export function getWithAuth<T>(endpoint: string, token: string): Promise<ApiResponse<T>> {
-  return apiRequestWithAuth<T>(endpoint, { method: 'GET' }, token)
+export function getWithAuth<T>(
+  endpoint: string,
+  token: string,
+  correlationId?: string
+): Promise<ApiResponse<T>> {
+  return apiRequestWithAuth<T>(endpoint, { method: 'GET' }, token, DEFAULT_TIMEOUT_MS, correlationId)
 }
 
 /**
  * 带鉴权的 POST 请求
  */
-export function postWithAuth<T>(endpoint: string, body: unknown, token: string): Promise<ApiResponse<T>> {
+export function postWithAuth<T>(
+  endpoint: string,
+  body: unknown,
+  token: string,
+  correlationId?: string
+): Promise<ApiResponse<T>> {
   return apiRequestWithAuth<T>(
     endpoint,
     {
       method: 'POST',
       body: JSON.stringify(body),
     },
-    token
+    token,
+    DEFAULT_TIMEOUT_MS,
+    correlationId
   )
 }
 
@@ -246,6 +269,10 @@ export function postWithAuth<T>(endpoint: string, body: unknown, token: string):
  * @param token - 会话令牌
  * @returns Promise<ApiResponse<T>>
  */
-export function delWithAuth<T>(endpoint: string, token: string): Promise<ApiResponse<T>> {
-  return apiRequestWithAuth<T>(endpoint, { method: 'DELETE' }, token)
+export function delWithAuth<T>(
+  endpoint: string,
+  token: string,
+  correlationId?: string
+): Promise<ApiResponse<T>> {
+  return apiRequestWithAuth<T>(endpoint, { method: 'DELETE' }, token, DEFAULT_TIMEOUT_MS, correlationId)
 }
