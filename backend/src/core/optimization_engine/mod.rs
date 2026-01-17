@@ -20,7 +20,7 @@ use crate::domain::models::{
 };
 use crate::domain::types::OptimizationContext;
 
-pub use common::checkpoint_pause_if_requested;
+pub use common::{checkpoint_pause_if_requested, clear_user_guidance_from_context};
 pub use error::OptimizationEngineError;
 
 #[async_trait]

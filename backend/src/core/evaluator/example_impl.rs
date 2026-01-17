@@ -184,8 +184,8 @@ mod tests {
 
         let out = ev.evaluate_batch(&ctx, &results).await.unwrap();
         assert_eq!(out.len(), 2);
-        assert_eq!(out[0].passed, true);
-        assert_eq!(out[1].passed, false);
+        assert!(out[0].passed);
+        assert!(!out[1].passed);
         assert_eq!(out[0].extra.get("test_case_id").unwrap(), "b");
         assert_eq!(out[1].extra.get("test_case_id").unwrap(), "a");
     }

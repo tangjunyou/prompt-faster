@@ -274,7 +274,7 @@ mod tests {
                 Ok(ExecutionResult {
                     test_case_id: test_case_id.to_string(),
                     output: test_case_id.to_string(),
-                    latency_ms: delay_ms as u64,
+                    latency_ms: delay_ms,
                     token_usage: None,
                     raw_response: None,
                 })

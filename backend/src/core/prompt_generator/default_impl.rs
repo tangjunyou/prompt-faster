@@ -3,7 +3,9 @@ use crate::core::prompt_generator::{
 };
 use crate::core::traits::PromptGenerator;
 use crate::domain::models::{FailureArchiveEntry, Rule, TestCase, failure_fingerprint_v1};
-use crate::domain::types::{EXT_FAILURE_ARCHIVE, OptimizationContext};
+use crate::domain::types::{
+    EXT_FAILURE_ARCHIVE, EXT_USER_GUIDANCE, OptimizationContext, UserGuidance,
+};
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
 use tracing::{info, warn};
@@ -39,7 +41,13 @@ impl PromptGenerator for DefaultPromptGenerator {
                 "layer2 进入初始 Prompt 生成（current_prompt 为空）"
             );
 
-            let prompt = build_initial_prompt(candidate_index, &optimization_goal, &ctx.test_cases);
+            let user_guidance = read_optional_user_guidance(ctx);
+            let prompt = build_initial_prompt(
+                candidate_index,
+                &optimization_goal,
+                &ctx.test_cases,
+                user_guidance.as_deref(),
+            );
             reject_duplicate_candidate(ctx, candidate_index, &prompt)?;
             return Ok(prompt);
         }
@@ -88,7 +96,14 @@ impl PromptGenerator for DefaultPromptGenerator {
         let fix = build_fix_section(&classification.failure);
         let summary = summarize_test_cases(&ctx.test_cases);
 
-        let prompt = render_candidate_variant(candidate_index, &keep, &fix, &summary);
+        let user_guidance = read_optional_user_guidance(ctx);
+        let prompt = render_candidate_variant(
+            candidate_index,
+            &keep,
+            &fix,
+            &summary,
+            user_guidance.as_deref(),
+        );
 
         reject_duplicate_candidate(ctx, candidate_index, &prompt)?;
 
@@ -223,6 +238,13 @@ fn read_required_string(
         reason: format!("ctx.extensions[{key:?}] 必须为 string，实际={v:?}"),
     })?;
     Ok(s.to_string())
+}
+
+fn read_optional_user_guidance(ctx: &OptimizationContext) -> Option<String> {
+    ctx.extensions
+        .get(EXT_USER_GUIDANCE)
+        .and_then(|v| serde_json::from_value::<UserGuidance>(v.clone()).ok())
+        .map(|g| g.content)
 }
 
 fn validate_candidate_index(candidate_index: u32) -> Result<(), GeneratorError> {
@@ -388,8 +410,23 @@ fn failure_dimension(rule: &Rule) -> String {
     "unknown".to_string()
 }
 
-fn render_candidate_variant(candidate_index: u32, keep: &str, fix: &str, summary: &str) -> String {
-    match candidate_index {
+fn render_candidate_variant(
+    candidate_index: u32,
+    keep: &str,
+    fix: &str,
+    summary: &str,
+    user_guidance: Option<&str>,
+) -> String {
+    let guidance_section = if let Some(g) = user_guidance {
+        format!(
+            "\n\n【用户特别引导】\n{}\n\n【响应要求】\n- 请在满足上述所有约束（保持项/修复项）的同时，优先响应用户的特别引导。",
+            g
+        )
+    } else {
+        String::new()
+    };
+
+    let base = match candidate_index {
         0 => [
             "【变体 0｜基础版】你是一个严格、可复现的助手。请根据输入完成任务，并遵守以下约束。",
             "",
@@ -537,16 +574,27 @@ fn render_candidate_variant(candidate_index: u32, keep: &str, fix: &str, summary
         ]
         .join("\n"),
         _ => unreachable!("candidate_index 已在上游校验为 0..TEMPLATE_VARIANT_COUNT"),
-    }
+    };
+    format!("{}{}", base, guidance_section)
 }
 
 fn build_initial_prompt(
     candidate_index: u32,
     optimization_goal: &str,
     test_cases: &[TestCase],
+    user_guidance: Option<&str>,
 ) -> String {
     let summary = summarize_test_cases(test_cases);
-    match candidate_index {
+    let guidance_section = if let Some(g) = user_guidance {
+        format!(
+            "\n\n【用户特别引导】\n{}\n\n【响应要求】\n- 请在初始化 Prompt 时，优先纳入用户的特别引导。",
+            g
+        )
+    } else {
+        String::new()
+    };
+
+    let base = match candidate_index {
         0 => [
             "【初始变体 0｜基础版】你是一个严格的助手。请根据用户输入完成任务。",
             "",
@@ -686,7 +734,8 @@ fn build_initial_prompt(
         ]
         .join("\n"),
         _ => unreachable!("candidate_index 已在上游校验为 0..TEMPLATE_VARIANT_COUNT"),
-    }
+    };
+    format!("{}{}", base, guidance_section)
 }
 
 fn summarize_test_cases(test_cases: &[TestCase]) -> String {
@@ -923,6 +972,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn initial_prompt_includes_user_guidance() {
+        let generator = DefaultPromptGenerator::new();
+        let mut ext = HashMap::new();
+        ext.insert(EXT_CANDIDATE_INDEX.to_string(), json!(0));
+        ext.insert(EXT_OPTIMIZATION_GOAL.to_string(), json!("提升通过率"));
+
+        let guidance = crate::domain::types::UserGuidance::new("请更加正式");
+        ext.insert(
+            EXT_USER_GUIDANCE.to_string(),
+            serde_json::to_value(&guidance).unwrap(),
+        );
+
+        let ctx = make_ctx("", vec![], ext, vec![make_test_case("tc1")]);
+        let out = generator.generate(&ctx).await.unwrap();
+
+        assert!(out.contains("【用户特别引导】"));
+        assert!(out.contains("请更加正式"));
+    }
+
+    #[tokio::test]
     async fn candidate_index_variants_are_reproducible_and_different() {
         let generator = DefaultPromptGenerator::new();
 
@@ -981,6 +1050,45 @@ mod tests {
         assert!(out0a.contains("【变体 0｜基础版】"));
         assert!(out1.contains("【变体 1｜结构优先版】"));
         assert!(out2.contains("【变体 2｜失败聚焦版】"));
+    }
+
+    #[tokio::test]
+    async fn candidate_prompt_includes_user_guidance() {
+        let generator = DefaultPromptGenerator::new();
+
+        let success = rule_with_polarity(
+            "r1",
+            "success",
+            vec!["json"],
+            vec!["table"],
+            vec![],
+            vec!["exact_match"],
+            vec!["tc_ok"],
+        );
+        let failure = rule_with_polarity(
+            "r2",
+            "failure",
+            vec![],
+            vec![],
+            vec!["format"],
+            vec!["format"],
+            vec!["tc_bad"],
+        );
+
+        let mut ext = HashMap::new();
+        ext.insert(EXT_CANDIDATE_INDEX.to_string(), json!(0));
+
+        let guidance = crate::domain::types::UserGuidance::new("避免使用口语化表达");
+        ext.insert(
+            EXT_USER_GUIDANCE.to_string(),
+            serde_json::to_value(&guidance).unwrap(),
+        );
+
+        let ctx = make_ctx("prompt", vec![success, failure], ext, vec![]);
+        let out = generator.generate(&ctx).await.unwrap();
+
+        assert!(out.contains("【用户特别引导】"));
+        assert!(out.contains("避免使用口语化表达"));
     }
 
     #[tokio::test]

@@ -3,7 +3,7 @@
 //! 本模块实现最小暂停持久化与恢复机制。
 //! 注意：这是临时实现，Epic 7 完成后将替换为完整 Checkpoint 机制。
 
-use crate::domain::types::{IterationArtifacts, RunControlState};
+use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 use crate::shared::ws::{
     EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED, IterationPausedPayload, IterationResumedPayload,
     WsMessage, chrono_timestamp,
@@ -59,6 +59,22 @@ pub struct PauseController {
     last_correlation_id: Mutex<Option<String>>,
     /// 最后一次操作的用户 ID
     last_user_id: Mutex<Option<String>>,
+}
+
+struct GuidanceLogFields {
+    task_id: String,
+    correlation_id: String,
+    user_id: String,
+    action: String,
+    artifact_type: String,
+    edit_action: String,
+    prev_state: String,
+    new_state: String,
+    prev_guidance_state: String,
+    new_guidance_state: String,
+    guidance_preview: String,
+    iteration_state: String,
+    timestamp: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -359,6 +375,164 @@ impl PauseController {
         Ok(new_artifacts)
     }
 
+    /// 更新用户引导（存储到 context_snapshot.artifacts.user_guidance 中）
+    ///
+    /// 仅在 Paused 状态下允许更新
+    /// 遵循 Last One Wins 策略：多次发送仅保留最后一次
+    /// 返回 `Ok(guidance)` 表示更新成功
+    /// 返回 `Err(reason)` 表示更新失败
+    pub async fn update_guidance(
+        &self,
+        content: &str,
+        correlation_id: &str,
+        user_id: &str,
+    ) -> Result<UserGuidance, PauseStateError> {
+        // 状态校验：仅 Paused 状态允许发送引导
+        if !self.is_paused.load(Ordering::SeqCst) {
+            return Err(PauseStateError::Persist(
+                "任务未处于暂停状态，无法发送引导".to_string(),
+            ));
+        }
+
+        // 创建引导并验证
+        let guidance = UserGuidance::new(content);
+        guidance.validate().map_err(PauseStateError::Persist)?;
+
+        let mut snapshot_guard = self.snapshot.lock().await;
+        let snapshot = snapshot_guard
+            .as_mut()
+            .ok_or_else(|| PauseStateError::Persist("暂停快照不存在".to_string()))?;
+
+        // 获取当前产物
+        let mut current_artifacts: IterationArtifacts = snapshot
+            .context_snapshot
+            .get(ARTIFACTS_KEY)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        // 记录旧引导状态用于日志
+        let prev_guidance_id = current_artifacts
+            .user_guidance
+            .as_ref()
+            .map(|g| g.id.clone());
+        let prev_guidance_status = current_artifacts
+            .user_guidance
+            .as_ref()
+            .map(|g| format!("{:?}", g.status).to_lowercase())
+            .unwrap_or_else(|| "none".to_string());
+
+        // Last One Wins：直接覆盖
+        current_artifacts.user_guidance = Some(guidance.clone());
+        current_artifacts.updated_at = chrono_timestamp();
+
+        // 更新 context_snapshot
+        let artifacts_json = serde_json::to_value(&current_artifacts)
+            .map_err(|e| PauseStateError::Persist(e.to_string()))?;
+
+        if let Value::Object(ref mut map) = snapshot.context_snapshot {
+            map.insert(ARTIFACTS_KEY.to_string(), artifacts_json);
+        } else {
+            let mut map = serde_json::Map::new();
+            map.insert(ARTIFACTS_KEY.to_string(), artifacts_json);
+            snapshot.context_snapshot = Value::Object(map);
+        }
+
+        // 更新 correlationId
+        snapshot.correlation_id = correlation_id.to_string();
+
+        // 持久化
+        persist_snapshot(snapshot)?;
+
+        // 记录操作日志（仅记录引导内容的前 50 字符）
+        let timestamp = chrono_timestamp();
+        let log_fields = build_guidance_log_fields(
+            &self.task_id,
+            correlation_id,
+            user_id,
+            &prev_guidance_status,
+            &guidance,
+            &snapshot.stage,
+            &timestamp,
+            prev_guidance_id.is_some(),
+        );
+        info!(
+            task_id = %log_fields.task_id,
+            correlation_id = %log_fields.correlation_id,
+            user_id = %log_fields.user_id,
+            action = %log_fields.action,
+            artifact_type = %log_fields.artifact_type,
+            edit_action = %log_fields.edit_action,
+            prev_state = %log_fields.prev_state,
+            new_state = %log_fields.new_state,
+            prev_guidance_state = %log_fields.prev_guidance_state,
+            new_guidance_state = %log_fields.new_guidance_state,
+            guidance_preview = %log_fields.guidance_preview,
+            iteration_state = %log_fields.iteration_state,
+            timestamp = %log_fields.timestamp,
+            "引导已更新"
+        );
+
+        Ok(guidance)
+    }
+
+    /// 获取当前用户引导
+    pub async fn get_guidance(&self) -> Option<UserGuidance> {
+        let snapshot = self.snapshot.lock().await;
+        let snapshot = snapshot.as_ref()?;
+        let artifacts: IterationArtifacts = snapshot
+            .context_snapshot
+            .get(ARTIFACTS_KEY)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())?;
+        artifacts.user_guidance
+    }
+
+    /// 清除用户引导（迭代结束后调用）
+    pub async fn clear_guidance(&self) -> Result<(), PauseStateError> {
+        let mut snapshot_guard = self.snapshot.lock().await;
+        let snapshot = match snapshot_guard.as_mut() {
+            Some(s) => s,
+            None => return Ok(()), // 无快照时静默返回
+        };
+
+        // 获取当前产物
+        let mut current_artifacts: IterationArtifacts = snapshot
+            .context_snapshot
+            .get(ARTIFACTS_KEY)
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+
+        if current_artifacts.user_guidance.is_none() {
+            return Ok(()); // 无引导时静默返回
+        }
+
+        // 清除引导
+        let cleared_id = current_artifacts
+            .user_guidance
+            .as_ref()
+            .map(|g| g.id.clone());
+        current_artifacts.user_guidance = None;
+        current_artifacts.updated_at = chrono_timestamp();
+
+        // 更新 context_snapshot
+        let artifacts_json = serde_json::to_value(&current_artifacts)
+            .map_err(|e| PauseStateError::Persist(e.to_string()))?;
+
+        if let Value::Object(ref mut map) = snapshot.context_snapshot {
+            map.insert(ARTIFACTS_KEY.to_string(), artifacts_json);
+        }
+
+        // 持久化
+        persist_snapshot(snapshot)?;
+
+        info!(
+            task_id = %self.task_id,
+            cleared_guidance_id = %cleared_id.as_deref().unwrap_or("none"),
+            "引导已清除（迭代结束）"
+        );
+
+        Ok(())
+    }
+
     /// 恢复已持久化的暂停状态
     pub async fn restore_snapshot(&self, snapshot: PauseStateSnapshot) {
         self.is_paused.store(true, Ordering::SeqCst);
@@ -390,6 +564,38 @@ impl PauseController {
         *self.last_correlation_id.lock().await = None;
         *self.last_user_id.lock().await = None;
         let _ = clear_snapshot_file(&self.task_id);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_guidance_log_fields(
+    task_id: &str,
+    correlation_id: &str,
+    user_id: &str,
+    prev_guidance_state: &str,
+    guidance: &UserGuidance,
+    iteration_state: &str,
+    timestamp: &str,
+    has_prev_guidance: bool,
+) -> GuidanceLogFields {
+    GuidanceLogFields {
+        task_id: task_id.to_string(),
+        correlation_id: correlation_id.to_string(),
+        user_id: user_id.to_string(),
+        action: "guidance_send".to_string(),
+        artifact_type: "user_guidance".to_string(),
+        edit_action: if has_prev_guidance {
+            "replace".to_string()
+        } else {
+            "create".to_string()
+        },
+        prev_state: format!("{:?}", RunControlState::Paused),
+        new_state: format!("{:?}", RunControlState::Paused),
+        prev_guidance_state: prev_guidance_state.to_string(),
+        new_guidance_state: format!("{:?}", guidance.status).to_lowercase(),
+        guidance_preview: guidance.content_preview(),
+        iteration_state: iteration_state.to_string(),
+        timestamp: timestamp.to_string(),
     }
 }
 
@@ -710,6 +916,7 @@ mod tests {
                 score: None,
                 is_best: false,
             }],
+            user_guidance: None,
             updated_at: chrono_timestamp(),
         };
 
@@ -738,6 +945,7 @@ mod tests {
                 score: None,
                 is_best: false,
             }],
+            user_guidance: None,
             updated_at: chrono_timestamp(),
         };
 
@@ -747,5 +955,142 @@ mod tests {
             .expect_err("should reject overlong content");
 
         assert!(err.to_string().contains("过长"));
+    }
+
+    #[tokio::test]
+    async fn update_guidance_requires_paused_state() {
+        let controller = PauseController::new("task-guidance-1");
+
+        let result = controller
+            .update_guidance("测试引导", "cid-1", "user-1")
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("未处于暂停状态"));
+    }
+
+    #[tokio::test]
+    async fn update_guidance_validates_content() {
+        let controller = PauseController::new("task-guidance-2");
+        controller.request_pause("cid-1", "user-1").await;
+
+        let _ = controller
+            .checkpoint_pause(
+                1,
+                "test",
+                Some("cid-1"),
+                serde_json::json!({ "artifacts": IterationArtifacts::default() }),
+            )
+            .await
+            .expect("checkpoint pause");
+
+        // 空内容应该被拒绝
+        let result = controller.update_guidance("   ", "cid-1", "user-1").await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("不能为空"));
+
+        // 超长内容应该被拒绝
+        let too_long = "a".repeat(UserGuidance::MAX_CONTENT_LENGTH + 1);
+        let result = controller
+            .update_guidance(&too_long, "cid-1", "user-1")
+            .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("最大长度"));
+    }
+
+    #[tokio::test]
+    async fn update_guidance_last_one_wins() {
+        let controller = PauseController::new("task-guidance-3");
+        controller.request_pause("cid-1", "user-1").await;
+
+        let _ = controller
+            .checkpoint_pause(
+                1,
+                "test",
+                Some("cid-1"),
+                serde_json::json!({ "artifacts": IterationArtifacts::default() }),
+            )
+            .await
+            .expect("checkpoint pause");
+
+        // 第一次发送
+        let g1 = controller
+            .update_guidance("第一次引导", "cid-1", "user-1")
+            .await
+            .expect("first guidance");
+
+        // 第二次发送（应该覆盖）
+        let g2 = controller
+            .update_guidance("第二次引导", "cid-2", "user-1")
+            .await
+            .expect("second guidance");
+
+        assert_ne!(g1.id, g2.id);
+
+        // 获取当前引导应该是第二次的
+        let current = controller
+            .get_guidance()
+            .await
+            .expect("should have guidance");
+        assert_eq!(current.id, g2.id);
+        assert_eq!(current.content, "第二次引导");
+    }
+
+    #[tokio::test]
+    async fn clear_guidance_removes_guidance() {
+        let controller = PauseController::new("task-guidance-4");
+        controller.request_pause("cid-1", "user-1").await;
+
+        let _ = controller
+            .checkpoint_pause(
+                1,
+                "test",
+                Some("cid-1"),
+                serde_json::json!({ "artifacts": IterationArtifacts::default() }),
+            )
+            .await
+            .expect("checkpoint pause");
+
+        // 发送引导
+        let _ = controller
+            .update_guidance("测试引导", "cid-1", "user-1")
+            .await
+            .expect("guidance");
+
+        assert!(controller.get_guidance().await.is_some());
+
+        // 清除引导
+        controller.clear_guidance().await.expect("clear guidance");
+
+        assert!(controller.get_guidance().await.is_none());
+    }
+
+    #[test]
+    fn build_guidance_log_fields_captures_required_values() {
+        let guidance = UserGuidance::new("测试引导内容");
+        let fields = build_guidance_log_fields(
+            "task-guidance-log",
+            "cid-log",
+            "user-log",
+            "none",
+            &guidance,
+            "test-stage",
+            "2024-01-01T00:00:00Z",
+            false,
+        );
+
+        assert_eq!(fields.task_id, "task-guidance-log");
+        assert_eq!(fields.correlation_id, "cid-log");
+        assert_eq!(fields.user_id, "user-log");
+        assert_eq!(fields.action, "guidance_send");
+        assert_eq!(fields.artifact_type, "user_guidance");
+        assert_eq!(fields.edit_action, "create");
+        assert_eq!(fields.prev_state, "Paused");
+        assert_eq!(fields.new_state, "Paused");
+        assert_eq!(fields.prev_guidance_state, "none");
+        assert_eq!(fields.new_guidance_state, "pending");
+        assert_eq!(fields.iteration_state, "test-stage");
+        assert_eq!(fields.timestamp, "2024-01-01T00:00:00Z");
+        assert_eq!(fields.guidance_preview, "测试引导内容");
     }
 }

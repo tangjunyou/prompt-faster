@@ -9,7 +9,9 @@ use crate::domain::models::{
     CandidateSource, IterationState, OptimizationResult, PromptCandidate, RecommendedAction,
     TerminationReason, UnifiedReflection,
 };
-use crate::domain::types::{CandidateStats, METRIC_EPS, OptimizationContext};
+use crate::domain::types::{
+    CandidateStats, EXT_USER_GUIDANCE, METRIC_EPS, OptimizationContext, UserGuidance,
+};
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -64,6 +66,18 @@ impl crate::core::traits::Optimizer for DefaultOptimizer {
             "best_candidate_index".to_string(),
             serde_json::Value::Number(serde_json::Number::from(best_candidate_index as u64)),
         );
+        if let Some(guidance) = read_optional_user_guidance(ctx) {
+            let guidance_id = guidance.id.clone();
+            let guidance_preview = guidance.content_preview();
+            extra.insert(
+                "user_guidance_id".to_string(),
+                serde_json::Value::String(guidance_id),
+            );
+            extra.insert(
+                "user_guidance_preview".to_string(),
+                serde_json::Value::String(guidance_preview),
+            );
+        }
 
         let primary_source = candidate_source_for_action(&unified_reflection.recommended_action);
 
@@ -338,6 +352,12 @@ fn read_optional<T: serde::de::DeserializeOwned>(
         .map_err(|e| OptimizerError::InvalidState(format!("{key} 反序列化失败：{e}")))
 }
 
+fn read_optional_user_guidance(ctx: &OptimizationContext) -> Option<UserGuidance> {
+    ctx.extensions
+        .get(EXT_USER_GUIDANCE)
+        .and_then(|v| serde_json::from_value::<UserGuidance>(v.clone()).ok())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,5 +569,51 @@ mod tests {
             opt.should_terminate(&ctx, &h),
             Some(TerminationReason::OscillationDetected)
         ));
+    }
+
+    #[tokio::test]
+    async fn optimize_step_includes_user_guidance_preview_in_extra() {
+        let opt = DefaultOptimizer;
+        let mut ctx = base_ctx();
+        ctx.extensions.insert(
+            EXT_CANDIDATE_RANKING.to_string(),
+            serde_json::json!([{ "candidate_index": 0, "pass_rate": 1.0, "mean_score": 1.0 }]),
+        );
+        ctx.extensions
+            .insert(EXT_BEST_CANDIDATE_INDEX.to_string(), serde_json::json!(0));
+        ctx.extensions.insert(
+            EXT_BEST_CANDIDATE_PROMPT.to_string(),
+            serde_json::json!("p1"),
+        );
+        ctx.extensions.insert(
+            EXT_CURRENT_PROMPT_STATS.to_string(),
+            serde_json::json!({ "pass_rate": 0.9, "mean_score": 0.9 }),
+        );
+        ctx.extensions.insert(
+            EXT_BEST_CANDIDATE_STATS.to_string(),
+            serde_json::json!({ "pass_rate": 1.0, "mean_score": 1.0 }),
+        );
+
+        let guidance = crate::domain::types::UserGuidance::new("请优先保证输出结构");
+        ctx.extensions.insert(
+            EXT_USER_GUIDANCE.to_string(),
+            serde_json::to_value(&guidance).unwrap(),
+        );
+
+        let out = opt
+            .optimize_step(&ctx, &unified(RecommendedAction::RefineExpression))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            out.extra
+                .get("user_guidance_preview")
+                .and_then(|v| v.as_str()),
+            Some(guidance.content_preview().as_str())
+        );
+        assert_eq!(
+            out.extra.get("user_guidance_id").and_then(|v| v.as_str()),
+            Some(guidance.id.as_str())
+        );
     }
 }

@@ -16,7 +16,8 @@ use crate::domain::types::{
 };
 
 use super::common::{
-    apply_checkpoint, checkpoint_pause_if_requested, run_tests_and_evaluate, validate_ctx_for_run,
+    apply_checkpoint, checkpoint_pause_if_requested, clear_user_guidance_from_context,
+    run_tests_and_evaluate, validate_ctx_for_run,
 };
 use super::{OptimizationEngine, OptimizationEngineError};
 
@@ -142,6 +143,7 @@ impl DefaultOptimizationEngine {
             }
         }
 
+        clear_user_guidance_from_context(ctx);
         Ok(out)
     }
 }

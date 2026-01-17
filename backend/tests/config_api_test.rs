@@ -357,19 +357,3 @@ async fn test_different_credential_types_stored_separately() {
     assert_eq!(llm.base_url, "https://api.siliconflow.cn");
     assert_eq!(llm.provider, Some("siliconflow".to_string()));
 }
-
-/// 测试凭证参数验证范围
-#[test]
-fn test_teacher_settings_validation_ranges() {
-    // 这个测试验证后端的参数范围常量与文档一致
-    // 实际验证逻辑在 auth.rs 的 validate_teacher_settings 函数中
-
-    // temperature: 0.0 ~ 2.0
-    assert!(0.0 <= 2.0);
-
-    // top_p: 0.0 ~ 1.0
-    assert!(0.0 <= 1.0);
-
-    // max_tokens: 1 ~ 8192
-    assert!(1 <= 8192);
-}

@@ -8,7 +8,7 @@ use crate::domain::models::{
     EvaluatorConfig as TaskEvaluatorConfig, EvaluatorType, FailurePoint, Severity, TaskReference,
     TestCase,
 };
-use crate::domain::types::OptimizationContext;
+use crate::domain::types::{EXT_USER_GUIDANCE, OptimizationContext, UserGuidance};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -1118,7 +1118,8 @@ async fn evaluate_teacher_model(
     let samples = llm_judge_samples(ctx, _task_cfg).max(1);
     let mut parsed = Vec::with_capacity(samples as usize);
 
-    let prompt = build_teacher_judge_prompt(test_case, output);
+    let user_guidance = read_optional_user_guidance(ctx);
+    let prompt = build_teacher_judge_prompt(test_case, output, user_guidance.as_deref());
     for _ in 0..samples {
         let raw = teacher_model_generate_with_timeout(ctx, teacher_model, &prompt).await?;
         let v: TeacherJudgeResponse = parse_teacher_judge_response(&raw)?;
@@ -1170,14 +1171,32 @@ async fn evaluate_teacher_model(
     })
 }
 
-fn build_teacher_judge_prompt(test_case: &TestCase, output: &str) -> String {
+fn build_teacher_judge_prompt(
+    test_case: &TestCase,
+    output: &str,
+    user_guidance: Option<&str>,
+) -> String {
+    let guidance_section = user_guidance.map(|g| {
+        format!(
+            "\n\n【用户特别引导】\n{}\n\n【评估要求】\n- 评估时参考用户引导，但不得忽略 Reference 的硬性约束。\n",
+            g
+        )
+    });
     format!(
-        "你是评估器。请根据 test_case.reference 判断 output 是否满足要求。\\n\\n要求：只返回 JSON（不要输出其它文本）。\\nJSON schema: {{\"passed\":bool,\"score\":number(0..1),\"confidence\"?:number(0..1),\"reasoning\"?:string,\"failure_points\"?:[{{\"dimension\":string,\"description\":string,\"severity\"?:\"Critical\"|\"Major\"|\"Minor\"}}]}}\\n\\nTestCaseId: {}\\n\\nReference: {}\\n\\nOutput: {}\\n",
+        "你是评估器。请根据 test_case.reference 判断 output 是否满足要求。\\n\\n要求：只返回 JSON（不要输出其它文本）。\\nJSON schema: {{\"passed\":bool,\"score\":number(0..1),\"confidence\"?:number(0..1),\"reasoning\"?:string,\"failure_points\"?:[{{\"dimension\":string,\"description\":string,\"severity\"?:\"Critical\"|\"Major\"|\"Minor\"}}]}}\\n\\nTestCaseId: {}\\n\\nReference: {}\\n\\nOutput: {}\\n{}",
         test_case.id,
         serde_json::to_string(&test_case.reference)
             .unwrap_or_else(|_| "<unserializable reference>".to_string()),
-        output
+        output,
+        guidance_section.unwrap_or_default()
     )
+}
+
+fn read_optional_user_guidance(ctx: &OptimizationContext) -> Option<String> {
+    ctx.extensions
+        .get(EXT_USER_GUIDANCE)
+        .and_then(|v| serde_json::from_value::<UserGuidance>(v.clone()).ok())
+        .map(|g| g.content)
 }
 
 fn parse_severity(s: Option<&str>) -> Severity {
@@ -1799,6 +1818,16 @@ mod tests {
             .iter()
             .filter_map(|v| v.as_str())
             .collect::<Vec<_>>();
-        assert!(selected.iter().any(|s| *s == "teacher_model"));
+        assert!(selected.contains(&"teacher_model"));
+    }
+
+    #[test]
+    fn teacher_model_prompt_includes_user_guidance() {
+        let tc = make_exact_case("tc1", "OK");
+        let prompt = build_teacher_judge_prompt(&tc, "OUT", Some("请更正式"));
+
+        assert!(prompt.contains("【用户特别引导】"));
+        assert!(prompt.contains("请更正式"));
+        assert!(prompt.contains("评估时参考用户引导"));
     }
 }

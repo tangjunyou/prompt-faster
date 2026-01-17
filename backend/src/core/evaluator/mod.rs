@@ -29,6 +29,17 @@ pub fn create_evaluator_for_task_config(
     }
 }
 
+/// `ctx.extensions` 中用于注入“任务级评估器选择配置”的 key。
+///
+/// - 类型：`domain::models::EvaluatorConfig`（序列化为 JSON）
+/// - 写入方：编排层（Orchestrator）
+/// - 何时必需：每次调用 `Evaluator.evaluate()` / `Evaluator.evaluate_batch()`
+pub const EXT_TASK_EVALUATOR_CONFIG: &str = "task_evaluator_config";
+
+pub const EXTRA_SELECTED_EVALUATORS: &str = "selected_evaluators";
+pub const EXTRA_THRESHOLDS: &str = "thresholds";
+pub const EXTRA_EVALUATOR_FALLBACK_REASON: &str = "evaluator_fallback_reason";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -42,14 +53,3 @@ mod tests {
         assert_eq!(ev.name(), "example_evaluator");
     }
 }
-
-/// `ctx.extensions` 中用于注入“任务级评估器选择配置”的 key。
-///
-/// - 类型：`domain::models::EvaluatorConfig`（序列化为 JSON）
-/// - 写入方：编排层（Orchestrator）
-/// - 何时必需：每次调用 `Evaluator.evaluate()` / `Evaluator.evaluate_batch()`
-pub const EXT_TASK_EVALUATOR_CONFIG: &str = "task_evaluator_config";
-
-pub const EXTRA_SELECTED_EVALUATORS: &str = "selected_evaluators";
-pub const EXTRA_THRESHOLDS: &str = "thresholds";
-pub const EXTRA_EVALUATOR_FALLBACK_REASON: &str = "evaluator_fallback_reason";

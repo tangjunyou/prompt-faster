@@ -16,7 +16,8 @@ use crate::domain::types::{
 };
 
 use super::common::{
-    apply_checkpoint, checkpoint_pause_if_requested, run_tests_and_evaluate, validate_ctx_for_run,
+    apply_checkpoint, checkpoint_pause_if_requested, clear_user_guidance_from_context,
+    run_tests_and_evaluate, validate_ctx_for_run,
 };
 use super::{OptimizationEngine, OptimizationEngineError};
 
@@ -96,7 +97,7 @@ impl AlternateOptimizationEngine {
                 })
             };
 
-            return Ok(OptimizationResult {
+            let result = OptimizationResult {
                 primary: PromptCandidate {
                     id: "current".to_string(),
                     content: ctx.current_prompt.clone(),
@@ -112,7 +113,9 @@ impl AlternateOptimizationEngine {
                     "alternate fast-path: pass_rate 达标，跳过 rule/reflect/optimize".to_string(),
                 ),
                 extra,
-            });
+            };
+            clear_user_guidance_from_context(ctx);
+            return Ok(result);
         }
 
         // === full pipeline（与默认实现不同点：仅在 fast-path 未命中时才进入）===
@@ -171,6 +174,7 @@ impl AlternateOptimizationEngine {
             "alternate_path".to_string(),
             serde_json::json!("full_pipeline"),
         );
+        clear_user_guidance_from_context(ctx);
         Ok(out)
     }
 }

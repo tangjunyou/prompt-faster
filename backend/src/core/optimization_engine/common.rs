@@ -12,10 +12,12 @@ use crate::domain::models::{
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
-    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, IterationArtifacts,
-    OptimizationContext, PatternHypothesis, RunControlState,
+    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_USER_GUIDANCE,
+    IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
 };
 use crate::shared::ws::chrono_timestamp;
+use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
+use crate::shared::ws_bus::global_ws_bus;
 
 use super::OptimizationEngineError;
 
@@ -121,6 +123,7 @@ fn build_iteration_artifacts(ctx: &OptimizationContext) -> IterationArtifacts {
     IterationArtifacts {
         patterns,
         candidate_prompts,
+        user_guidance: None,
         updated_at: chrono_timestamp(),
     }
 }
@@ -194,6 +197,55 @@ fn transition_run_control_state(
         .map_err(|err| OptimizationEngineError::Internal(format!("{err}")))
 }
 
+/// 应用用户引导并推送 guidance:applied 事件
+async fn apply_user_guidance_if_present(
+    ctx: &mut OptimizationContext,
+    controller: &crate::core::iteration_engine::pause_state::PauseController,
+) {
+    if let Some(mut guidance) = controller.get_guidance().await {
+        // 标记为已应用
+        guidance.mark_applied();
+
+        // 注入到 extensions
+        if let Ok(guidance_value) = serde_json::to_value(&guidance) {
+            ctx.extensions
+                .insert(EXT_USER_GUIDANCE.to_string(), guidance_value);
+        }
+
+        // 推送 guidance:applied 事件
+        let payload = GuidanceAppliedPayload {
+            task_id: ctx.task_id.clone(),
+            guidance_id: guidance.id.clone(),
+            applied_at: guidance.applied_at.clone().unwrap_or_else(chrono_timestamp),
+            iteration: ctx.iteration,
+        };
+        let correlation_id = controller
+            .get_snapshot()
+            .await
+            .map(|s| s.correlation_id)
+            .unwrap_or_else(|| format!("guidance-applied-{}", ctx.task_id));
+        let msg = WsMessage::new(EVT_GUIDANCE_APPLIED, payload, correlation_id);
+        if let Ok(text) = serde_json::to_string(&msg) {
+            global_ws_bus().publish(text);
+        }
+
+        tracing::info!(
+            task_id = %ctx.task_id,
+            guidance_id = %guidance.id,
+            iteration = ctx.iteration,
+            "user guidance applied to iteration context"
+        );
+
+        // 清理 pause_state 中的引导（已应用）
+        let _ = controller.clear_guidance().await;
+    }
+}
+
+/// 清理本轮引导信息（确保单轮生效）
+pub fn clear_user_guidance_from_context(ctx: &mut OptimizationContext) {
+    ctx.extensions.remove(EXT_USER_GUIDANCE);
+}
+
 pub async fn checkpoint_pause_if_requested(
     ctx: &mut OptimizationContext,
 ) -> Result<bool, OptimizationEngineError> {
@@ -206,6 +258,8 @@ pub async fn checkpoint_pause_if_requested(
         if let Some(artifacts) = controller.get_artifacts().await {
             apply_artifacts_to_context(ctx, &artifacts);
         }
+        // 应用用户引导（在 Layer 1 开始前）
+        apply_user_guidance_if_present(ctx, &controller).await;
         controller.clear_snapshot().await;
         transition_run_control_state(ctx, RunControlState::Running)?;
         return Ok(true);
@@ -225,6 +279,8 @@ pub async fn checkpoint_pause_if_requested(
         if let Some(artifacts) = controller.get_artifacts().await {
             apply_artifacts_to_context(ctx, &artifacts);
         }
+        // 应用用户引导（在 Layer 1 开始前）
+        apply_user_guidance_if_present(ctx, &controller).await;
         controller.clear_snapshot().await;
         transition_run_control_state(ctx, RunControlState::Running)?;
         return Ok(true);
