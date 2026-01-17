@@ -301,13 +301,13 @@ impl PauseController {
         if let Some(ref current) = current_artifacts {
             current
                 .validate_update(updated)
-                .map_err(|reason| PauseStateError::Persist(reason))?;
+                .map_err(PauseStateError::Persist)?;
         }
 
         // 验证内容长度限制
         updated
             .validate_content_length()
-            .map_err(|reason| PauseStateError::Persist(reason))?;
+            .map_err(PauseStateError::Persist)?;
 
         // 应用更新
         let new_artifacts = current_artifacts

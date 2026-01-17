@@ -9,20 +9,15 @@ use ts_rs::TS;
 use utoipa::ToSchema;
 
 /// 产物来源
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, ToSchema, Default)]
 #[serde(rename_all = "snake_case")]
 #[ts(export_to = "models/")]
 pub enum ArtifactSource {
     /// 系统生成
+    #[default]
     System,
     /// 用户编辑
     UserEdited,
-}
-
-impl Default for ArtifactSource {
-    fn default() -> Self {
-        Self::System
-    }
 }
 
 /// 规律假设
@@ -161,13 +156,13 @@ impl IterationArtifacts {
         let max_bytes = OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
 
         for pattern in &self.patterns {
-            if pattern.pattern.as_bytes().len() > max_bytes {
+            if pattern.pattern.len() > max_bytes {
                 return Err(format!("规律假设内容过长（超过 {max_bytes} 字节）"));
             }
         }
 
         for prompt in &self.candidate_prompts {
-            if prompt.content.as_bytes().len() > max_bytes {
+            if prompt.content.len() > max_bytes {
                 return Err(format!("候选 Prompt 内容过长（超过 {max_bytes} 字节）"));
             }
         }
