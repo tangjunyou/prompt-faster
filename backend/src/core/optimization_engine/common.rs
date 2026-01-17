@@ -10,10 +10,12 @@ use crate::domain::models::{
     Checkpoint, EvaluationResult, IterationState, OptimizationTaskConfig, TestCase,
 };
 use crate::domain::types::{
-    CandidateStats, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS,
-    EXT_CANDIDATE_RANKING, EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID,
-    OptimizationContext, RunControlState,
+    ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
+    EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
+    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, IterationArtifacts,
+    OptimizationContext, PatternHypothesis, RunControlState,
 };
+use crate::shared::ws::chrono_timestamp;
 
 use super::OptimizationEngineError;
 
@@ -51,12 +53,128 @@ pub fn apply_checkpoint(checkpoint: Checkpoint, ctx: &mut OptimizationContext) {
     ctx.rule_system = checkpoint.rule_system;
 }
 
+fn read_optional_string(ctx: &OptimizationContext, key: &str) -> Option<String> {
+    ctx.extensions
+        .get(key)
+        .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+fn read_optional_usize(ctx: &OptimizationContext, key: &str) -> Option<usize> {
+    ctx.extensions
+        .get(key)
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+}
+
+fn build_iteration_artifacts(ctx: &OptimizationContext) -> IterationArtifacts {
+    let patterns: Vec<PatternHypothesis> = ctx
+        .rule_system
+        .rules
+        .iter()
+        .map(|rule| PatternHypothesis {
+            id: rule.id.clone(),
+            pattern: rule.description.clone(),
+            source: ArtifactSource::System,
+            confidence: Some(rule.verification_score),
+        })
+        .collect();
+
+    let mut candidate_prompts: Vec<CandidatePrompt> = Vec::new();
+    if !ctx.current_prompt.trim().is_empty() {
+        candidate_prompts.push(CandidatePrompt {
+            id: "current".to_string(),
+            content: ctx.current_prompt.clone(),
+            source: ArtifactSource::System,
+            score: None,
+            is_best: false,
+        });
+    }
+
+    let best_prompt = read_optional_string(ctx, EXT_BEST_CANDIDATE_PROMPT);
+    let best_index = read_optional_usize(ctx, EXT_BEST_CANDIDATE_INDEX);
+
+    if let Some(best_prompt) = best_prompt {
+        if candidate_prompts
+            .first()
+            .map(|p| p.content == best_prompt)
+            .unwrap_or(false)
+        {
+            if let Some(current) = candidate_prompts.first_mut() {
+                current.is_best = true;
+            }
+        } else {
+            let id = best_index
+                .map(|idx| format!("candidate:{idx}"))
+                .unwrap_or_else(|| "best".to_string());
+            candidate_prompts.push(CandidatePrompt {
+                id,
+                content: best_prompt,
+                source: ArtifactSource::System,
+                score: None,
+                is_best: true,
+            });
+        }
+    } else if let Some(current) = candidate_prompts.first_mut() {
+        current.is_best = true;
+    }
+
+    IterationArtifacts {
+        patterns,
+        candidate_prompts,
+        updated_at: chrono_timestamp(),
+    }
+}
+
+fn apply_artifacts_to_context(ctx: &mut OptimizationContext, artifacts: &IterationArtifacts) {
+    let pattern_map: std::collections::HashMap<&str, &PatternHypothesis> = artifacts
+        .patterns
+        .iter()
+        .map(|pattern| (pattern.id.as_str(), pattern))
+        .collect();
+
+    let mut updated_rules = Vec::new();
+    for rule in &ctx.rule_system.rules {
+        if let Some(pattern) = pattern_map.get(rule.id.as_str()) {
+            let mut updated = rule.clone();
+            updated.description = pattern.pattern.clone();
+            updated_rules.push(updated);
+        }
+    }
+    ctx.rule_system.rules = updated_rules;
+
+    let preferred = artifacts
+        .candidate_prompts
+        .iter()
+        .find(|prompt| prompt.is_best)
+        .or_else(|| artifacts.candidate_prompts.first());
+
+    if let Some(prompt) = preferred {
+        if !prompt.content.trim().is_empty() {
+            ctx.current_prompt = prompt.content.clone();
+            ctx.extensions.insert(
+                EXT_BEST_CANDIDATE_PROMPT.to_string(),
+                serde_json::Value::String(prompt.content.clone()),
+            );
+            if let Some(idx_str) = prompt.id.strip_prefix("candidate:") {
+                if let Ok(idx) = idx_str.parse::<u64>() {
+                    ctx.extensions.insert(
+                        EXT_BEST_CANDIDATE_INDEX.to_string(),
+                        serde_json::Value::Number(idx.into()),
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn build_context_snapshot(ctx: &OptimizationContext) -> serde_json::Value {
+    let artifacts = build_iteration_artifacts(ctx);
     serde_json::json!({
         "taskId": ctx.task_id,
         "iteration": ctx.iteration,
         "iterationState": ctx.state,
         "runControlState": ctx.run_control_state,
+        "artifacts": artifacts,
     })
 }
 
@@ -85,6 +203,10 @@ pub async fn checkpoint_pause_if_requested(
     if controller.is_paused() {
         transition_run_control_state(ctx, RunControlState::Paused)?;
         controller.wait_for_resume().await;
+        if let Some(artifacts) = controller.get_artifacts().await {
+            apply_artifacts_to_context(ctx, &artifacts);
+        }
+        controller.clear_snapshot().await;
         transition_run_control_state(ctx, RunControlState::Running)?;
         return Ok(true);
     }
@@ -100,6 +222,10 @@ pub async fn checkpoint_pause_if_requested(
     {
         transition_run_control_state(ctx, RunControlState::Paused)?;
         controller.wait_for_resume().await;
+        if let Some(artifacts) = controller.get_artifacts().await {
+            apply_artifacts_to_context(ctx, &artifacts);
+        }
+        controller.clear_snapshot().await;
         transition_run_control_state(ctx, RunControlState::Running)?;
         return Ok(true);
     }

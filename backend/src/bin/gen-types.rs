@@ -32,7 +32,9 @@ use prompt_faster::api::routes::workspaces::{
     CreateWorkspaceRequest, DeleteWorkspaceResponse, WorkspaceResponse,
 };
 use prompt_faster::api::ws::events::{
-    IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload, TaskControlPayload,
+    ArtifactGetAckPayload, ArtifactGetPayload, ArtifactUpdateAckPayload, ArtifactUpdatePayload,
+    ArtifactUpdatedPayload, IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload,
+    TaskControlPayload,
 };
 use prompt_faster::domain::models::{
     Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
@@ -41,7 +43,9 @@ use prompt_faster::domain::models::{
     QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
     RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
-use prompt_faster::domain::types::RunControlState;
+use prompt_faster::domain::types::{
+    ArtifactSource, CandidatePrompt, IterationArtifacts, PatternHypothesis, RunControlState,
+};
 use prompt_faster::infra::external::dify_client::{
     DifyInputVariable, DifyValueType, DifyVariablesResponse, TestConnectionResult,
 };
@@ -166,6 +170,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TaskControlAckPayload::export_all_to(&out_dir)?;
     IterationPausedPayload::export_all_to(&out_dir)?;
     IterationResumedPayload::export_all_to(&out_dir)?;
+
+    // Artifact 相关类型
+    IterationArtifacts::export_all_to(&out_dir)?;
+    PatternHypothesis::export_all_to(&out_dir)?;
+    CandidatePrompt::export_all_to(&out_dir)?;
+    ArtifactSource::export_all_to(&out_dir)?;
+    ArtifactGetPayload::export_all_to(&out_dir)?;
+    ArtifactGetAckPayload::export_all_to(&out_dir)?;
+    ArtifactUpdatePayload::export_all_to(&out_dir)?;
+    ArtifactUpdateAckPayload::export_all_to(&out_dir)?;
+    ArtifactUpdatedPayload::export_all_to(&out_dir)?;
 
     Ok(())
 }

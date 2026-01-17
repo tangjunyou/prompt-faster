@@ -3,7 +3,7 @@
 //! 本模块实现最小暂停持久化与恢复机制。
 //! 注意：这是临时实现，Epic 7 完成后将替换为完整 Checkpoint 机制。
 
-use crate::domain::types::RunControlState;
+use crate::domain::types::{IterationArtifacts, RunControlState};
 use crate::shared::ws::{
     EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED, IterationPausedPayload, IterationResumedPayload,
     WsMessage, chrono_timestamp,
@@ -68,6 +68,9 @@ pub enum PauseStateError {
     #[error("暂停状态恢复失败: {0}")]
     Restore(String),
 }
+
+/// artifacts 存储在 context_snapshot 中的键名
+const ARTIFACTS_KEY: &str = "artifacts";
 
 impl PauseController {
     /// 创建新的暂停控制器
@@ -147,8 +150,7 @@ impl PauseController {
         self.is_paused.store(false, Ordering::SeqCst);
         self.pause_requested.store(false, Ordering::SeqCst);
 
-        // 清除快照（落盘也需清除）
-        *self.snapshot.lock().await = None;
+        // 先清理落盘快照，避免新的连接误判为已暂停
         if let Err(err) = clear_snapshot_file(&self.task_id) {
             warn!(task_id = %self.task_id, error = %err, "清理暂停快照文件失败");
         }
@@ -252,6 +254,111 @@ impl PauseController {
         self.last_correlation_id.lock().await.clone()
     }
 
+    /// 获取当前产物（从 context_snapshot 中提取）
+    pub async fn get_artifacts(&self) -> Option<IterationArtifacts> {
+        let snapshot = self.snapshot.lock().await;
+        let snapshot = snapshot.as_ref()?;
+        let artifacts_value = snapshot.context_snapshot.get(ARTIFACTS_KEY)?;
+        serde_json::from_value(artifacts_value.clone()).ok()
+    }
+
+    /// 更新产物（存储到 context_snapshot 中）
+    ///
+    /// 仅在 Paused 状态下允许更新
+    /// 返回 `Ok(updated_artifacts)` 表示更新成功
+    /// 返回 `Err(reason)` 表示更新失败
+    pub async fn update_artifacts(
+        &self,
+        updated: &IterationArtifacts,
+        correlation_id: &str,
+        user_id: &str,
+    ) -> Result<IterationArtifacts, PauseStateError> {
+        // 状态校验：仅 Paused 状态允许编辑
+        if !self.is_paused.load(Ordering::SeqCst) {
+            return Err(PauseStateError::Persist(
+                "任务未处于暂停状态，无法编辑产物".to_string(),
+            ));
+        }
+
+        let mut snapshot_guard = self.snapshot.lock().await;
+        let snapshot = snapshot_guard
+            .as_mut()
+            .ok_or_else(|| PauseStateError::Persist("暂停快照不存在".to_string()))?;
+
+        // 获取当前产物用于验证
+        let current_artifacts: Option<IterationArtifacts> = snapshot
+            .context_snapshot
+            .get(ARTIFACTS_KEY)
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+        if current_artifacts.is_none() {
+            return Err(PauseStateError::Persist(
+                "当前暂停快照不存在可编辑产物".to_string(),
+            ));
+        }
+
+        // 验证更新合法性（禁止新增 ID）
+        if let Some(ref current) = current_artifacts {
+            current
+                .validate_update(updated)
+                .map_err(PauseStateError::Persist)?;
+        }
+
+        // 验证内容长度限制
+        updated
+            .validate_content_length()
+            .map_err(PauseStateError::Persist)?;
+
+        // 应用更新
+        let new_artifacts = current_artifacts
+            .as_ref()
+            .expect("current_artifacts checked above")
+            .apply_update(updated);
+
+        // 更新 context_snapshot
+        let artifacts_json = serde_json::to_value(&new_artifacts)
+            .map_err(|e| PauseStateError::Persist(e.to_string()))?;
+
+        if let Value::Object(ref mut map) = snapshot.context_snapshot {
+            map.insert(ARTIFACTS_KEY.to_string(), artifacts_json);
+        } else {
+            let mut map = serde_json::Map::new();
+            map.insert(ARTIFACTS_KEY.to_string(), artifacts_json);
+            snapshot.context_snapshot = Value::Object(map);
+        }
+
+        // 更新 correlationId
+        snapshot.correlation_id = correlation_id.to_string();
+
+        // 持久化
+        persist_snapshot(snapshot)?;
+
+        // 记录操作日志（不回显 prompt 原文）
+        let timestamp = chrono_timestamp();
+        let prev_patterns = current_artifacts
+            .as_ref()
+            .map(|a| a.patterns.len())
+            .unwrap_or(0);
+        let prev_prompts = current_artifacts
+            .as_ref()
+            .map(|a| a.candidate_prompts.len())
+            .unwrap_or(0);
+        info!(
+            task_id = %self.task_id,
+            correlation_id = %correlation_id,
+            user_id = %user_id,
+            artifact_type = "iteration_artifacts",
+            edit_action = "update",
+            prev_state = %format!("patterns={prev_patterns},prompts={prev_prompts}"),
+            new_state = %format!("patterns={},prompts={}", new_artifacts.patterns.len(), new_artifacts.candidate_prompts.len()),
+            iteration_state = %snapshot.stage,
+            timestamp = %timestamp,
+            "产物已更新"
+        );
+
+        Ok(new_artifacts)
+    }
+
     /// 恢复已持久化的暂停状态
     pub async fn restore_snapshot(&self, snapshot: PauseStateSnapshot) {
         self.is_paused.store(true, Ordering::SeqCst);
@@ -265,6 +372,14 @@ impl PauseController {
         *self.last_correlation_id.lock().await = Some(cid);
         *self.last_user_id.lock().await = uid;
         info!(task_id = %task_id, "已恢复暂停快照");
+    }
+
+    /// 清理暂停快照（应用编辑后调用）
+    pub async fn clear_snapshot(&self) {
+        *self.snapshot.lock().await = None;
+        if let Err(err) = clear_snapshot_file(&self.task_id) {
+            warn!(task_id = %self.task_id, error = %err, "清理暂停快照文件失败");
+        }
     }
 
     /// 重置控制器状态（用于任务完成或取消）
@@ -459,6 +574,8 @@ fn emit_resumed_event(task_id: &str, correlation_id: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::models::optimization_task_config::OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
+    use crate::domain::types::{ArtifactSource, CandidatePrompt, PatternHypothesis};
 
     #[tokio::test]
     async fn pause_controller_idempotent_pause() {
@@ -542,5 +659,93 @@ mod tests {
 
         registry.remove("task-1").await;
         assert!(registry.get("task-1").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn update_artifacts_requires_paused_state() {
+        let controller = PauseController::new("task-1");
+        let artifacts = IterationArtifacts::default();
+
+        let err = controller
+            .update_artifacts(&artifacts, "cid-1", "user-1")
+            .await
+            .expect_err("should reject when not paused");
+
+        assert!(err.to_string().contains("暂停状态"));
+    }
+
+    #[tokio::test]
+    async fn update_artifacts_rejects_missing_snapshot_artifacts() {
+        let controller = PauseController::new("task-1");
+        controller.request_pause("cid-1", "user-1").await;
+        let _ = controller
+            .checkpoint_pause(1, "test", Some("cid-1"), serde_json::json!({}))
+            .await
+            .expect("checkpoint pause");
+
+        let err = controller
+            .update_artifacts(&IterationArtifacts::default(), "cid-1", "user-1")
+            .await
+            .expect_err("should reject missing artifacts");
+
+        assert!(err.to_string().contains("不存在可编辑产物"));
+    }
+
+    #[tokio::test]
+    async fn update_artifacts_rejects_overlong_content() {
+        let controller = PauseController::new("task-1");
+        controller.request_pause("cid-1", "user-1").await;
+
+        let base = IterationArtifacts {
+            patterns: vec![PatternHypothesis {
+                id: "p1".to_string(),
+                pattern: "ok".to_string(),
+                source: ArtifactSource::System,
+                confidence: None,
+            }],
+            candidate_prompts: vec![CandidatePrompt {
+                id: "c1".to_string(),
+                content: "ok".to_string(),
+                source: ArtifactSource::System,
+                score: None,
+                is_best: false,
+            }],
+            updated_at: chrono_timestamp(),
+        };
+
+        let _ = controller
+            .checkpoint_pause(
+                1,
+                "test",
+                Some("cid-1"),
+                serde_json::json!({ "artifacts": base }),
+            )
+            .await
+            .expect("checkpoint pause");
+
+        let too_long = "a".repeat(OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES + 1);
+        let updated = IterationArtifacts {
+            patterns: vec![PatternHypothesis {
+                id: "p1".to_string(),
+                pattern: too_long.clone(),
+                source: ArtifactSource::System,
+                confidence: None,
+            }],
+            candidate_prompts: vec![CandidatePrompt {
+                id: "c1".to_string(),
+                content: "ok".to_string(),
+                source: ArtifactSource::System,
+                score: None,
+                is_best: false,
+            }],
+            updated_at: chrono_timestamp(),
+        };
+
+        let err = controller
+            .update_artifacts(&updated, "cid-1", "user-1")
+            .await
+            .expect_err("should reject overlong content");
+
+        assert!(err.to_string().contains("过长"));
     }
 }

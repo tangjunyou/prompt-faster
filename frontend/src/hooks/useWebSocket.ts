@@ -85,7 +85,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   }, [token, onPaused, onResumed, onAck, onMessage])
 
   const sendCommand = useCallback(
-    (type: string, payload: TaskControlPayload, correlationId: string) => {
+    <T = TaskControlPayload>(type: string, payload: T, correlationId: string) => {
       const socket = socketRef.current
       if (!socket || socket.readyState !== WebSocket.OPEN) return false
       const message = { type, payload, correlationId }

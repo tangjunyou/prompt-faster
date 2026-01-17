@@ -1,8 +1,10 @@
 //! 领域类型定义
 
+pub mod artifacts;
 pub mod extensions;
 pub mod optimization_context;
 
+pub use artifacts::{ArtifactSource, CandidatePrompt, IterationArtifacts, PatternHypothesis};
 pub use extensions::{
     CandidateStats, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS,
     EXT_CANDIDATE_RANKING, EXT_CONSECUTIVE_NO_IMPROVEMENT, EXT_CURRENT_PROMPT_STATS,

@@ -4,6 +4,7 @@
  */
 
 import { create } from 'zustand'
+import type { IterationArtifacts } from '@/types/generated/models/IterationArtifacts'
 import type { RunControlState } from '@/types/generated/models/RunControlState'
 
 /** 任务运行状态 */
@@ -18,6 +19,10 @@ export interface TaskRunState {
   pausedStage?: string
   /** 当前迭代轮次 */
   iteration?: number
+  /** 中间产物 */
+  artifacts?: IterationArtifacts
+  /** 是否正在编辑产物 */
+  isEditingArtifacts?: boolean
 }
 
 /** 任务 Store 状态 */
@@ -49,6 +54,12 @@ interface TaskActions {
   canPause: (taskId: string) => boolean
   /** 检查是否可以继续 */
   canResume: (taskId: string) => boolean
+  /** 检查是否可以编辑产物 */
+  canEditArtifacts: (taskId: string) => boolean
+  /** 设置产物 */
+  setArtifacts: (taskId: string, artifacts: IterationArtifacts) => void
+  /** 设置编辑产物状态 */
+  setEditingArtifacts: (taskId: string, editing: boolean) => void
   /** 清除任务状态 */
   clearTaskState: (taskId: string) => void
   /** 重置所有状态 */
@@ -107,6 +118,8 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
           runControlState: 'running',
           pausedAt: undefined,
           pausedStage: undefined,
+          artifacts: undefined,
+          isEditingArtifacts: false,
         },
       },
     })),
@@ -125,6 +138,35 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
     const taskState = get().taskStates[taskId]
     return taskState?.runControlState === 'paused'
   },
+
+  canEditArtifacts: (taskId) => {
+    const taskState = get().taskStates[taskId]
+    return taskState?.runControlState === 'paused'
+  },
+
+  setArtifacts: (taskId, artifacts) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          artifacts,
+        },
+      },
+    })),
+
+  setEditingArtifacts: (taskId, editing) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          isEditingArtifacts: editing,
+        },
+      },
+    })),
 
   clearTaskState: (taskId) =>
     set((state) => {

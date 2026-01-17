@@ -1,7 +1,7 @@
 //! WebSocket 事件与消息定义（共享层）
 //! 格式：{domain}:{action}
 
-use crate::domain::types::RunControlState;
+use crate::domain::types::{IterationArtifacts, RunControlState};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use ts_rs::TS;
@@ -23,6 +23,17 @@ pub const EVT_TASK_PAUSE_ACK: &str = "task:pause:ack";
 /// 继续命令 ACK
 pub const EVT_TASK_RESUME_ACK: &str = "task:resume:ack";
 
+/// 获取产物命令
+pub const CMD_ARTIFACT_GET: &str = "artifact:get";
+/// 更新产物命令
+pub const CMD_ARTIFACT_UPDATE: &str = "artifact:update";
+/// 获取产物 ACK
+pub const EVT_ARTIFACT_GET_ACK: &str = "artifact:get:ack";
+/// 更新产物 ACK
+pub const EVT_ARTIFACT_UPDATE_ACK: &str = "artifact:update:ack";
+/// 产物已更新事件（广播）
+pub const EVT_ARTIFACT_UPDATED: &str = "artifact:updated";
+
 // ============================================================================
 // WS 命令负载
 // ============================================================================
@@ -34,6 +45,26 @@ pub const EVT_TASK_RESUME_ACK: &str = "task:resume:ack";
 pub struct TaskControlPayload {
     /// 任务 ID
     pub task_id: String,
+}
+
+/// 获取产物命令负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct ArtifactGetPayload {
+    /// 任务 ID
+    pub task_id: String,
+}
+
+/// 更新产物命令负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct ArtifactUpdatePayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 更新后的产物
+    pub artifacts: IterationArtifacts,
 }
 
 // ============================================================================
@@ -85,6 +116,55 @@ pub struct TaskControlAckPayload {
     pub reason: Option<String>,
     /// 可选的上下文快照（用于诊断）
     pub context_snapshot: Option<Value>,
+}
+
+/// 获取产物 ACK 负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct ArtifactGetAckPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 是否成功
+    pub ok: bool,
+    /// 产物（成功时返回）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<IterationArtifacts>,
+    /// 失败原因
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// 更新产物 ACK 负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct ArtifactUpdateAckPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 是否成功
+    pub ok: bool,
+    /// 是否产生状态变更
+    pub applied: bool,
+    /// 更新后的产物（成功时返回）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifacts: Option<IterationArtifacts>,
+    /// 失败原因
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// 产物已更新事件负载（广播给所有订阅者）
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct ArtifactUpdatedPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 更新后的产物
+    pub artifacts: IterationArtifacts,
+    /// 编辑者 ID
+    pub edited_by: String,
 }
 
 /// WebSocket 消息结构

@@ -4,7 +4,7 @@ import { IterationGraph } from '@/components/nodes/IterationGraph'
 import { StageHistoryPanel, StageIndicator, StreamingText } from '@/components/streaming'
 import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
 import { usePrefersReducedMotion, useWebSocket } from '@/hooks'
-import { PauseResumeControl } from '@/features/user-intervention'
+import { ArtifactEditor, PauseResumeControl } from '@/features/user-intervention'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
   createInitialIterationGraphEdgeFlowStates,
@@ -23,7 +23,9 @@ import {
   type ThinkingStreamState,
 } from '@/features/visualization/thinkingStreamReducer'
 import { useTaskStore } from '@/stores/useTaskStore'
+import type { IterationArtifacts } from '@/types/generated/models/IterationArtifacts'
 import type { IterationPausedPayload, IterationResumedPayload } from '@/types/generated/ws'
+import type { ArtifactGetAckPayload, ArtifactUpdateAckPayload, ArtifactUpdatedPayload } from '@/types/generated/ws'
 
 export function RunView() {
   const taskId = useMemo(() => {
@@ -60,9 +62,15 @@ export function RunView() {
   const pausedNodeStatesRef = useRef<IterationGraphNodeStates | null>(null)
   const isPausedRef = useRef(false)
 
-  const { taskStates, setRunControlState, handlePaused, handleResumed } = useTaskStore()
+  const { taskStates, setRunControlState, handlePaused, handleResumed, setArtifacts, canEditArtifacts } = useTaskStore()
   const runControlState = taskStates[taskId]?.runControlState ?? 'idle'
   const isPaused = runControlState === 'paused'
+  const artifacts = taskStates[taskId]?.artifacts
+  const [isSavingArtifacts, setIsSavingArtifacts] = useState(false)
+  const [artifactSaveError, setArtifactSaveError] = useState<string | null>(null)
+  const [artifactSaveSuccessVisible, setArtifactSaveSuccessVisible] = useState(false)
+  const [artifactSaveResetVersion, setArtifactSaveResetVersion] = useState(0)
+  const artifactSaveTimerRef = useRef<number | null>(null)
 
   const handlePausedEvent = useCallback(
     (payload: IterationPausedPayload) => {
@@ -98,6 +106,51 @@ export function RunView() {
     [taskId, handleResumed],
   )
 
+  // 处理产物获取 ACK
+  const handleArtifactGetAck = useCallback(
+    (payload: ArtifactGetAckPayload) => {
+      if (payload.taskId !== taskId) return
+      if (payload.ok && payload.artifacts) {
+        setArtifacts(taskId, payload.artifacts)
+      }
+    },
+    [taskId, setArtifacts],
+  )
+
+  // 处理产物更新 ACK
+  const handleArtifactUpdateAck = useCallback(
+    (payload: ArtifactUpdateAckPayload) => {
+      if (payload.taskId !== taskId) return
+      setIsSavingArtifacts(false)
+      if (payload.ok && payload.artifacts) {
+        setArtifacts(taskId, payload.artifacts)
+        setArtifactSaveError(null)
+        setArtifactSaveResetVersion((prev) => prev + 1)
+        setArtifactSaveSuccessVisible(true)
+        if (artifactSaveTimerRef.current) {
+          window.clearTimeout(artifactSaveTimerRef.current)
+        }
+        artifactSaveTimerRef.current = window.setTimeout(
+          () => setArtifactSaveSuccessVisible(false),
+          3000,
+        )
+      } else {
+        setArtifactSaveError(payload.reason || '保存失败，请稍后重试')
+        setArtifactSaveSuccessVisible(false)
+      }
+    },
+    [taskId, setArtifacts],
+  )
+
+  // 处理产物已更新事件（广播）
+  const handleArtifactUpdated = useCallback(
+    (payload: ArtifactUpdatedPayload) => {
+      if (payload.taskId !== taskId) return
+      setArtifacts(taskId, payload.artifacts)
+    },
+    [taskId, setArtifacts],
+  )
+
   const { isConnected, sendCommand } = useWebSocket({
     onPaused: handlePausedEvent,
     onResumed: handleResumedEvent,
@@ -109,8 +162,36 @@ export function RunView() {
       ) {
         setRunControlState(taskId, 'running')
       }
+      // 处理产物相关事件
+      if (message.type === 'artifact:get:ack') {
+        handleArtifactGetAck(message.payload as ArtifactGetAckPayload)
+      }
+      if (message.type === 'artifact:update:ack') {
+        handleArtifactUpdateAck(message.payload as ArtifactUpdateAckPayload)
+      }
+      if (message.type === 'artifact:updated') {
+        handleArtifactUpdated(message.payload as ArtifactUpdatedPayload)
+      }
     },
   })
+
+  // 暂停时自动获取产物
+  useEffect(() => {
+    if (isPaused && isConnected && !artifacts) {
+      const correlationId = `cid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+      sendCommand('artifact:get', { taskId }, correlationId)
+    }
+  }, [isPaused, isConnected, artifacts, taskId, sendCommand])
+
+  // 保存产物
+  const handleSaveArtifacts = useCallback(
+    (updatedArtifacts: IterationArtifacts, correlationId: string) => {
+      setIsSavingArtifacts(true)
+      setArtifactSaveError(null)
+      sendCommand('artifact:update', { taskId, artifacts: updatedArtifacts }, correlationId)
+    },
+    [taskId, sendCommand],
+  )
 
   useEffect(() => {
     edgeFlowMachineRef.current = createIterationGraphEdgeFlowMachine(setEdgeFlowStates)
@@ -253,6 +334,20 @@ export function RunView() {
             className="border-t"
           />
         </aside>
+      </div>
+
+      {/* 中间产物编辑器 */}
+      <div className="mt-6">
+        <ArtifactEditor
+          key={`${taskId}-${artifactSaveResetVersion}`}
+          taskId={taskId}
+          artifacts={artifacts}
+          onSave={handleSaveArtifacts}
+          disabled={!canEditArtifacts(taskId)}
+          isSaving={isSavingArtifacts}
+          saveError={artifactSaveError}
+          showSuccess={artifactSaveSuccessVisible}
+        />
       </div>
     </section>
   )
