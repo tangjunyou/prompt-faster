@@ -126,7 +126,7 @@ pub fn verify_checksum(checkpoint: &CheckpointEntity) -> bool {
     let req = CheckpointCreateRequest {
         task_id: checkpoint.task_id.clone(),
         iteration: checkpoint.iteration,
-        state: checkpoint.state.clone(),
+        state: checkpoint.state,
         run_control_state: checkpoint.run_control_state,
         prompt: checkpoint.prompt.clone(),
         rule_system: checkpoint.rule_system.clone(),
@@ -433,9 +433,9 @@ async fn run_idle_autosave() -> Result<(), CheckpointError> {
         guard
             .last_context
             .iter()
-            .filter_map(|(task_id, ctx)| {
+            .map(|(task_id, ctx)| {
                 let last_saved = guard.last_saved_at.get(task_id).copied().unwrap_or(0);
-                Some((task_id.clone(), ctx.clone(), last_saved))
+                (task_id.clone(), ctx.clone(), last_saved)
             })
             .collect()
     };

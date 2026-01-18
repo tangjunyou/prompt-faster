@@ -111,7 +111,10 @@ pub(crate) async fn list_checkpoints(
         "查询 checkpoint 列表"
     );
 
-    if let Err(_) = OptimizationTaskRepo::find_by_id_for_user(&state.db, user_id, &task_id).await {
+    if OptimizationTaskRepo::find_by_id_for_user(&state.db, user_id, &task_id)
+        .await
+        .is_err()
+    {
         return ApiResponse::err(
             StatusCode::FORBIDDEN,
             error_codes::FORBIDDEN,
