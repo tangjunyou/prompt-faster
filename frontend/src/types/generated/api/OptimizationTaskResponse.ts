@@ -4,4 +4,4 @@ import type { OptimizationTaskConfig } from "../models/OptimizationTaskConfig";
 import type { OptimizationTaskMode } from "../models/OptimizationTaskMode";
 import type { OptimizationTaskStatus } from "../models/OptimizationTaskStatus";
 
-export type OptimizationTaskResponse = { id: string, workspace_id: string, name: string, description: string | null, goal: string, execution_target_type: ExecutionTargetType, task_mode: OptimizationTaskMode, status: OptimizationTaskStatus, test_set_ids: Array<string>, config: OptimizationTaskConfig, created_at: number, updated_at: number, };
+export type OptimizationTaskResponse = { id: string, workspace_id: string, name: string, description: string | null, goal: string, execution_target_type: ExecutionTargetType, task_mode: OptimizationTaskMode, status: OptimizationTaskStatus, test_set_ids: Array<string>, config: OptimizationTaskConfig, final_prompt: string | null, terminated_at: number | null, selected_iteration_id: string | null, created_at: number, updated_at: number, };

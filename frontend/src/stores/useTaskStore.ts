@@ -53,6 +53,8 @@ interface TaskActions {
   ) => void
   /** 处理继续事件 */
   handleResumed: (taskId: string) => void
+  /** 处理终止事件 */
+  handleTerminated: (taskId: string) => void
   /** 设置 correlationId */
   setCorrelationId: (correlationId: string) => void
   /** 获取任务状态 */
@@ -148,6 +150,23 @@ export const useTaskStore = create<TaskState & TaskActions>((set, get) => ({
           artifacts: undefined,
           isEditingArtifacts: false,
           userGuidance: state.taskStates[taskId]?.userGuidance,
+          isSendingGuidance: false,
+          guidanceError: null,
+        },
+      },
+    })),
+
+  handleTerminated: (taskId) =>
+    set((state) => ({
+      taskStates: {
+        ...state.taskStates,
+        [taskId]: {
+          ...state.taskStates[taskId],
+          taskId,
+          runControlState: 'stopped',
+          pausedAt: undefined,
+          pausedStage: undefined,
+          isEditingArtifacts: false,
           isSendingGuidance: false,
           guidanceError: null,
         },

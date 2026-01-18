@@ -170,6 +170,9 @@ describe('OptimizationTaskConfigView', () => {
         teacher_llm: { model_id: null },
         advanced_data_split: { strategy: 'percent', k_fold_folds: 5, sampling_strategy: 'random' },
       },
+      final_prompt: null,
+      terminated_at: null,
+      selected_iteration_id: null,
       created_at: 1700000000000,
       updated_at: 1700000000001,
     }

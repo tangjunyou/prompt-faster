@@ -114,12 +114,12 @@ development_status:
   # Epic 6: 用户介入与控制
   # FRs: FR40-FR46
   # ============================================
-  epic-6: in-progress
+  epic-6: done
   6-1-pause-and-resume-iteration: done
   6-2-edit-intermediate-artifacts: done
   6-3-dialogue-guidance-for-teacher-model: done
   6-4-historical-iteration-artifacts-view: done
-  6-5-iteration-control-add-rounds-manual-terminate: backlog
+  6-5-iteration-control-add-rounds-manual-terminate: done
   epic-6-retrospective: optional
 
   # ============================================

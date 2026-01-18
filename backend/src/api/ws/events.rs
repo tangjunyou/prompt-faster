@@ -7,7 +7,7 @@ pub use crate::shared::ws::{
     CMD_TASK_PAUSE, CMD_TASK_RESUME, EVT_ARTIFACT_GET_ACK, EVT_ARTIFACT_UPDATE_ACK,
     EVT_ARTIFACT_UPDATED, EVT_GUIDANCE_APPLIED, EVT_GUIDANCE_SEND_ACK, EVT_GUIDANCE_SENT,
     EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED, EVT_TASK_PAUSE_ACK, EVT_TASK_RESUME_ACK,
-    GuidanceAppliedPayload, GuidanceSendAckPayload, GuidanceSendPayload, GuidanceSentPayload,
-    IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload, TaskControlPayload,
-    WsMessage,
+    EVT_TASK_TERMINATED, GuidanceAppliedPayload, GuidanceSendAckPayload, GuidanceSendPayload,
+    GuidanceSentPayload, IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload,
+    TaskControlPayload, TaskTerminatedPayload, WsMessage,
 };

@@ -3,4 +3,4 @@ import type { ExecutionTargetType } from "./ExecutionTargetType";
 import type { OptimizationTaskMode } from "./OptimizationTaskMode";
 import type { OptimizationTaskStatus } from "./OptimizationTaskStatus";
 
-export type OptimizationTaskEntity = { id: string, workspace_id: string, name: string, description: string | null, goal: string, execution_target_type: ExecutionTargetType, task_mode: OptimizationTaskMode, status: OptimizationTaskStatus, config_json: string | null, created_at: number, updated_at: number, };
+export type OptimizationTaskEntity = { id: string, workspace_id: string, name: string, description: string | null, goal: string, execution_target_type: ExecutionTargetType, task_mode: OptimizationTaskMode, status: OptimizationTaskStatus, config_json: string | null, final_prompt: string | null, terminated_at: number | null, selected_iteration_id: string | null, created_at: number, updated_at: number, };

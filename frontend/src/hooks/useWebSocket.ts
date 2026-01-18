@@ -9,6 +9,7 @@ import type {
   IterationResumedPayload,
   TaskControlAckPayload,
   TaskControlPayload,
+  TaskTerminatedPayload,
 } from '@/types/generated/ws'
 
 export type WsMessage<T> = {
@@ -22,6 +23,7 @@ export type UseWebSocketOptions = {
   onPaused?: (payload: IterationPausedPayload, correlationId: string) => void
   onResumed?: (payload: IterationResumedPayload, correlationId: string) => void
   onAck?: (payload: TaskControlAckPayload, correlationId: string) => void
+  onTerminated?: (payload: TaskTerminatedPayload, correlationId: string) => void
   onMessage?: (message: WsMessage<unknown>) => void
 }
 
@@ -40,7 +42,7 @@ function buildWsUrl(token: string): string {
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
-  const { onPaused, onResumed, onAck, onMessage } = options
+  const { onPaused, onResumed, onAck, onTerminated, onMessage } = options
   const [isConnected, setIsConnected] = useState(false)
   const socketRef = useRef<WebSocket | null>(null)
   const token = useAuthStore((state) => state.sessionToken)
@@ -73,6 +75,9 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         if (message.type === 'task:pause:ack' || message.type === 'task:resume:ack') {
           onAck?.(message.payload as TaskControlAckPayload, message.correlationId)
         }
+        if (message.type === 'task:terminated') {
+          onTerminated?.(message.payload as TaskTerminatedPayload, message.correlationId)
+        }
       } catch (err) {
         console.warn('[WebSocket] failed to parse message', err)
       }
@@ -82,7 +87,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       ws.close()
       socketRef.current = null
     }
-  }, [token, onPaused, onResumed, onAck, onMessage])
+  }, [token, onPaused, onResumed, onAck, onTerminated, onMessage])
 
   const sendCommand = useCallback(
     <T = TaskControlPayload>(type: string, payload: T, correlationId: string) => {

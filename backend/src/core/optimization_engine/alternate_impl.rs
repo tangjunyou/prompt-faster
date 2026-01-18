@@ -17,7 +17,7 @@ use crate::domain::types::{
 
 use super::common::{
     apply_checkpoint, checkpoint_pause_if_requested, clear_user_guidance_from_context,
-    run_tests_and_evaluate, validate_ctx_for_run,
+    run_tests_and_evaluate, stop_if_requested, sync_max_iterations, validate_ctx_for_run,
 };
 use super::{OptimizationEngine, OptimizationEngineError};
 
@@ -72,6 +72,9 @@ impl AlternateOptimizationEngine {
         )
         .await?;
         checkpoint_pause_if_requested(ctx).await?;
+        if let Some(stopped) = stop_if_requested(ctx, None).await? {
+            return Ok(stopped);
+        }
         let stats = &run.stats;
 
         // === Alternate 中等差异：fast-path ===
@@ -124,6 +127,9 @@ impl AlternateOptimizationEngine {
         ctx.rule_system.rules = rules;
         ctx.rule_system.version = ctx.rule_system.version.saturating_add(1);
         checkpoint_pause_if_requested(ctx).await?;
+        if let Some(stopped) = stop_if_requested(ctx, None).await? {
+            return Ok(stopped);
+        }
 
         let failed_ids: Vec<String> = run
             .evaluations
@@ -145,6 +151,9 @@ impl AlternateOptimizationEngine {
         };
         let unified_reflection = self.feedback_aggregator.aggregate(ctx, &[rr]).await?;
         checkpoint_pause_if_requested(ctx).await?;
+        if let Some(stopped) = stop_if_requested(ctx, None).await? {
+            return Ok(stopped);
+        }
 
         ctx.state = IterationState::Optimizing;
         let mut out = self
@@ -152,6 +161,9 @@ impl AlternateOptimizationEngine {
             .optimize_step(ctx, &unified_reflection)
             .await?;
         checkpoint_pause_if_requested(ctx).await?;
+        if let Some(stopped) = stop_if_requested(ctx, None).await? {
+            return Ok(stopped);
+        }
 
         if out
             .extra
@@ -190,18 +202,28 @@ impl OptimizationEngine for AlternateOptimizationEngine {
             .try_transition_to(RunControlState::Running)
             .map_err(|err| OptimizationEngineError::Internal(format!("{err}")))?;
 
-        let max_iters = ctx.config.iteration.max_iterations.max(1);
         let mut last: Option<OptimizationResult> = None;
 
-        while ctx.iteration < max_iters {
+        loop {
+            if let Some(stopped) = stop_if_requested(ctx, last.clone()).await? {
+                return Ok(stopped);
+            }
+
+            let max_iters = sync_max_iterations(ctx).await?;
+            if ctx.iteration >= max_iters {
+                break;
+            }
+
             ctx.iteration = ctx.iteration.saturating_add(1);
             let out = self.run_one_iteration(ctx).await?;
             last = Some(out.clone());
             if out.should_terminate {
                 ctx.state = IterationState::Completed;
-                let _ = ctx
-                    .run_control_state
-                    .try_transition_to(RunControlState::Idle);
+                if !matches!(out.termination_reason, Some(TerminationReason::UserStopped)) {
+                    let _ = ctx
+                        .run_control_state
+                        .try_transition_to(RunControlState::Idle);
+                }
                 return Ok(out);
             }
         }

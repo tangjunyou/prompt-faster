@@ -69,6 +69,10 @@ fn parse_task_mode(raw: &str) -> Option<OptimizationTaskMode> {
 fn parse_task_status(raw: &str) -> Option<OptimizationTaskStatus> {
     match raw {
         "draft" => Some(OptimizationTaskStatus::Draft),
+        "running" => Some(OptimizationTaskStatus::Running),
+        "paused" => Some(OptimizationTaskStatus::Paused),
+        "completed" => Some(OptimizationTaskStatus::Completed),
+        "terminated" => Some(OptimizationTaskStatus::Terminated),
         _ => None,
     }
 }
@@ -91,6 +95,10 @@ fn serialize_task_mode(value: OptimizationTaskMode) -> &'static str {
 fn serialize_task_status(value: OptimizationTaskStatus) -> &'static str {
     match value {
         OptimizationTaskStatus::Draft => "draft",
+        OptimizationTaskStatus::Running => "running",
+        OptimizationTaskStatus::Paused => "paused",
+        OptimizationTaskStatus::Completed => "completed",
+        OptimizationTaskStatus::Terminated => "terminated",
     }
 }
 
@@ -132,6 +140,9 @@ fn row_to_entity(row: &SqliteRow) -> Result<OptimizationTaskEntity, Optimization
         task_mode,
         status,
         config_json: row.try_get("config_json")?,
+        final_prompt: row.try_get("final_prompt")?,
+        terminated_at: row.try_get("terminated_at")?,
+        selected_iteration_id: row.try_get("selected_iteration_id")?,
         created_at: row.try_get("created_at")?,
         updated_at: row.try_get("updated_at")?,
     })
@@ -220,6 +231,9 @@ impl OptimizationTaskRepo {
                 task_mode: input.task_mode,
                 status: OptimizationTaskStatus::Draft,
                 config_json: None,
+                final_prompt: None,
+                terminated_at: None,
+                selected_iteration_id: None,
                 created_at: now,
                 updated_at: now,
             },

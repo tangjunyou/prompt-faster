@@ -29,6 +29,13 @@ pub struct IterationRow {
     pub created_at: i64,
 }
 
+/// 迭代摘要 + 产物
+#[derive(Debug)]
+pub struct IterationSummaryWithArtifacts {
+    pub summary: IterationHistorySummary,
+    pub artifacts: IterationArtifacts,
+}
+
 /// 迭代仓库错误
 #[derive(Debug, Error)]
 pub enum IterationRepoError {
@@ -111,6 +118,77 @@ impl IterationRepo {
         Ok(rows.into_iter().map(Self::row_to_summary).collect())
     }
 
+    /// 按任务 ID 查询历史迭代列表（包含产物，按轮次倒序）
+    ///
+    /// 可选传入状态过滤（例如仅 completed）
+    pub async fn list_with_artifacts_by_task_id(
+        pool: &SqlitePool,
+        user_id: &str,
+        task_id: &str,
+        limit: Option<i32>,
+        offset: Option<i32>,
+        status_filter: Option<&str>,
+    ) -> Result<Vec<IterationSummaryWithArtifacts>, IterationRepoError> {
+        let limit = limit
+            .filter(|value| *value > 0)
+            .unwrap_or(Self::DEFAULT_LIMIT)
+            .min(Self::DEFAULT_LIMIT);
+        let offset = offset.filter(|value| *value >= 0).unwrap_or(0);
+
+        // 首先验证任务归属权
+        let task_exists: Option<(String,)> = sqlx::query_as(
+            r#"
+            SELECT ot.id
+            FROM optimization_tasks ot
+            JOIN workspaces w ON ot.workspace_id = w.id
+            WHERE ot.id = ? AND w.user_id = ?
+            "#,
+        )
+        .bind(task_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if task_exists.is_none() {
+            return Err(IterationRepoError::TaskNotFoundOrForbidden);
+        }
+
+        let mut sql = String::from(
+            r#"
+            SELECT id, task_id, round, started_at, completed_at, status,
+                   artifacts, evaluation_results, reflection_summary,
+                   pass_rate, total_cases, passed_cases, created_at
+            FROM iterations
+            WHERE task_id = ?
+            "#,
+        );
+        if status_filter.is_some() {
+            sql.push_str(" AND status = ?");
+        }
+        sql.push_str(" ORDER BY round DESC LIMIT ? OFFSET ?");
+
+        let mut query = sqlx::query_as::<_, IterationRow>(&sql).bind(task_id);
+        if let Some(status) = status_filter {
+            query = query.bind(status);
+        }
+        let rows: Vec<IterationRow> = query.bind(limit).bind(offset).fetch_all(pool).await?;
+
+        info!(
+            task_id = %task_id,
+            user_id = %user_id,
+            count = rows.len(),
+            "查询历史迭代列表（含产物）"
+        );
+
+        Ok(rows
+            .into_iter()
+            .map(|row| IterationSummaryWithArtifacts {
+                summary: Self::row_to_summary_ref(&row),
+                artifacts: Self::parse_artifacts(&row.artifacts),
+            })
+            .collect())
+    }
+
     /// 按 ID 查询单个迭代详情
     ///
     /// # 参数
@@ -184,18 +262,23 @@ impl IterationRepo {
         }
     }
 
+    fn row_to_summary_ref(row: &IterationRow) -> IterationHistorySummary {
+        IterationHistorySummary {
+            id: row.id.clone(),
+            round: row.round,
+            started_at: unix_ms_to_iso8601(row.started_at),
+            completed_at: row.completed_at.map(unix_ms_to_iso8601),
+            pass_rate: row.pass_rate,
+            total_cases: row.total_cases,
+            passed_cases: row.passed_cases,
+            status: row.status.parse().unwrap_or_default(),
+        }
+    }
+
     /// 将数据库行转换为详情
     fn row_to_detail(row: IterationRow) -> Result<IterationHistoryDetail, IterationRepoError> {
         // 解析产物 JSON
-        let artifacts = match &row.artifacts {
-            Some(json) if !json.trim().is_empty() => {
-                serde_json::from_str::<IterationArtifacts>(json).unwrap_or_else(|e| {
-                    warn!(error = %e, "解析 artifacts JSON 失败，使用空产物");
-                    IterationArtifacts::empty()
-                })
-            }
-            _ => IterationArtifacts::empty(),
-        };
+        let artifacts = Self::parse_artifacts(&row.artifacts);
 
         // 解析评估结果 JSON
         let evaluation_results = match &row.evaluation_results {
@@ -221,6 +304,18 @@ impl IterationRepo {
             evaluation_results,
             reflection_summary: row.reflection_summary,
         })
+    }
+
+    fn parse_artifacts(raw: &Option<String>) -> IterationArtifacts {
+        match raw {
+            Some(json) if !json.trim().is_empty() => {
+                serde_json::from_str::<IterationArtifacts>(json).unwrap_or_else(|e| {
+                    warn!(error = %e, "解析 artifacts JSON 失败，使用空产物");
+                    IterationArtifacts::empty()
+                })
+            }
+            _ => IterationArtifacts::empty(),
+        }
     }
 }
 
