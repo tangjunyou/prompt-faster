@@ -5,7 +5,9 @@ use utoipa::ToSchema;
 
 use crate::api::response::ApiResponse;
 use crate::api::state::AppState;
-use crate::core::iteration_engine::checkpoint::{checkpoint_cache_defaults, checkpoint_cache_metrics};
+use crate::core::iteration_engine::checkpoint::{
+    checkpoint_cache_defaults, checkpoint_cache_metrics,
+};
 use crate::domain::models::{IterationStageDescriptor, all_iteration_stages};
 
 /// 获取 IterationState 的阶段/口径映射（权威入口）。

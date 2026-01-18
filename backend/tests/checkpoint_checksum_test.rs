@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 
 use prompt_faster::core::iteration_engine::checkpoint::{compute_checksum, verify_checksum};
-use prompt_faster::domain::models::{CheckpointCreateRequest, CheckpointEntity, IterationState, LineageType, RuleSystem};
+use prompt_faster::domain::models::{
+    CheckpointCreateRequest, CheckpointEntity, IterationState, LineageType, RuleSystem,
+};
 use prompt_faster::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 
 fn build_rule_system() -> RuleSystem {

@@ -13,9 +13,9 @@ use tracing::{info, warn};
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::models::{CheckpointCreateRequest, CheckpointEntity, LineageType};
 use crate::domain::types::{
-    ArtifactSource, CandidatePrompt, IterationArtifacts, OptimizationContext, PatternHypothesis,
-    RunControlState, UserGuidance, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT,
-    EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE,
+    ArtifactSource, CandidatePrompt, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT,
+    EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext,
+    PatternHypothesis, RunControlState, UserGuidance,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{CheckpointRepo, CheckpointRepoError};
@@ -48,10 +48,13 @@ pub fn init_checkpoint_cache_defaults(cache_limit: usize, alert_threshold: usize
 
 /// 获取 Checkpoint 缓存默认配置（用于监控/对外展示）
 pub fn checkpoint_cache_defaults() -> (usize, usize) {
-    let defaults = CHECKPOINT_CACHE_DEFAULTS.get().copied().unwrap_or(CheckpointCacheDefaults {
-        cache_limit: CHECKPOINT_CACHE_LIMIT_DEFAULT,
-        alert_threshold: CHECKPOINT_CACHE_LIMIT_DEFAULT,
-    });
+    let defaults = CHECKPOINT_CACHE_DEFAULTS
+        .get()
+        .copied()
+        .unwrap_or(CheckpointCacheDefaults {
+            cache_limit: CHECKPOINT_CACHE_LIMIT_DEFAULT,
+            alert_threshold: CHECKPOINT_CACHE_LIMIT_DEFAULT,
+        });
     (defaults.cache_limit, defaults.alert_threshold)
 }
 
@@ -59,7 +62,9 @@ pub fn checkpoint_cache_defaults() -> (usize, usize) {
 pub async fn reset_idle_autosave_timer(task_id: &str) {
     let state = IDLE_AUTOSAVE_STATE.get_or_init(|| Mutex::new(IdleAutoSaveState::default()));
     let mut guard = state.lock().await;
-    guard.last_saved_at.insert(task_id.to_string(), now_millis());
+    guard
+        .last_saved_at
+        .insert(task_id.to_string(), now_millis());
 }
 
 #[derive(Default)]
@@ -150,12 +155,8 @@ pub async fn save_checkpoint(
     let guidance_from_ctx = read_user_guidance_from_context(ctx);
     let user_guidance = pause_guidance.or(guidance_from_ctx);
 
-    let artifacts = pause_artifacts.or_else(|| {
-        Some(build_iteration_artifacts(
-            ctx,
-            user_guidance.clone(),
-        ))
-    });
+    let artifacts =
+        pause_artifacts.or_else(|| Some(build_iteration_artifacts(ctx, user_guidance.clone())));
 
     let req = CheckpointCreateRequest {
         task_id: ctx.task_id.clone(),
@@ -211,8 +212,8 @@ pub async fn save_checkpoint(
     };
 
     let new_state = iteration_state_label(checkpoint.state);
-    let prev_state = read_optional_string(ctx, EXT_PREV_ITERATION_STATE)
-        .unwrap_or_else(|| new_state.clone());
+    let prev_state =
+        read_optional_string(ctx, EXT_PREV_ITERATION_STATE).unwrap_or_else(|| new_state.clone());
 
     info!(
         correlation_id = %safe_correlation_id,
@@ -420,9 +421,7 @@ async fn cache_checkpoint(
 async fn record_idle_context(ctx: &OptimizationContext, saved_at: i64) {
     let state = IDLE_AUTOSAVE_STATE.get_or_init(|| Mutex::new(IdleAutoSaveState::default()));
     let mut guard = state.lock().await;
-    guard
-        .last_context
-        .insert(ctx.task_id.clone(), ctx.clone());
+    guard.last_context.insert(ctx.task_id.clone(), ctx.clone());
     guard.last_saved_at.insert(ctx.task_id.clone(), saved_at);
 }
 
@@ -469,20 +468,26 @@ async fn run_idle_autosave() -> Result<(), CheckpointError> {
 }
 
 fn checkpoint_cache_limit(ctx: &OptimizationContext) -> usize {
-    let defaults = CHECKPOINT_CACHE_DEFAULTS.get().copied().unwrap_or(CheckpointCacheDefaults {
-        cache_limit: CHECKPOINT_CACHE_LIMIT_DEFAULT,
-        alert_threshold: CHECKPOINT_CACHE_LIMIT_DEFAULT,
-    });
+    let defaults = CHECKPOINT_CACHE_DEFAULTS
+        .get()
+        .copied()
+        .unwrap_or(CheckpointCacheDefaults {
+            cache_limit: CHECKPOINT_CACHE_LIMIT_DEFAULT,
+            alert_threshold: CHECKPOINT_CACHE_LIMIT_DEFAULT,
+        });
     read_optional_usize(ctx, CHECKPOINT_CACHE_LIMIT_KEY)
         .unwrap_or(defaults.cache_limit)
         .max(1)
 }
 
 fn checkpoint_alert_threshold(ctx: &OptimizationContext, _limit: usize) -> usize {
-    let defaults = CHECKPOINT_CACHE_DEFAULTS.get().copied().unwrap_or(CheckpointCacheDefaults {
-        cache_limit: CHECKPOINT_CACHE_LIMIT_DEFAULT,
-        alert_threshold: CHECKPOINT_CACHE_LIMIT_DEFAULT,
-    });
+    let defaults = CHECKPOINT_CACHE_DEFAULTS
+        .get()
+        .copied()
+        .unwrap_or(CheckpointCacheDefaults {
+            cache_limit: CHECKPOINT_CACHE_LIMIT_DEFAULT,
+            alert_threshold: CHECKPOINT_CACHE_LIMIT_DEFAULT,
+        });
     read_optional_usize(ctx, CHECKPOINT_MEMORY_ALERT_THRESHOLD_KEY)
         .unwrap_or(defaults.alert_threshold)
         .max(1)
@@ -507,9 +512,12 @@ mod tests {
             return pool.clone();
         }
 
-        let pool = create_pool("sqlite::memory:")
-            .await
-            .expect("创建测试数据库失败");
+        let db_path = std::env::temp_dir().join(format!(
+            "checkpoint_idle_autosave_{}.db",
+            std::process::id()
+        ));
+        let db_url = format!("sqlite:{}", db_path.display());
+        let pool = create_pool(&db_url).await.expect("创建测试数据库失败");
         sqlx::migrate!()
             .run(&pool)
             .await

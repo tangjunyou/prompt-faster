@@ -6,8 +6,8 @@ use thiserror::Error;
 use tracing::info;
 
 use crate::domain::models::CheckpointEntity;
-use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 use crate::domain::models::{IterationState, LineageType, RuleSystem};
+use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 
 #[derive(Debug, Error)]
 pub enum CheckpointRepoError {
@@ -207,10 +207,7 @@ fn serialize_json<T: Serialize>(value: &T) -> Result<String, CheckpointRepoError
 fn serialize_optional_json<T: Serialize>(
     value: &Option<T>,
 ) -> Result<Option<String>, CheckpointRepoError> {
-    value
-        .as_ref()
-        .map(serialize_json)
-        .transpose()
+    value.as_ref().map(serialize_json).transpose()
 }
 
 fn parse_json<T: DeserializeOwned>(value: &str) -> Result<T, CheckpointRepoError> {

@@ -157,11 +157,9 @@ async fn main() -> anyhow::Result<()> {
         session_store_for_middleware.clone(),
         auth_middleware,
     ));
-    let protected_task_checkpoints_routes =
-        checkpoints::task_router().layer(middleware::from_fn_with_state(
-            session_store_for_middleware,
-            auth_middleware,
-        ));
+    let protected_task_checkpoints_routes = checkpoints::task_router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+    );
 
     let app = Router::<AppState>::new()
         .merge(docs::router::<AppState>()) // Swagger UI at /swagger (root path, no /api/v1 prefix)

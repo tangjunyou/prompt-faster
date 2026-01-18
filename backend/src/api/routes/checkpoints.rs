@@ -195,7 +195,7 @@ pub(crate) async fn get_checkpoint(
                     StatusCode::NOT_FOUND,
                     error_codes::RESOURCE_NOT_FOUND,
                     "Checkpoint 不存在",
-                )
+                );
             }
             Err(e) => {
                 warn!(correlation_id = %correlation_id, error = %e, "查询 checkpoint 失败");

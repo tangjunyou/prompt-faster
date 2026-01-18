@@ -1,8 +1,8 @@
 //! Checkpoint 相关模型
 
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 use ts_rs::TS;
+use utoipa::ToSchema;
 
 use crate::domain::models::{IterationState, LineageType, RuleSystem};
 use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};

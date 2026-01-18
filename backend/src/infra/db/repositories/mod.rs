@@ -1,8 +1,8 @@
 //! Repository 模块
 //! 数据库访问的唯一入口
 
-pub mod credential_repo;
 pub mod checkpoint_repo;
+pub mod credential_repo;
 pub mod iteration_repo;
 pub mod migration_repo;
 pub mod optimization_task_repo;
@@ -11,10 +11,10 @@ pub mod test_set_repo;
 pub mod user_repo;
 pub mod workspace_repo;
 
+pub use checkpoint_repo::{CheckpointRepo, CheckpointRepoError};
 pub use credential_repo::{
     CredentialRecord, CredentialRepo, CredentialRepoError, CredentialType, UpsertCredentialInput,
 };
-pub use checkpoint_repo::{CheckpointRepo, CheckpointRepoError};
 pub use iteration_repo::{IterationRepo, IterationRepoError, IterationSummaryWithArtifacts};
 pub use migration_repo::{MigrationRepo, MigrationRepoError, MigrationResult};
 pub use optimization_task_repo::{

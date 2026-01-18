@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use prompt_faster::core::optimization_engine::save_checkpoint_after_layer;
 use prompt_faster::domain::models::{IterationState, RuleSystem};
-use prompt_faster::domain::types::{ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState};
+use prompt_faster::domain::types::{
+    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState,
+};
 use prompt_faster::infra::db::pool::{create_pool, init_global_db_pool};
 use prompt_faster::infra::db::repositories::CheckpointRepo;
 use prompt_faster::shared::time::now_millis;

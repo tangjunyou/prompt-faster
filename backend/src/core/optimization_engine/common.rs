@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
-use crate::core::iteration_engine::orchestrator::IterationEngine;
 use crate::core::iteration_engine::checkpoint::save_checkpoint;
+use crate::core::iteration_engine::orchestrator::IterationEngine;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
@@ -15,8 +15,7 @@ use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
     EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_PREV_ITERATION_STATE,
-    EXT_USER_GUIDANCE,
-    IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
+    EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
 };
 use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
@@ -298,7 +297,8 @@ pub async fn checkpoint_pause_if_requested(
         if let Err(err) = save_checkpoint(ctx, "", "").await {
             let correlation_id = read_optional_string(ctx, "correlation_id")
                 .unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
-            let user_id = read_optional_string(ctx, "user_id").unwrap_or_else(|| "system".to_string());
+            let user_id =
+                read_optional_string(ctx, "user_id").unwrap_or_else(|| "system".to_string());
             tracing::error!(
                 correlation_id = %correlation_id,
                 user_id = %user_id,
@@ -329,8 +329,8 @@ pub async fn checkpoint_pause_if_requested(
 /// Layer 级别自动保存 Checkpoint（失败时降级不阻塞）
 pub async fn save_checkpoint_after_layer(ctx: &OptimizationContext) {
     if let Err(err) = save_checkpoint(ctx, "", "").await {
-        let correlation_id =
-            read_optional_string(ctx, "correlation_id").unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
+        let correlation_id = read_optional_string(ctx, "correlation_id")
+            .unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
         let user_id = read_optional_string(ctx, "user_id").unwrap_or_else(|| "system".to_string());
         tracing::error!(
             correlation_id = %correlation_id,

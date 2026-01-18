@@ -87,11 +87,9 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         auth_middleware,
     ));
 
-    let protected_task_checkpoints_routes =
-        checkpoints::task_router().layer(middleware::from_fn_with_state(
-            session_store_for_middleware,
-            auth_middleware,
-        ));
+    let protected_task_checkpoints_routes = checkpoints::task_router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+    );
 
     let router = Router::<AppState>::new()
         .nest("/api/v1", health::router::<AppState>())
@@ -299,8 +297,8 @@ async fn insert_checkpoint(
             ..checkpoint
         },
     )
-        .await
-        .expect("插入 checkpoint 失败");
+    .await
+    .expect("插入 checkpoint 失败");
     saved.id
 }
 
@@ -363,14 +361,9 @@ async fn test_list_checkpoints_success() {
     let (app, db) = setup_test_app_with_db().await;
     let token = register_user(&app, "ck_list_ok", "TestPass123!").await;
     let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id = create_test_set_with_cases(
-        &app,
-        &workspace_id,
-        &token,
-        "ts",
-        sample_exact_cases_json(),
-    )
-    .await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
     let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
     let _ = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
 
@@ -393,14 +386,9 @@ async fn test_get_checkpoint_success() {
     let (app, db) = setup_test_app_with_db().await;
     let token = register_user(&app, "ck_detail_ok", "TestPass123!").await;
     let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id = create_test_set_with_cases(
-        &app,
-        &workspace_id,
-        &token,
-        "ts",
-        sample_exact_cases_json(),
-    )
-    .await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
     let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
     let checkpoint_id = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
 
@@ -421,14 +409,9 @@ async fn test_list_checkpoints_respects_limit() {
     let (app, db) = setup_test_app_with_db().await;
     let token = register_user(&app, "ck_list_limit", "TestPass123!").await;
     let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id = create_test_set_with_cases(
-        &app,
-        &workspace_id,
-        &token,
-        "ts",
-        sample_exact_cases_json(),
-    )
-    .await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
     let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
     let _ = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
     let _ = insert_checkpoint(&db, &task_id, "checkpoint-2", 2).await;
