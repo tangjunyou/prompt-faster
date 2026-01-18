@@ -49,12 +49,16 @@ pub struct PauseController {
     task_id: String,
     /// 暂停请求标志（原子布尔值，支持并发安全检查）
     pause_requested: AtomicBool,
+    /// 终止请求标志（原子布尔值，支持并发安全检查）
+    stop_requested: AtomicBool,
     /// 当前是否处于暂停状态
     is_paused: AtomicBool,
     /// 继续通知器（用于 await 暂停恢复）
     resume_notify: Notify,
     /// 暂停状态快照（用于持久化）
     snapshot: Mutex<Option<PauseStateSnapshot>>,
+    /// 运行中配置变更（仅存内存）
+    max_iterations_override: Mutex<Option<u32>>,
     /// 最后一次操作的 correlationId（用于幂等性检查）
     last_correlation_id: Mutex<Option<String>>,
     /// 最后一次操作的用户 ID
@@ -94,9 +98,11 @@ impl PauseController {
         Self {
             task_id: task_id.into(),
             pause_requested: AtomicBool::new(false),
+            stop_requested: AtomicBool::new(false),
             is_paused: AtomicBool::new(false),
             resume_notify: Notify::new(),
             snapshot: Mutex::new(None),
+            max_iterations_override: Mutex::new(None),
             last_correlation_id: Mutex::new(None),
             last_user_id: Mutex::new(None),
         }
@@ -142,6 +148,60 @@ impl PauseController {
             "暂停请求已接受，将在下一个安全点生效"
         );
         true
+    }
+
+    /// 请求终止（幂等）
+    ///
+    /// 返回 `true` 表示终止请求已被接受（首次或状态变更）
+    /// 返回 `false` 表示已存在终止请求（幂等）
+    pub async fn request_stop(&self, correlation_id: &str, user_id: &str) -> bool {
+        let was_requested = self.stop_requested.swap(true, Ordering::SeqCst);
+        if was_requested {
+            info!(
+                task_id = %self.task_id,
+                correlation_id = %correlation_id,
+                "终止请求被忽略：已有终止请求待处理（幂等）"
+            );
+            return false;
+        }
+
+        *self.last_correlation_id.lock().await = Some(correlation_id.to_string());
+        *self.last_user_id.lock().await = Some(user_id.to_string());
+
+        if self.is_paused.load(Ordering::SeqCst) {
+            self.is_paused.store(false, Ordering::SeqCst);
+            self.pause_requested.store(false, Ordering::SeqCst);
+            self.resume_notify.notify_waiters();
+        }
+
+        info!(
+            task_id = %self.task_id,
+            correlation_id = %correlation_id,
+            user_id = %user_id,
+            "终止请求已记录"
+        );
+
+        true
+    }
+
+    /// 是否已请求终止
+    pub fn is_stop_requested(&self) -> bool {
+        self.stop_requested.load(Ordering::SeqCst)
+    }
+
+    /// 清理终止请求标志（用于任务结束后复用控制器）
+    pub fn clear_stop_requested(&self) {
+        self.stop_requested.store(false, Ordering::SeqCst);
+    }
+
+    /// 设置运行中最大迭代轮数（用于增量更新）
+    pub async fn set_max_iterations_override(&self, max_iterations: u32) {
+        *self.max_iterations_override.lock().await = Some(max_iterations);
+    }
+
+    /// 获取运行中最大迭代轮数（若无则返回 None）
+    pub async fn get_max_iterations_override(&self) -> Option<u32> {
+        *self.max_iterations_override.lock().await
     }
 
     /// 请求继续（幂等）

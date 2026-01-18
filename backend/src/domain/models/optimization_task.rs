@@ -25,7 +25,16 @@ pub enum OptimizationTaskMode {
 #[serde(rename_all = "snake_case")]
 #[ts(export_to = "models/")]
 pub enum OptimizationTaskStatus {
+    /// 草稿（初始状态）
     Draft,
+    /// 运行中
+    Running,
+    /// 已暂停
+    Paused,
+    /// 已完成（自动达到目标）
+    Completed,
+    /// 已终止（用户手动终止）
+    Terminated,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
@@ -40,6 +49,10 @@ pub struct OptimizationTaskEntity {
     pub task_mode: OptimizationTaskMode,
     pub status: OptimizationTaskStatus,
     pub config_json: Option<String>,
+    pub final_prompt: Option<String>,
+    #[ts(type = "number | null")]
+    pub terminated_at: Option<i64>,
+    pub selected_iteration_id: Option<String>,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]

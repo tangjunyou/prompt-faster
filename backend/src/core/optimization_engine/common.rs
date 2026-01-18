@@ -7,7 +7,8 @@ use crate::core::iteration_engine::orchestrator::IterationEngine;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
-    Checkpoint, EvaluationResult, IterationState, OptimizationTaskConfig, TestCase,
+    CandidateSource, Checkpoint, EvaluationResult, IterationState, OptimizationResult,
+    OptimizationTaskConfig, PromptCandidate, TerminationReason, TestCase,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
@@ -287,6 +288,57 @@ pub async fn checkpoint_pause_if_requested(
     }
 
     Ok(false)
+}
+
+/// 同步运行中迭代上限（用于增加轮数）
+pub async fn sync_max_iterations(
+    ctx: &mut OptimizationContext,
+) -> Result<u32, OptimizationEngineError> {
+    let registry = global_pause_registry();
+    let controller = registry.get_or_create(&ctx.task_id).await;
+    if let Some(max_iterations) = controller.get_max_iterations_override().await {
+        ctx.config.iteration.max_iterations = max_iterations.max(1);
+    }
+
+    Ok(ctx.config.iteration.max_iterations.max(1))
+}
+
+/// 如果已请求终止，则返回终止结果
+pub async fn stop_if_requested(
+    ctx: &mut OptimizationContext,
+    last: Option<OptimizationResult>,
+) -> Result<Option<OptimizationResult>, OptimizationEngineError> {
+    let registry = global_pause_registry();
+    let controller = registry.get_or_create(&ctx.task_id).await;
+    if !controller.is_stop_requested() {
+        return Ok(None);
+    }
+
+    transition_run_control_state(ctx, RunControlState::Stopped)?;
+
+    let result = if let Some(mut last) = last {
+        last.should_terminate = true;
+        last.termination_reason = Some(TerminationReason::UserStopped);
+        last
+    } else {
+        OptimizationResult {
+            primary: PromptCandidate {
+                id: "current".to_string(),
+                content: ctx.current_prompt.clone(),
+                score: 0.0,
+                source: CandidateSource::InitialGeneration,
+                failure_fingerprints: Vec::new(),
+            },
+            alternatives: Vec::new(),
+            should_terminate: true,
+            termination_reason: Some(TerminationReason::UserStopped),
+            iteration: ctx.iteration,
+            improvement_summary: None,
+            extra: HashMap::new(),
+        }
+    };
+
+    Ok(Some(result))
 }
 
 pub async fn run_tests_and_evaluate(

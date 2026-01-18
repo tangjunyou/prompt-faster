@@ -35,7 +35,7 @@ use prompt_faster::api::ws::events::{
     ArtifactGetAckPayload, ArtifactGetPayload, ArtifactUpdateAckPayload, ArtifactUpdatePayload,
     ArtifactUpdatedPayload, GuidanceAppliedPayload, GuidanceSendAckPayload, GuidanceSendPayload,
     GuidanceSentPayload, IterationPausedPayload, IterationResumedPayload, TaskControlAckPayload,
-    TaskControlPayload,
+    TaskControlPayload, TaskTerminatedPayload,
 };
 use prompt_faster::domain::models::{
     Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
@@ -45,9 +45,10 @@ use prompt_faster::domain::models::{
     RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
 use prompt_faster::domain::types::{
-    ArtifactSource, CandidatePrompt, EvaluationResultSummary, IterationArtifacts,
-    IterationHistoryDetail, IterationHistorySummary, IterationStatus, PatternHypothesis,
-    RunControlState,
+    AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
+    CandidatePromptListResponse, CandidatePromptSummary, EvaluationResultSummary,
+    IterationArtifacts, IterationHistoryDetail, IterationHistorySummary, IterationStatus,
+    PatternHypothesis, RunControlState, TerminateTaskRequest, TerminateTaskResponse,
 };
 use prompt_faster::infra::external::dify_client::{
     DifyInputVariable, DifyValueType, DifyVariablesResponse, TestConnectionResult,
@@ -177,6 +178,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     GuidanceSendAckPayload::export_all_to(&out_dir)?;
     GuidanceSentPayload::export_all_to(&out_dir)?;
     GuidanceAppliedPayload::export_all_to(&out_dir)?;
+    TaskTerminatedPayload::export_all_to(&out_dir)?;
 
     // Artifact 相关类型
     IterationArtifacts::export_all_to(&out_dir)?;
@@ -194,6 +196,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     EvaluationResultSummary::export_all_to(&out_dir)?;
     IterationHistorySummary::export_all_to(&out_dir)?;
     IterationHistoryDetail::export_all_to(&out_dir)?;
+
+    // 迭代控制类型
+    AddRoundsRequest::export_all_to(&out_dir)?;
+    AddRoundsResponse::export_all_to(&out_dir)?;
+    CandidatePromptSummary::export_all_to(&out_dir)?;
+    CandidatePromptListResponse::export_all_to(&out_dir)?;
+    TerminateTaskRequest::export_all_to(&out_dir)?;
+    TerminateTaskResponse::export_all_to(&out_dir)?;
 
     Ok(())
 }

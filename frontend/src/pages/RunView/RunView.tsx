@@ -6,6 +6,8 @@ import { StageHistoryPanel, StageIndicator, StreamingText } from '@/components/s
 import type { IterationGraphEdgeFlowStates, IterationGraphNodeStates } from '@/components/nodes/types'
 import { usePrefersReducedMotion, useWebSocket } from '@/hooks'
 import { ArtifactEditor, GuidanceInput, PauseResumeControl, HistoryPanel } from '@/features/user-intervention'
+import { IterationControlPanel } from '@/features/user-intervention/control'
+import { useOptimizationTask } from '@/features/task-config/hooks/useOptimizationTasks'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
   createInitialIterationGraphEdgeFlowStates,
@@ -23,9 +25,11 @@ import {
   setAutoScrollLocked,
   type ThinkingStreamState,
 } from '@/features/visualization/thinkingStreamReducer'
+import { useAuthStore } from '@/stores/useAuthStore'
 import { useTaskStore } from '@/stores/useTaskStore'
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import type { IterationArtifacts } from '@/types/generated/models/IterationArtifacts'
-import type { IterationPausedPayload, IterationResumedPayload } from '@/types/generated/ws'
+import type { IterationPausedPayload, IterationResumedPayload, TaskTerminatedPayload } from '@/types/generated/ws'
 import type { ArtifactGetAckPayload, ArtifactUpdateAckPayload, ArtifactUpdatedPayload } from '@/types/generated/ws'
 import type { GuidanceSendAckPayload, GuidanceSentPayload, GuidanceAppliedPayload } from '@/types/generated/ws'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -36,6 +40,14 @@ export function RunView() {
     const params = new URLSearchParams(window.location.search)
     return params.get('taskId') ?? 'demo-task'
   }, [])
+  const currentUser = useAuthStore((state) => state.currentUser)
+  const lastWorkspaceIdByUser = useWorkspaceStore((state) => state.lastWorkspaceIdByUser)
+  const workspaceId = useMemo(() => {
+    const userId = currentUser?.id
+    if (!userId) return null
+    return lastWorkspaceIdByUser[userId] ?? null
+  }, [currentUser?.id, lastWorkspaceIdByUser])
+  const { data: optimizationTask } = useOptimizationTask(workspaceId ?? '', taskId)
 
   const demoMessages = useMemo(
     () =>
@@ -71,6 +83,7 @@ export function RunView() {
     setRunControlState,
     handlePaused,
     handleResumed,
+    handleTerminated,
     setArtifacts,
     canEditArtifacts,
     canSendGuidance,
@@ -85,6 +98,7 @@ export function RunView() {
   const userGuidance = taskStates[taskId]?.userGuidance
   const isSendingGuidance = taskStates[taskId]?.isSendingGuidance ?? false
   const guidanceError = taskStates[taskId]?.guidanceError ?? null
+  const currentMaxIterations = optimizationTask?.config?.max_iterations ?? 0
   const [isSavingArtifacts, setIsSavingArtifacts] = useState(false)
   const [artifactSaveError, setArtifactSaveError] = useState<string | null>(null)
   const [artifactSaveSuccessVisible, setArtifactSaveSuccessVisible] = useState(false)
@@ -216,9 +230,18 @@ export function RunView() {
     [taskId, handleGuidanceApplied],
   )
 
+  const handleTerminatedEvent = useCallback(
+    (payload: TaskTerminatedPayload) => {
+      if (payload.taskId !== taskId) return
+      handleTerminated(payload.taskId)
+    },
+    [taskId, handleTerminated],
+  )
+
   const { isConnected, sendCommand } = useWebSocket({
     onPaused: handlePausedEvent,
     onResumed: handleResumedEvent,
+    onTerminated: handleTerminatedEvent,
     onMessage: (message) => {
       if (
         message.type === 'iteration:started' ||
@@ -361,6 +384,13 @@ export function RunView() {
               sendCommand('task:resume', { taskId: id }, correlationId)
             }
             disabled={!isConnected}
+          />
+          <IterationControlPanel
+            taskId={taskId}
+            workspaceId={workspaceId ?? undefined}
+            runControlState={runControlState}
+            currentMaxIterations={currentMaxIterations}
+            currentRound={taskStates[taskId]?.iteration ?? 0}
           />
           {import.meta.env.DEV ? (
             <button

@@ -42,6 +42,8 @@ pub const EVT_GUIDANCE_SEND_ACK: &str = "guidance:send:ack";
 pub const EVT_GUIDANCE_SENT: &str = "guidance:sent";
 /// 引导已应用事件（Layer 1 开始前触发）
 pub const EVT_GUIDANCE_APPLIED: &str = "guidance:applied";
+/// 任务已终止事件
+pub const EVT_TASK_TERMINATED: &str = "task:terminated";
 
 // ============================================================================
 // WS 命令负载
@@ -243,6 +245,23 @@ pub struct GuidanceAppliedPayload {
     pub applied_at: String,
     /// 应用于的迭代轮次
     pub iteration: u32,
+}
+
+/// 任务已终止事件负载
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "ws/")]
+pub struct TaskTerminatedPayload {
+    /// 任务 ID
+    pub task_id: String,
+    /// 终止时间（ISO 8601）
+    pub terminated_at: String,
+    /// 选定的最终 Prompt（可选）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_prompt: Option<String>,
+    /// 选定的迭代 ID（可选）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_iteration_id: Option<String>,
 }
 
 /// WebSocket 消息结构

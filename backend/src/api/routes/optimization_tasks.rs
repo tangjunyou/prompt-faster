@@ -49,6 +49,10 @@ pub struct OptimizationTaskResponse {
     pub status: OptimizationTaskStatus,
     pub test_set_ids: Vec<String>,
     pub config: OptimizationTaskConfig,
+    pub final_prompt: Option<String>,
+    #[ts(type = "number | null")]
+    pub terminated_at: Option<i64>,
+    pub selected_iteration_id: Option<String>,
     #[ts(type = "number")]
     pub created_at: i64,
     #[ts(type = "number")]
@@ -437,6 +441,9 @@ pub(crate) async fn create_optimization_task(
             task_mode: created.task.task_mode,
             status: created.task.status,
             test_set_ids: created.test_set_ids,
+            final_prompt: created.task.final_prompt,
+            terminated_at: created.task.terminated_at,
+            selected_iteration_id: created.task.selected_iteration_id,
             created_at: created.task.created_at,
             updated_at: created.task.updated_at,
         }),
@@ -592,6 +599,9 @@ pub(crate) async fn get_optimization_task(
                 task_mode: task.task.task_mode,
                 status: task.task.status,
                 test_set_ids: task.test_set_ids,
+                final_prompt: task.task.final_prompt,
+                terminated_at: task.task.terminated_at,
+                selected_iteration_id: task.task.selected_iteration_id,
                 created_at: task.task.created_at,
                 updated_at: task.task.updated_at,
             })
@@ -707,6 +717,9 @@ pub(crate) async fn update_optimization_task_config(
                 task_mode: updated.task.task_mode,
                 status: updated.task.status,
                 test_set_ids: updated.test_set_ids,
+                final_prompt: updated.task.final_prompt,
+                terminated_at: updated.task.terminated_at,
+                selected_iteration_id: updated.task.selected_iteration_id,
                 created_at: updated.task.created_at,
                 updated_at: updated.task.updated_at,
             })

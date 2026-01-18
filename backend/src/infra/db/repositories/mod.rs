@@ -13,7 +13,7 @@ pub mod workspace_repo;
 pub use credential_repo::{
     CredentialRecord, CredentialRepo, CredentialRepoError, CredentialType, UpsertCredentialInput,
 };
-pub use iteration_repo::{IterationRepo, IterationRepoError};
+pub use iteration_repo::{IterationRepo, IterationRepoError, IterationSummaryWithArtifacts};
 pub use migration_repo::{MigrationRepo, MigrationRepoError, MigrationResult};
 pub use optimization_task_repo::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,

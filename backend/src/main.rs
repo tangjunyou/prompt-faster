@@ -13,7 +13,9 @@ use prompt_faster::api::middleware::correlation_id::{
     CORRELATION_ID_HEADER, correlation_id_middleware,
 };
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
-use prompt_faster::api::routes::{auth, docs, health, iterations, meta, user_auth, workspaces};
+use prompt_faster::api::routes::{
+    auth, docs, health, iteration_control, iterations, meta, user_auth, workspaces,
+};
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
 use prompt_faster::infra::db::pool::create_pool;
@@ -135,9 +137,15 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let protected_iterations_routes = iterations::router().layer(middleware::from_fn_with_state(
-        session_store_for_middleware,
+        session_store_for_middleware.clone(),
         auth_middleware,
     ));
+
+    let protected_iteration_control_routes =
+        iteration_control::router().layer(middleware::from_fn_with_state(
+            session_store_for_middleware,
+            auth_middleware,
+        ));
 
     let app = Router::<AppState>::new()
         .merge(docs::router::<AppState>()) // Swagger UI at /swagger (root path, no /api/v1 prefix)
@@ -152,6 +160,10 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/tasks/{task_id}/iterations",
             protected_iterations_routes,
         )
+        .nest(
+            "/api/v1/tasks/{task_id}",
+            protected_iteration_control_routes,
+        )
         .nest("/api/v1", ws::router())
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))
@@ -163,6 +175,7 @@ async fn main() -> anyhow::Result<()> {
                     Method::GET,
                     Method::POST,
                     Method::PUT,
+                    Method::PATCH,
                     Method::DELETE,
                     Method::OPTIONS,
                 ])
