@@ -10,6 +10,7 @@ import { useTestGenericLlmConnection } from './hooks/useTestConnection';
 import { FeedbackAlert } from './FeedbackAlert';
 import { API_KEY_MAX_LENGTH, BASE_URL_MAX_LENGTH } from './constants';
 import { statusBadgeMap, type GenericLlmProvider } from '@/types/credentials';
+import { useConnectivity } from '@/features/checkpoint-recovery/hooks/useConnectivity';
 
 
 /**
@@ -57,6 +58,7 @@ export function GenericLlmCredentialForm() {
 
   // 连接测试 mutation
   const testConnection = useTestGenericLlmConnection();
+  const { isOffline } = useConnectivity();
 
   // 表单是否填写完整（需要 provider 已选择）
   const isFormComplete = provider !== null && baseUrl.trim() !== '' && apiKey.trim() !== '';
@@ -214,14 +216,15 @@ export function GenericLlmCredentialForm() {
             >
               {isSubmitting ? '保存中...' : '保存'}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              disabled={!isFormComplete || testConnection.isPending}
-              onClick={handleTestConnection}
-              data-testid="generic-llm-test-connection-btn"
-            >
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1"
+          disabled={!isFormComplete || testConnection.isPending || isOffline}
+          onClick={handleTestConnection}
+          data-testid="generic-llm-test-connection-btn"
+          title={isOffline ? '当前离线，无法测试连接' : undefined}
+        >
               {testConnection.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

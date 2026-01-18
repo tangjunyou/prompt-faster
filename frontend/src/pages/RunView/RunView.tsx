@@ -40,6 +40,10 @@ export function RunView() {
     const params = new URLSearchParams(window.location.search)
     return params.get('taskId') ?? 'demo-task'
   }, [])
+  const shouldAutoResume = useMemo(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get('resume') === '1'
+  }, [])
   const currentUser = useAuthStore((state) => state.currentUser)
   const lastWorkspaceIdByUser = useWorkspaceStore((state) => state.lastWorkspaceIdByUser)
   const workspaceId = useMemo(() => {
@@ -77,6 +81,7 @@ export function RunView() {
   const thinkingFlushRafRef = useRef<number | null>(null)
   const pausedNodeStatesRef = useRef<IterationGraphNodeStates | null>(null)
   const isPausedRef = useRef(false)
+  const hasAutoResumedRef = useRef(false)
 
   const {
     taskStates,
@@ -280,6 +285,13 @@ export function RunView() {
       sendCommand('artifact:get', { taskId }, correlationId)
     }
   }, [isPaused, isConnected, artifacts, taskId, sendCommand])
+
+  useEffect(() => {
+    if (!shouldAutoResume || !isConnected || hasAutoResumedRef.current) return
+    hasAutoResumedRef.current = true
+    const correlationId = `cid-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    sendCommand('task:resume', { taskId }, correlationId)
+  }, [shouldAutoResume, isConnected, taskId, sendCommand])
 
   // 保存产物
   const handleSaveArtifacts = useCallback(

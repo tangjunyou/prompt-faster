@@ -10,6 +10,9 @@ use crate::domain::models::optimization_task_config::{
 use crate::domain::models::{
     ExecutionTargetType, OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus,
 };
+use crate::domain::models::recovery::UnfinishedTask;
+use crate::domain::models::IterationState;
+use crate::domain::types::{RunControlState, unix_ms_to_iso8601};
 use crate::shared::time::now_millis;
 
 #[derive(Error, Debug)]
@@ -100,6 +103,22 @@ fn serialize_task_status(value: OptimizationTaskStatus) -> &'static str {
         OptimizationTaskStatus::Completed => "completed",
         OptimizationTaskStatus::Terminated => "terminated",
     }
+}
+
+fn parse_iteration_state_label(raw: &str) -> String {
+    serde_json::from_str::<IterationState>(raw)
+        .ok()
+        .and_then(|state| serde_json::to_value(state).ok())
+        .and_then(|value| value.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn parse_run_control_state_label(raw: &str) -> String {
+    serde_json::from_str::<RunControlState>(raw)
+        .ok()
+        .and_then(|state| serde_json::to_value(state).ok())
+        .and_then(|value| value.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 fn row_to_entity(row: &SqliteRow) -> Result<OptimizationTaskEntity, OptimizationTaskRepoError> {
@@ -445,14 +464,110 @@ impl OptimizationTaskRepo {
             test_set_ids: rels.into_iter().map(|(id,)| id).collect(),
         })
     }
+
+    pub async fn find_unfinished_with_checkpoints(
+        pool: &SqlitePool,
+        user_id: &str,
+    ) -> Result<Vec<UnfinishedTask>, OptimizationTaskRepoError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT t.id as task_id,
+                   t.name as task_name,
+                   c.id as checkpoint_id,
+                   c.created_at as last_checkpoint_at,
+                   c.iteration as iteration,
+                   c.state as state,
+                   c.run_control_state as run_control_state
+            FROM optimization_tasks t
+            JOIN workspaces w ON w.id = t.workspace_id
+            JOIN (
+                SELECT task_id, MAX(created_at) as max_created_at
+                FROM checkpoints
+                GROUP BY task_id
+            ) latest ON latest.task_id = t.id
+            JOIN checkpoints c
+              ON c.task_id = latest.task_id
+             AND c.created_at = latest.max_created_at
+            WHERE w.user_id = ?1
+              AND t.status IN ('running', 'paused')
+            ORDER BY c.created_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+
+        let mut tasks = Vec::with_capacity(rows.len());
+        for row in rows {
+            let task_id: String = row.try_get("task_id")?;
+            let task_name: String = row.try_get("task_name")?;
+            let checkpoint_id: String = row.try_get("checkpoint_id")?;
+            let last_checkpoint_at: i64 = row.try_get("last_checkpoint_at")?;
+            let iteration: i64 = row.try_get("iteration")?;
+            let state_raw: String = row.try_get("state")?;
+            let run_control_state_raw: String = row.try_get("run_control_state")?;
+
+            tasks.push(UnfinishedTask {
+                task_id,
+                task_name,
+                checkpoint_id,
+                last_checkpoint_at: unix_ms_to_iso8601(last_checkpoint_at),
+                iteration: iteration as u32,
+                state: parse_iteration_state_label(&state_raw),
+                run_control_state: parse_run_control_state_label(&run_control_state_raw),
+            });
+        }
+
+        Ok(tasks)
+    }
+
+    pub async fn update_status(
+        pool: &SqlitePool,
+        task_id: &str,
+        status: OptimizationTaskStatus,
+    ) -> Result<(), OptimizationTaskRepoError> {
+        let now = now_millis();
+        let terminated_at = if status == OptimizationTaskStatus::Terminated {
+            Some(now)
+        } else {
+            None
+        };
+
+        let result = sqlx::query(
+            r#"
+            UPDATE optimization_tasks
+            SET status = ?1,
+                terminated_at = ?2,
+                updated_at = ?3
+            WHERE id = ?4
+            "#,
+        )
+        .bind(serialize_task_status(status))
+        .bind(terminated_at)
+        .bind(now)
+        .bind(task_id)
+        .execute(pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(OptimizationTaskRepoError::NotFound);
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::models::{TaskReference, TestCase};
+    use crate::core::iteration_engine::checkpoint::compute_checksum;
+    use crate::domain::models::{
+        CheckpointCreateRequest, CheckpointEntity, IterationState, LineageType, RuleSystem,
+        TaskReference, TestCase,
+    };
+    use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
     use crate::infra::db::pool::create_pool;
-    use crate::infra::db::repositories::{TestSetRepo, WorkspaceRepo};
+    use crate::infra::db::repositories::{CheckpointRepo, TestSetRepo, WorkspaceRepo};
 
     async fn setup_test_db() -> SqlitePool {
         let pool = create_pool("sqlite::memory:")
@@ -592,5 +707,159 @@ mod tests {
         .expect_err("应失败");
 
         assert!(matches!(err, OptimizationTaskRepoError::TestSetNotFound));
+    }
+
+    #[tokio::test]
+    async fn test_find_unfinished_with_checkpoints_filters_status() {
+        let pool = setup_test_db().await;
+
+        insert_user(&pool, "u1", "user1").await;
+        let workspace = WorkspaceRepo::create(&pool, "u1", "ws", None)
+            .await
+            .expect("创建工作区失败");
+
+        let test_set = TestSetRepo::create(
+            &pool,
+            &workspace.id,
+            "ts",
+            None,
+            &[sample_exact_case()],
+            None,
+            None,
+        )
+        .await
+        .expect("创建测试集失败");
+
+        let created_running = OptimizationTaskRepo::create_scoped(
+            &pool,
+            CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task-running",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        let created_paused = OptimizationTaskRepo::create_scoped(
+            &pool,
+            CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task-paused",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        let created_done = OptimizationTaskRepo::create_scoped(
+            &pool,
+            CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task-done",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        OptimizationTaskRepo::update_status(
+            &pool,
+            &created_running.task.id,
+            OptimizationTaskStatus::Running,
+        )
+        .await
+        .expect("更新状态失败");
+
+        OptimizationTaskRepo::update_status(
+            &pool,
+            &created_paused.task.id,
+            OptimizationTaskStatus::Paused,
+        )
+        .await
+        .expect("更新状态失败");
+
+        OptimizationTaskRepo::update_status(
+            &pool,
+            &created_done.task.id,
+            OptimizationTaskStatus::Completed,
+        )
+        .await
+        .expect("更新状态失败");
+
+        let checkpoint_running = build_checkpoint(&created_running.task.id, 3);
+        CheckpointRepo::create_checkpoint(&pool, checkpoint_running)
+            .await
+            .expect("创建 checkpoint 失败");
+
+        let checkpoint_paused = build_checkpoint(&created_paused.task.id, 2);
+        CheckpointRepo::create_checkpoint(&pool, checkpoint_paused)
+            .await
+            .expect("创建 checkpoint 失败");
+
+        let tasks = OptimizationTaskRepo::find_unfinished_with_checkpoints(&pool, "u1")
+            .await
+            .expect("查询失败");
+        assert_eq!(tasks.len(), 2);
+        let names: Vec<String> = tasks.into_iter().map(|t| t.task_name).collect();
+        assert!(names.contains(&"task-running".to_string()));
+        assert!(names.contains(&"task-paused".to_string()));
+    }
+
+    fn build_checkpoint(task_id: &str, iteration: u32) -> CheckpointEntity {
+        let req = CheckpointCreateRequest {
+            task_id: task_id.to_string(),
+            iteration,
+            state: IterationState::RunningTests,
+            run_control_state: RunControlState::Running,
+            prompt: "p".to_string(),
+            rule_system: RuleSystem {
+                rules: vec![],
+                conflict_resolution_log: vec![],
+                merge_log: vec![],
+                coverage_map: std::collections::HashMap::new(),
+                version: 1,
+            },
+            artifacts: Some(IterationArtifacts::default()),
+            user_guidance: Some(UserGuidance::new("g")),
+            branch_id: task_id.to_string(),
+            parent_id: None,
+            lineage_type: LineageType::Automatic,
+            branch_description: None,
+        };
+        let checksum = compute_checksum(&req);
+
+        CheckpointEntity {
+            id: uuid::Uuid::new_v4().to_string(),
+            task_id: req.task_id,
+            iteration: req.iteration,
+            state: req.state,
+            run_control_state: req.run_control_state,
+            prompt: req.prompt,
+            rule_system: req.rule_system,
+            artifacts: req.artifacts,
+            user_guidance: req.user_guidance,
+            branch_id: req.branch_id,
+            parent_id: req.parent_id,
+            lineage_type: req.lineage_type,
+            branch_description: req.branch_description,
+            checksum,
+            created_at: now_millis(),
+        }
     }
 }

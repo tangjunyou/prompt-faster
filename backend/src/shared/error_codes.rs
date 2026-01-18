@@ -43,6 +43,9 @@ pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
 /// 上游服务错误（通用）
 pub const UPSTREAM_ERROR: &str = "UPSTREAM_ERROR";
 
+/// 网络离线
+pub const CONNECTIVITY_OFFLINE: &str = "CONNECTIVITY_OFFLINE";
+
 // ============================================================================
 // 认证错误码 (AUTH)
 // ============================================================================

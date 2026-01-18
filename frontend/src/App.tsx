@@ -12,6 +12,8 @@ import { Button } from './components/ui/button'
 import { ViewSwitcher } from './components/common/ViewSwitcher'
 import { WorkspaceSelector } from './components/common/WorkspaceSelector'
 import { useWorkspaceStore } from './stores/useWorkspaceStore'
+import { OfflineBanner } from './features/checkpoint-recovery/components/OfflineBanner'
+import { RecoveryPrompt } from './features/checkpoint-recovery/components/RecoveryPrompt'
 
 function App() {
   const navigate = useNavigate()
@@ -89,6 +91,9 @@ function App() {
           </div>
         </header>
       )}
+
+      {showHeader && <OfflineBanner />}
+      <RecoveryPrompt />
 
       <Routes>
         <Route path="/login" element={<LoginPage />} />
