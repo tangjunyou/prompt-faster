@@ -53,7 +53,11 @@ function TerminateDialogBody({
 
   const pageSize = 20
 
-  const { isLoading: isLoadingCandidates, isFetching } = useCandidates(taskId, true, {
+  const {
+    data: candidatesData,
+    isLoading: isLoadingCandidates,
+    isFetching,
+  } = useCandidates(taskId, true, {
     limit: pageSize,
     offset,
     onSuccess: (data) => {
@@ -78,7 +82,8 @@ function TerminateDialogBody({
     workspaceId
   )
 
-  const candidates = allCandidates
+  const candidates =
+    allCandidates.length > 0 ? allCandidates : (candidatesData?.candidates ?? [])
 
   const handleSelect = useCallback((iterationId: string) => {
     setSelectedIterationId((prev) => (prev === iterationId ? undefined : iterationId))
