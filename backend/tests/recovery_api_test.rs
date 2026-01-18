@@ -4,9 +4,9 @@ use axum::http::{Request, StatusCode};
 use axum::middleware;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sqlx::Row;
 use std::sync::Arc;
 use tower::ServiceExt;
-use sqlx::Row;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
@@ -19,7 +19,9 @@ use prompt_faster::domain::models::{
 };
 use prompt_faster::domain::types::{IterationArtifacts, RunControlState};
 use prompt_faster::infra::db::pool::{create_pool, global_db_pool, init_global_db_pool};
-use prompt_faster::infra::db::repositories::{CheckpointRepo, OptimizationTaskRepo, TestSetRepo, WorkspaceRepo};
+use prompt_faster::infra::db::repositories::{
+    CheckpointRepo, OptimizationTaskRepo, TestSetRepo, WorkspaceRepo,
+};
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::connectivity::{
     check_connectivity_status, record_connectivity_failure, record_connectivity_success,
@@ -105,18 +107,17 @@ async fn reset_database(pool: &sqlx::SqlitePool) {
         .execute(pool)
         .await
         .expect("关闭外键失败");
-    let tables = sqlx::query("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
-        .fetch_all(pool)
-        .await
-        .expect("读取表失败");
+    let tables = sqlx::query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("读取表失败");
     for row in tables {
         let name: String = row.try_get("name").expect("读取表名失败");
         let safe_name = name.replace('"', "\"\"");
         let sql = format!("DELETE FROM \"{}\"", safe_name);
-        sqlx::query(&sql)
-            .execute(pool)
-            .await
-            .expect("清理表失败");
+        sqlx::query(&sql).execute(pool).await.expect("清理表失败");
     }
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(pool)
@@ -245,7 +246,6 @@ fn sample_case() -> TestCase {
     }
 }
 
-
 #[tokio::test]
 async fn recovery_unfinished_tasks_and_recover_flow() {
     let (app, db) = setup_test_app_with_db().await;
@@ -254,17 +254,10 @@ async fn recovery_unfinished_tasks_and_recover_flow() {
     let workspace = WorkspaceRepo::create(&db, &user_id, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-        .await
-        .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,
@@ -326,17 +319,10 @@ async fn recovery_permission_denied_for_non_owner() {
     let workspace = WorkspaceRepo::create(&db, &user_id1, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-        .await
-        .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,
@@ -381,17 +367,10 @@ async fn recovery_falls_back_to_previous_checkpoint() {
     let workspace = WorkspaceRepo::create(&db, &user_id, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-    .await
-    .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,
@@ -442,17 +421,10 @@ async fn unfinished_tasks_use_first_valid_checkpoint() {
     let workspace = WorkspaceRepo::create(&db, &user_id, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-    .await
-    .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,
@@ -507,17 +479,10 @@ async fn recovery_metrics_endpoint_returns_counts() {
     let workspace = WorkspaceRepo::create(&db, &user_id, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-    .await
-    .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,
@@ -581,17 +546,10 @@ async fn recovery_supports_legacy_checkpoint_payload() {
     let workspace = WorkspaceRepo::create(&db, &user_id, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-    .await
-    .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,
@@ -677,17 +635,10 @@ async fn recovery_works_after_offline_checkpoint_save() {
     let workspace = WorkspaceRepo::create(&db, &user_id, "ws", None)
         .await
         .expect("创建工作区失败");
-    let test_set = TestSetRepo::create(
-        &db,
-        &workspace.id,
-        "ts",
-        None,
-        &[sample_case()],
-        None,
-        None,
-    )
-    .await
-    .expect("创建测试集失败");
+    let test_set =
+        TestSetRepo::create(&db, &workspace.id, "ts", None, &[sample_case()], None, None)
+            .await
+            .expect("创建测试集失败");
 
     let created = OptimizationTaskRepo::create_scoped(
         &db,

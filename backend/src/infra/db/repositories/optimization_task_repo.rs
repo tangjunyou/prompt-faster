@@ -3,15 +3,15 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteRow;
 use thiserror::Error;
 
+use crate::domain::models::IterationState;
 use crate::domain::models::OptimizationTaskConfig;
 use crate::domain::models::optimization_task_config::{
     OPTIMIZATION_TASK_CONFIG_MAX_JSON_BYTES, serialize_config_with_existing_extra,
 };
+use crate::domain::models::recovery::UnfinishedTask;
 use crate::domain::models::{
     ExecutionTargetType, OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus,
 };
-use crate::domain::models::recovery::UnfinishedTask;
-use crate::domain::models::IterationState;
 use crate::domain::types::{RunControlState, unix_ms_to_iso8601};
 use crate::shared::time::now_millis;
 

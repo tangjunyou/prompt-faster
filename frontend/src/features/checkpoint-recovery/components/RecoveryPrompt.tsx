@@ -2,7 +2,7 @@
  * 恢复提示对话框
  */
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUnfinishedTasks } from '../hooks/useUnfinishedTasks'
@@ -19,27 +19,28 @@ export function RecoveryPrompt() {
   const { data, isLoading } = useUnfinishedTasks({
     enabled: authStatus === 'authenticated' && !isLoginPage,
   })
-  const tasks = data?.tasks ?? []
-  const [open, setOpen] = useState(false)
+  const tasks = useMemo(() => data?.tasks ?? [], [data?.tasks])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [recoveryResult, setRecoveryResult] = useState<RecoveryResponse | null>(null)
+  const [dismissedSignature, setDismissedSignature] = useState<string | null>(null)
 
   const recoverMutation = useRecoverTask()
   const abortMutation = useAbortRecovery()
 
-  useEffect(() => {
-    if (tasks.length > 0) {
-      setOpen(true)
-      setSelectedTaskId((prev) => prev ?? tasks[0].taskId)
-    } else {
-      setOpen(false)
-      setRecoveryResult(null)
-    }
-  }, [tasks])
+  const taskSignature = useMemo(
+    () => tasks.map((task) => task.taskId).join('|'),
+    [tasks],
+  )
+  const resolvedSelectedTaskId = useMemo(() => {
+    if (tasks.length === 0) return null
+    const exists = tasks.some((task) => task.taskId === selectedTaskId)
+    return exists ? selectedTaskId : tasks[0]?.taskId ?? null
+  }, [tasks, selectedTaskId])
+  const isDialogOpen = tasks.length > 0 && dismissedSignature !== taskSignature
 
   const selectedTask = useMemo(
-    () => tasks.find((task) => task.taskId === selectedTaskId) ?? tasks[0],
-    [tasks, selectedTaskId],
+    () => tasks.find((task) => task.taskId === resolvedSelectedTaskId) ?? tasks[0],
+    [tasks, resolvedSelectedTaskId],
   )
 
   if (isLoginPage || authStatus !== 'authenticated') {
@@ -68,26 +69,36 @@ export function RecoveryPrompt() {
   const handleAbort = async () => {
     if (!selectedTask) return
     await abortMutation.mutateAsync({ taskId: selectedTask.taskId })
-    setOpen(false)
     setRecoveryResult(null)
+    setDismissedSignature(taskSignature)
   }
 
   const handleContinue = () => {
     if (!selectedTask) return
     navigate(`/run?taskId=${selectedTask.taskId}&resume=1`)
-    setOpen(false)
     setRecoveryResult(null)
+    setDismissedSignature(taskSignature)
   }
 
   const handleViewPaused = () => {
     if (!selectedTask) return
     navigate(`/run?taskId=${selectedTask.taskId}`)
-    setOpen(false)
     setRecoveryResult(null)
+    setDismissedSignature(taskSignature)
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={isDialogOpen}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setRecoveryResult(null)
+          setDismissedSignature(taskSignature)
+        } else {
+          setDismissedSignature(null)
+        }
+      }}
+    >
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
           <DialogTitle>检测到未完成任务</DialogTitle>
@@ -104,7 +115,7 @@ export function RecoveryPrompt() {
                 type="button"
                 onClick={() => setSelectedTaskId(task.taskId)}
                 className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                  selectedTaskId === task.taskId
+                  resolvedSelectedTaskId === task.taskId
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-primary/60'
                 }`}

@@ -6,8 +6,8 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use crate::api::response::ApiResponse;
-use crate::infra::external::connectivity::check_connectivity_status;
 use crate::domain::models::ConnectivityStatus;
+use crate::infra::external::connectivity::check_connectivity_status;
 use crate::shared::error_codes;
 
 /// 离线状态拦截（仅对需要网络的接口使用）

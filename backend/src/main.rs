@@ -62,10 +62,7 @@ async fn main() -> anyhow::Result<()> {
     info!("HTTP 客户端初始化成功");
 
     // 初始化 connectivity 探测地址
-    init_connectivity_probe(format!(
-        "http://{}/api/v1/health",
-        config.server_addr()
-    ));
+    init_connectivity_probe(format!("http://{}/api/v1/health", config.server_addr()));
 
     // 初始化 API Key 管理器
     //

@@ -7,23 +7,22 @@ use tracing::{error, info, warn};
 
 use crate::core::iteration_engine::checkpoint::{compute_checksum, verify_checksum};
 use crate::core::iteration_engine::pause_state::global_pause_registry;
+use crate::domain::models::RecoveryMetrics;
+use crate::domain::models::recovery::UnfinishedTask;
 use crate::domain::models::{
     Checkpoint, CheckpointCreateRequest, CheckpointEntity, ExecutionTargetType, IterationState,
     LineageType, OptimizationTaskConfig, OptimizationTaskStatus, OutputLength, Rule, RuleSystem,
     RuleTags,
 };
-use crate::domain::models::recovery::UnfinishedTask;
-use crate::domain::models::RecoveryMetrics;
 use crate::domain::types::{
-    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState,
-    SplitStrategy, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_USER_GUIDANCE,
-    unix_ms_to_iso8601,
+    EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_USER_GUIDANCE, ExecutionTargetConfig,
+    OptimizationConfig, OptimizationContext, RunControlState, SplitStrategy, unix_ms_to_iso8601,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{
     CheckpointRepo, CheckpointRepoError, CredentialRepo, CredentialRepoError, CredentialType,
-    OptimizationTaskRepo, OptimizationTaskRepoError, RecoveryMetricsRepo,
-    RecoveryMetricsRepoError, TestSetRepo, TestSetRepoError,
+    OptimizationTaskRepo, OptimizationTaskRepoError, RecoveryMetricsRepo, RecoveryMetricsRepoError,
+    TestSetRepo, TestSetRepoError,
 };
 use crate::shared::time::now_millis;
 
@@ -75,9 +74,7 @@ pub async fn get_recovery_metrics(task_id: &str) -> Result<RecoveryMetrics, Reco
 }
 
 /// 检测未完成任务
-pub async fn detect_unfinished_tasks(
-    user_id: &str,
-) -> Result<Vec<UnfinishedTask>, RecoveryError> {
+pub async fn detect_unfinished_tasks(user_id: &str) -> Result<Vec<UnfinishedTask>, RecoveryError> {
     let pool = global_db_pool().ok_or(RecoveryError::DatabaseNotInitialized)?;
     detect_unfinished_tasks_with_pool(&pool, user_id).await
 }
@@ -120,18 +117,18 @@ pub(crate) async fn detect_unfinished_tasks_with_pool(
     let tasks = OptimizationTaskRepo::find_unfinished_with_checkpoints(pool, user_id).await?;
     let mut valid_tasks = Vec::with_capacity(tasks.len());
     for task in tasks {
-        let checkpoint = match CheckpointRepo::get_checkpoint_by_id(pool, &task.checkpoint_id).await?
-        {
-            Some(cp) => cp,
-            None => {
-                warn!(
-                    task_id = %task.task_id,
-                    checkpoint_id = %task.checkpoint_id,
-                    "未找到任务的最新 checkpoint，跳过未完成任务提示"
-                );
-                continue;
-            }
-        };
+        let checkpoint =
+            match CheckpointRepo::get_checkpoint_by_id(pool, &task.checkpoint_id).await? {
+                Some(cp) => cp,
+                None => {
+                    warn!(
+                        task_id = %task.task_id,
+                        checkpoint_id = %task.checkpoint_id,
+                        "未找到任务的最新 checkpoint，跳过未完成任务提示"
+                    );
+                    continue;
+                }
+            };
 
         let mut selected_checkpoint = checkpoint;
         if !verify_checksum(&selected_checkpoint) {
@@ -140,11 +137,9 @@ pub(crate) async fn detect_unfinished_tasks_with_pool(
                 checkpoint_id = %selected_checkpoint.id,
                 "未完成任务的最新 checkpoint checksum 校验失败，尝试回退"
             );
-            let total =
-                CheckpointRepo::count_checkpoints_by_task(pool, &task.task_id).await?;
+            let total = CheckpointRepo::count_checkpoints_by_task(pool, &task.task_id).await?;
             let candidates =
-                CheckpointRepo::list_checkpoints_by_task(pool, &task.task_id, total.max(1))
-                    .await?;
+                CheckpointRepo::list_checkpoints_by_task(pool, &task.task_id, total.max(1)).await?;
             if let Some(valid) = candidates.into_iter().find(|cp| verify_checksum(cp)) {
                 selected_checkpoint = valid;
             } else {
@@ -249,10 +244,10 @@ pub(crate) async fn recover_task_with_pool(
     } else {
         // 使用最近的 checkpoint
         let total = CheckpointRepo::count_checkpoints_by_task(pool, task_id).await?;
-        let candidates = CheckpointRepo::list_checkpoints_by_task(pool, task_id, total.max(1)).await?;
+        let candidates =
+            CheckpointRepo::list_checkpoints_by_task(pool, task_id, total.max(1)).await?;
         if let Some(latest) = candidates.first().cloned() {
-            recover_with_fallback(pool, user_id, correlation_id, &latest, Some(candidates))
-                .await
+            recover_with_fallback(pool, user_id, correlation_id, &latest, Some(candidates)).await
         } else {
             recover_from_pause_state(pool, user_id, correlation_id, task_id).await
         }
@@ -527,9 +522,8 @@ async fn rebuild_optimization_context(
             .await
             .map_err(|_| RecoveryError::TaskNotFound)?;
 
-    let task_config = OptimizationTaskConfig::normalized_from_config_json(
-        task.config_json.as_deref(),
-    );
+    let task_config =
+        OptimizationTaskConfig::normalized_from_config_json(task.config_json.as_deref());
 
     let execution_target_config = build_execution_target_config(
         pool,
@@ -627,12 +621,14 @@ fn to_checkpoint_model(entity: CheckpointEntity) -> Checkpoint {
 fn build_runtime_config(task_config: &OptimizationTaskConfig) -> OptimizationConfig {
     let mut cfg = OptimizationConfig::default();
     cfg.iteration.max_iterations = task_config.max_iterations.max(1);
-    cfg.iteration.pass_threshold = (task_config.pass_threshold_percent as f64 / 100.0)
-        .clamp(0.0, 1.0);
+    cfg.iteration.pass_threshold =
+        (task_config.pass_threshold_percent as f64 / 100.0).clamp(0.0, 1.0);
     cfg.iteration.diversity_inject_after = task_config.diversity_injection_threshold.max(1);
 
     cfg.output.strategy = match task_config.output_config.strategy {
-        crate::domain::models::OutputStrategy::Single => crate::domain::types::OutputStrategy::Single,
+        crate::domain::models::OutputStrategy::Single => {
+            crate::domain::types::OutputStrategy::Single
+        }
         crate::domain::models::OutputStrategy::Adaptive => {
             crate::domain::types::OutputStrategy::Adaptive
         }
@@ -670,8 +666,7 @@ async fn build_execution_target_config(
 ) -> Result<ExecutionTargetConfig, RecoveryError> {
     match execution_target_type {
         ExecutionTargetType::Dify => {
-            let prompt_variable =
-                extract_prompt_variable(pool, workspace_id, test_set_ids).await?;
+            let prompt_variable = extract_prompt_variable(pool, workspace_id, test_set_ids).await?;
             let credential =
                 CredentialRepo::find_by_user_and_type(pool, user_id, CredentialType::Dify).await?;
             Ok(ExecutionTargetConfig::Dify {
@@ -682,12 +677,9 @@ async fn build_execution_target_config(
             })
         }
         ExecutionTargetType::Generic => {
-            let credential = CredentialRepo::find_by_user_and_type(
-                pool,
-                user_id,
-                CredentialType::GenericLlm,
-            )
-            .await?;
+            let credential =
+                CredentialRepo::find_by_user_and_type(pool, user_id, CredentialType::GenericLlm)
+                    .await?;
             let model_name = task_config
                 .teacher_llm
                 .model_id
@@ -734,12 +726,12 @@ async fn extract_prompt_variable(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use crate::infra::db::pool::{create_pool, init_global_db_pool};
-    use crate::infra::db::repositories::{TestSetRepo, WorkspaceRepo};
     use crate::domain::models::{TaskReference, TestCase};
     use crate::domain::types::{ArtifactSource, CandidatePrompt, IterationArtifacts};
+    use crate::infra::db::pool::{create_pool, init_global_db_pool};
+    use crate::infra::db::repositories::{TestSetRepo, WorkspaceRepo};
     use serde_json::json;
+    use std::collections::HashMap;
 
     async fn setup_db() -> sqlx::SqlitePool {
         let pool = create_pool("sqlite::memory:")
@@ -914,7 +906,9 @@ mod tests {
         .await
         .expect("创建任务失败");
 
-        let controller = global_pause_registry().get_or_create(&created.task.id).await;
+        let controller = global_pause_registry()
+            .get_or_create(&created.task.id)
+            .await;
         controller.request_pause("cid-1", "u1").await;
         let artifacts = IterationArtifacts {
             patterns: vec![],

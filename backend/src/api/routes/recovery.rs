@@ -2,7 +2,10 @@
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::{Json, Router, routing::{get, post}};
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
 use serde::Serialize;
 use tracing::{info, warn};
 use utoipa::ToSchema;
@@ -16,8 +19,8 @@ use crate::domain::models::{
     ConnectivityResponse, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
     UnfinishedTasksResponse,
 };
-use crate::infra::external::connectivity::check_connectivity;
 use crate::infra::db::repositories::OptimizationTaskRepo;
+use crate::infra::external::connectivity::check_connectivity;
 use crate::shared::error_codes;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -208,7 +211,8 @@ pub(crate) async fn abort_recovery(
     let correlation_id = extract_correlation_id(&headers);
     let user_id = current_user.user_id;
 
-    match recovery_core::abort_task_with_pool(&state.db, &task_id, &user_id, &correlation_id).await {
+    match recovery_core::abort_task_with_pool(&state.db, &task_id, &user_id, &correlation_id).await
+    {
         Ok(_) => ApiResponse::ok(AbortRecoveryResponse {
             success: true,
             message: "已放弃恢复".to_string(),

@@ -1,7 +1,10 @@
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use std::time::Duration;
 
-use axum::{Router, extract::State, routing::get, response::IntoResponse, Json};
+use axum::{Json, Router, extract::State, response::IntoResponse, routing::get};
 use serde_json::json;
 use tokio::net::TcpListener;
 

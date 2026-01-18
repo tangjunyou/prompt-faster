@@ -13,15 +13,9 @@ use crate::shared::time::now_millis;
 const CACHE_TTL: Duration = Duration::from_secs(30);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
 
-pub const OFFLINE_AVAILABLE_FEATURES: &[&str] = &[
-    "view_history",
-    "manage_test_sets",
-    "view_checkpoints",
-];
-pub const OFFLINE_RESTRICTED_FEATURES: &[&str] = &[
-    "api_connection_test",
-    "run_optimization",
-];
+pub const OFFLINE_AVAILABLE_FEATURES: &[&str] =
+    &["view_history", "manage_test_sets", "view_checkpoints"];
+pub const OFFLINE_RESTRICTED_FEATURES: &[&str] = &["api_connection_test", "run_optimization"];
 
 #[derive(Debug, Clone)]
 struct ConnectivityCache {
@@ -74,14 +68,20 @@ fn features_for_status(status: &ConnectivityStatus) -> (Vec<String>, Vec<String>
     match status {
         ConnectivityStatus::Online => (Vec::new(), Vec::new()),
         ConnectivityStatus::Limited => (
-            OFFLINE_AVAILABLE_FEATURES.iter().map(|s| s.to_string()).collect(),
+            OFFLINE_AVAILABLE_FEATURES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             OFFLINE_RESTRICTED_FEATURES
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
         ),
         ConnectivityStatus::Offline => (
-            OFFLINE_AVAILABLE_FEATURES.iter().map(|s| s.to_string()).collect(),
+            OFFLINE_AVAILABLE_FEATURES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
             OFFLINE_RESTRICTED_FEATURES
                 .iter()
                 .map(|s| s.to_string())

@@ -111,11 +111,7 @@ mod tests {
             "retry_test",
             || async {
                 let current = attempts_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
-                if current < 3 {
-                    Err("failed")
-                } else {
-                    Ok("ok")
-                }
+                if current < 3 { Err("failed") } else { Ok("ok") }
             },
             |_| true,
             |_| "test_error",

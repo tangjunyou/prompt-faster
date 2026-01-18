@@ -13,8 +13,8 @@ use ts_rs::TS;
 use utoipa::ToSchema;
 use zeroize::Zeroizing;
 
-use crate::api::middleware::{CurrentUser, connectivity_middleware};
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
+use crate::api::middleware::{CurrentUser, connectivity_middleware};
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{
