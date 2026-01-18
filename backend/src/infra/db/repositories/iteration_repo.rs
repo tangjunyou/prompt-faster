@@ -171,11 +171,7 @@ impl IterationRepo {
         if let Some(status) = status_filter {
             query = query.bind(status);
         }
-        let rows: Vec<IterationRow> = query
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?;
+        let rows: Vec<IterationRow> = query.bind(limit).bind(offset).fetch_all(pool).await?;
 
         info!(
             task_id = %task_id,

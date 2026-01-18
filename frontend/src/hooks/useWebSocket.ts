@@ -87,7 +87,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       ws.close()
       socketRef.current = null
     }
-  }, [token, onPaused, onResumed, onAck, onMessage])
+  }, [token, onPaused, onResumed, onAck, onTerminated, onMessage])
 
   const sendCommand = useCallback(
     <T = TaskControlPayload>(type: string, payload: T, correlationId: string) => {

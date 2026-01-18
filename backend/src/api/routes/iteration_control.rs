@@ -5,10 +5,13 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::{Json, Router, routing::{get, patch, post}};
+use axum::{
+    Json, Router,
+    routing::{get, patch, post},
+};
 use serde::Deserialize;
-use std::time::{SystemTime, UNIX_EPOCH};
 use sqlx::SqlitePool;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 
 use crate::api::middleware::CurrentUser;
@@ -21,7 +24,7 @@ use crate::domain::types::{
     TerminateTaskRequest, TerminateTaskResponse, unix_ms_to_iso8601,
 };
 use crate::infra::db::repositories::{
-    IterationRepo, IterationRepoError, OptimizationTaskRepo, IterationSummaryWithArtifacts,
+    IterationRepo, IterationRepoError, IterationSummaryWithArtifacts, OptimizationTaskRepo,
 };
 use crate::shared::error_codes;
 use crate::shared::ws::{EVT_TASK_TERMINATED, TaskTerminatedPayload, WsMessage};
@@ -191,12 +194,11 @@ pub(crate) async fn add_rounds(
     let new_max_iterations = prev_max_iterations + req.additional_rounds;
 
     // 获取当前轮次（从最新迭代记录）
-    let current_round = match IterationRepo::list_by_task_id(&state.db, user_id, &task_id, Some(1))
-        .await
-    {
-        Ok(iterations) => iterations.first().map(|i| i.round).unwrap_or(0),
-        Err(_) => 0,
-    };
+    let current_round =
+        match IterationRepo::list_by_task_id(&state.db, user_id, &task_id, Some(1)).await {
+            Ok(iterations) => iterations.first().map(|i| i.round).unwrap_or(0),
+            Err(_) => 0,
+        };
 
     // 更新配置
     let mut new_config = config.clone();
@@ -297,60 +299,61 @@ pub(crate) async fn get_candidates(
 
     // 查询历史迭代（仅 completed），避免 N+1
     let limit = query.limit.unwrap_or(MAX_CANDIDATES);
-    let iterations: Vec<IterationSummaryWithArtifacts> = match IterationRepo::list_with_artifacts_by_task_id(
-        &state.db,
-        user_id,
-        &task_id,
-        Some(limit),
-        query.offset,
-        Some("completed"),
-    )
-    .await
-    {
-        Ok(iterations) => iterations,
-        Err(IterationRepoError::TaskNotFoundOrForbidden) => {
-            match task_exists(&state.db, &task_id).await {
-                Ok(true) => {
-                    return ApiResponse::err(
-                        StatusCode::FORBIDDEN,
-                        error_codes::FORBIDDEN,
-                        "无权访问该任务",
-                    );
-                }
-                Ok(false) => {
-                    return ApiResponse::err(
-                        StatusCode::NOT_FOUND,
-                        error_codes::OPTIMIZATION_TASK_NOT_FOUND,
-                        "优化任务不存在",
-                    );
-                }
-                Err(e) => {
-                    warn!(
-                        correlation_id = %correlation_id,
-                        error = %e,
-                        "检查任务存在性失败"
-                    );
-                    return ApiResponse::err(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        error_codes::DATABASE_ERROR,
-                        "查询优化任务失败",
-                    );
+    let iterations: Vec<IterationSummaryWithArtifacts> =
+        match IterationRepo::list_with_artifacts_by_task_id(
+            &state.db,
+            user_id,
+            &task_id,
+            Some(limit),
+            query.offset,
+            Some("completed"),
+        )
+        .await
+        {
+            Ok(iterations) => iterations,
+            Err(IterationRepoError::TaskNotFoundOrForbidden) => {
+                match task_exists(&state.db, &task_id).await {
+                    Ok(true) => {
+                        return ApiResponse::err(
+                            StatusCode::FORBIDDEN,
+                            error_codes::FORBIDDEN,
+                            "无权访问该任务",
+                        );
+                    }
+                    Ok(false) => {
+                        return ApiResponse::err(
+                            StatusCode::NOT_FOUND,
+                            error_codes::OPTIMIZATION_TASK_NOT_FOUND,
+                            "优化任务不存在",
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            correlation_id = %correlation_id,
+                            error = %e,
+                            "检查任务存在性失败"
+                        );
+                        return ApiResponse::err(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            error_codes::DATABASE_ERROR,
+                            "查询优化任务失败",
+                        );
+                    }
                 }
             }
-        }
-        Err(e) => {
-            warn!(
-                correlation_id = %correlation_id,
-                error = %e,
-                "查询迭代历史失败"
-            );
-            return ApiResponse::err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error_codes::DATABASE_ERROR,
-                "查询迭代历史失败",
-            );
-        }
-    };
+            Err(e) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %e,
+                    "查询迭代历史失败"
+                );
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询迭代历史失败",
+                );
+            }
+        };
 
     // 提取每轮的候选 Prompt
     let mut candidates: Vec<CandidatePromptSummary> = Vec::new();
@@ -388,7 +391,11 @@ pub(crate) async fn get_candidates(
     }
 
     // 按通过率降序排列
-    candidates.sort_by(|a, b| b.pass_rate.partial_cmp(&a.pass_rate).unwrap_or(std::cmp::Ordering::Equal));
+    candidates.sort_by(|a, b| {
+        b.pass_rate
+            .partial_cmp(&a.pass_rate)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let total = candidates.len() as i32;
 
@@ -643,20 +650,20 @@ pub fn router() -> Router<AppState> {
 mod tests {
     use super::*;
     use crate::api::middleware::CurrentUser;
+    use crate::api::middleware::{LoginAttemptStore, SessionStore};
     use crate::core::iteration_engine::pause_state::global_pause_registry;
-    use crate::domain::models::{
-        ExecutionTargetType, OptimizationTaskMode, OptimizationTaskStatus,
-    };
     use crate::domain::models::optimization_task_config::{
         OptimizationTaskConfig, serialize_config_with_existing_extra,
+    };
+    use crate::domain::models::{
+        ExecutionTargetType, OptimizationTaskMode, OptimizationTaskStatus,
     };
     use crate::domain::types::{ArtifactSource, CandidatePrompt, IterationArtifacts};
     use crate::infra::db::pool::create_pool;
     use crate::infra::db::repositories::{OptimizationTaskRepo, TestSetRepo, WorkspaceRepo};
-    use crate::shared::ws::chrono_timestamp;
-    use crate::api::middleware::{LoginAttemptStore, SessionStore};
     use crate::infra::external::api_key_manager::ApiKeyManager;
     use crate::shared::config::AppConfig;
+    use crate::shared::ws::chrono_timestamp;
     use reqwest::Client;
     use sqlx::SqlitePool;
     use std::sync::Arc;
@@ -717,17 +724,9 @@ mod tests {
             .await
             .expect("创建工作区失败");
 
-        let test_set = TestSetRepo::create(
-            pool,
-            &workspace.id,
-            "ts",
-            None,
-            &[],
-            None,
-            None,
-        )
-        .await
-        .expect("创建测试集失败");
+        let test_set = TestSetRepo::create(pool, &workspace.id, "ts", None, &[], None, None)
+            .await
+            .expect("创建测试集失败");
 
         let created = OptimizationTaskRepo::create_scoped(
             pool,
@@ -746,8 +745,8 @@ mod tests {
         .expect("创建任务失败");
 
         let config = OptimizationTaskConfig::default();
-        let config_json = serialize_config_with_existing_extra(config, None)
-            .expect("序列化 config 失败");
+        let config_json =
+            serialize_config_with_existing_extra(config, None).expect("序列化 config 失败");
 
         sqlx::query(
             r#"
@@ -832,7 +831,9 @@ mod tests {
                 user_id: "u1".to_string(),
                 unlock_context: None,
             },
-            Json(AddRoundsRequest { additional_rounds: 3 }),
+            Json(AddRoundsRequest {
+                additional_rounds: 3,
+            }),
         )
         .await;
 
@@ -846,7 +847,8 @@ mod tests {
         let task = OptimizationTaskRepo::find_by_id_for_user(&state.db, "u1", &task_id)
             .await
             .expect("查询任务失败");
-        let config = OptimizationTaskConfig::normalized_from_config_json(task.config_json.as_deref());
+        let config =
+            OptimizationTaskConfig::normalized_from_config_json(task.config_json.as_deref());
         assert_eq!(config.max_iterations, 13);
 
         let controller = global_pause_registry().get_or_create(&task_id).await;
@@ -867,7 +869,9 @@ mod tests {
                 user_id: "u2".to_string(),
                 unlock_context: None,
             },
-            Json(AddRoundsRequest { additional_rounds: 1 }),
+            Json(AddRoundsRequest {
+                additional_rounds: 1,
+            }),
         )
         .await;
 
@@ -891,7 +895,9 @@ mod tests {
                 user_id: "u1".to_string(),
                 unlock_context: None,
             },
-            Json(AddRoundsRequest { additional_rounds: 1 }),
+            Json(AddRoundsRequest {
+                additional_rounds: 1,
+            }),
         )
         .await;
 
@@ -936,7 +942,10 @@ mod tests {
             .expect("查询任务失败");
         assert_eq!(task.status, OptimizationTaskStatus::Terminated);
         assert_eq!(task.final_prompt.as_deref(), Some("Final Prompt"));
-        assert_eq!(task.selected_iteration_id.as_deref(), Some(iteration_id.as_str()));
+        assert_eq!(
+            task.selected_iteration_id.as_deref(),
+            Some(iteration_id.as_str())
+        );
         assert!(task.terminated_at.is_some());
 
         let controller = global_pause_registry().get_or_create(&task_id).await;
@@ -1048,7 +1057,10 @@ mod tests {
             State(state.clone()),
             HeaderMap::new(),
             Path(task_id.clone()),
-            Query(CandidatesQuery { limit: None, offset: None }),
+            Query(CandidatesQuery {
+                limit: None,
+                offset: None,
+            }),
             CurrentUser {
                 user_id: "u1".to_string(),
                 unlock_context: None,
@@ -1072,7 +1084,10 @@ mod tests {
             State(state.clone()),
             HeaderMap::new(),
             Path("missing-task".to_string()),
-            Query(CandidatesQuery { limit: None, offset: None }),
+            Query(CandidatesQuery {
+                limit: None,
+                offset: None,
+            }),
             CurrentUser {
                 user_id: "u1".to_string(),
                 unlock_context: None,
@@ -1097,7 +1112,10 @@ mod tests {
             State(state.clone()),
             HeaderMap::new(),
             Path(task_id),
-            Query(CandidatesQuery { limit: None, offset: None }),
+            Query(CandidatesQuery {
+                limit: None,
+                offset: None,
+            }),
             CurrentUser {
                 user_id: "u2".to_string(),
                 unlock_context: None,

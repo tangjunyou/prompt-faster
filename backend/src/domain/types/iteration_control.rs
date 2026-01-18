@@ -24,16 +24,10 @@ impl AddRoundsRequest {
     /// 验证请求参数
     pub fn validate(&self) -> Result<(), String> {
         if self.additional_rounds < Self::MIN_ADDITIONAL_ROUNDS {
-            return Err(format!(
-                "增加轮数不能小于 {}",
-                Self::MIN_ADDITIONAL_ROUNDS
-            ));
+            return Err(format!("增加轮数不能小于 {}", Self::MIN_ADDITIONAL_ROUNDS));
         }
         if self.additional_rounds > Self::MAX_ADDITIONAL_ROUNDS {
-            return Err(format!(
-                "增加轮数不能超过 {}",
-                Self::MAX_ADDITIONAL_ROUNDS
-            ));
+            return Err(format!("增加轮数不能超过 {}", Self::MAX_ADDITIONAL_ROUNDS));
         }
         Ok(())
     }
@@ -85,7 +79,10 @@ impl CandidatePromptSummary {
         if chars.len() <= Self::PREVIEW_MAX_CHARS {
             prompt.to_string()
         } else {
-            format!("{}...", chars[..Self::PREVIEW_MAX_CHARS].iter().collect::<String>())
+            format!(
+                "{}...",
+                chars[..Self::PREVIEW_MAX_CHARS].iter().collect::<String>()
+            )
         }
     }
 }
@@ -134,25 +131,37 @@ mod tests {
 
     #[test]
     fn test_add_rounds_request_validate_valid() {
-        let req = AddRoundsRequest { additional_rounds: 5 };
+        let req = AddRoundsRequest {
+            additional_rounds: 5,
+        };
         assert!(req.validate().is_ok());
 
-        let req = AddRoundsRequest { additional_rounds: 1 };
+        let req = AddRoundsRequest {
+            additional_rounds: 1,
+        };
         assert!(req.validate().is_ok());
 
-        let req = AddRoundsRequest { additional_rounds: 100 };
+        let req = AddRoundsRequest {
+            additional_rounds: 100,
+        };
         assert!(req.validate().is_ok());
     }
 
     #[test]
     fn test_add_rounds_request_validate_invalid() {
-        let req = AddRoundsRequest { additional_rounds: 0 };
+        let req = AddRoundsRequest {
+            additional_rounds: 0,
+        };
         assert!(req.validate().is_err());
 
-        let req = AddRoundsRequest { additional_rounds: -1 };
+        let req = AddRoundsRequest {
+            additional_rounds: -1,
+        };
         assert!(req.validate().is_err());
 
-        let req = AddRoundsRequest { additional_rounds: 101 };
+        let req = AddRoundsRequest {
+            additional_rounds: 101,
+        };
         assert!(req.validate().is_err());
     }
 

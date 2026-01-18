@@ -141,11 +141,9 @@ async fn main() -> anyhow::Result<()> {
         auth_middleware,
     ));
 
-    let protected_iteration_control_routes =
-        iteration_control::router().layer(middleware::from_fn_with_state(
-            session_store_for_middleware,
-            auth_middleware,
-        ));
+    let protected_iteration_control_routes = iteration_control::router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+    );
 
     let app = Router::<AppState>::new()
         .merge(docs::router::<AppState>()) // Swagger UI at /swagger (root path, no /api/v1 prefix)
