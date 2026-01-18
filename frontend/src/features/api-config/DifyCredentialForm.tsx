@@ -10,6 +10,7 @@ import { useTestDifyConnection } from './hooks/useTestConnection';
 import { FeedbackAlert } from './FeedbackAlert';
 import { API_KEY_MAX_LENGTH, BASE_URL_MAX_LENGTH } from './constants';
 import { statusBadgeMap } from '@/types/credentials';
+import { useConnectivity } from '@/features/checkpoint-recovery/hooks/useConnectivity';
 
 
 /**
@@ -39,6 +40,7 @@ export function DifyCredentialForm() {
 
   // 连接测试 mutation
   const testConnection = useTestDifyConnection();
+  const { isOffline } = useConnectivity();
 
   // 表单是否填写完整
   const isFormComplete = baseUrl.trim() !== '' && apiKey.trim() !== '';
@@ -152,9 +154,10 @@ export function DifyCredentialForm() {
           type="button"
           variant="outline"
           className="flex-1"
-          disabled={!isFormComplete || testConnection.isPending}
+          disabled={!isFormComplete || testConnection.isPending || isOffline}
           onClick={handleTestConnection}
           data-testid="dify-test-connection-btn"
+          title={isOffline ? '当前离线，无法测试连接' : undefined}
         >
           {testConnection.isPending ? (
             <>

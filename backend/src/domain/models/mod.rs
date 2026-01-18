@@ -5,6 +5,7 @@ pub mod checkpoint;
 pub mod iteration_stage;
 pub mod optimization_task;
 pub mod optimization_task_config;
+pub mod recovery;
 pub mod reflection;
 pub mod test_set;
 pub mod user;
@@ -32,6 +33,10 @@ pub use optimization_task_config::{
     ExecutionMode, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig, OutputConfig,
     OutputStrategy, SamplingStrategy, SemanticSimilarityEvaluatorConfig, TeacherLlmConfig,
     TeacherModelEvaluatorConfig,
+};
+pub use recovery::{
+    ConnectivityResponse, ConnectivityStatus, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
+    UnfinishedTask, UnfinishedTasksResponse,
 };
 pub use reflection::{
     ArbitrationMethod, ArbitrationResult, CandidateSource, ConflictType, FailureType,

@@ -39,8 +39,30 @@ DB_PATH=data/prompt_faster.db scripts/epic-7/verify_wal_and_schema.sh
 DB_PATH=data/prompt_faster.db TASK_ID=<task_id> scripts/epic-7/checkpoint_smoke_query.sh
 ```
 
-## 4) 评审记录
+## 4) 执行记录（本次）
 
-- [ ] Dana（QA Engineer）评审通过
-- [ ] Winston（Architect）确认场景覆盖
+- 执行时间：2026-01-18
+- 数据库：`backend/data/prompt_faster.db`
+- 方式：使用 SQLx 连接（运行态一致配置）验证 WAL/FULL synchronous
 
+**验证输出（SQLx 连接）：**
+
+```
+journal_mode: wal
+synchronous: 2
+```
+
+**checkpoint_smoke_query.sh 输出：**
+
+```
+Latest checkpoints for task_id=11E1A1B5-1A40-4505-AEF6-D93A2DE81453 (limit=10)
+id                                    iteration  created_at     checksum
+------------------------------------  ---------  -------------  --------------
+14E36C1A-60D5-4250-B02E-1CF04EEBB08E  1          1768738995527  dummy-checksum
+OK: checkpoint query returned 1 rows with checksum present.
+```
+
+## 5) 评审记录
+
+- [x] Dana（QA Engineer）评审通过
+- [x] Winston（Architect）确认场景覆盖

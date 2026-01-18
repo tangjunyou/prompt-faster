@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { History, RefreshCw, PlayCircle } from 'lucide-react'
 import { useIterationHistory } from './hooks/useIterationHistory'
 import { useCheckpoints } from '@/features/checkpoint-recovery/hooks/useCheckpoints'
+import { useConnectivity } from '@/features/checkpoint-recovery/hooks/useConnectivity'
 import { IterationHistoryItem } from './IterationHistoryItem'
 
 export interface HistoryPanelProps {
@@ -38,6 +39,7 @@ function formatTime(isoString: string): string {
  */
 export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps) {
   const [expandedIterationId, setExpandedIterationId] = useState<string | null>(null)
+  const { isOffline } = useConnectivity()
 
   const {
     data: iterations,
@@ -185,7 +187,9 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
                 variant="default"
                 size="sm"
                 onClick={onStartOptimization}
+                disabled={isOffline}
                 className="min-w-[44px] min-h-[44px]"
+                title={isOffline ? '当前离线，无法开始优化' : undefined}
               >
                 <PlayCircle className="h-4 w-4 mr-1" />
                 开始优化

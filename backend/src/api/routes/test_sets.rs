@@ -1,7 +1,7 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::{
-    Json, Router,
+    Json, Router, middleware,
     routing::{get, post, put},
 };
 use serde::{Deserialize, Serialize};
@@ -11,8 +11,8 @@ use tracing::{info, warn};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
-use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
+use crate::api::middleware::{CurrentUser, connectivity_middleware};
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::routes::dify::{
     DifyBindingSource, DifyConfig, SaveDifyConfigRequest, SaveDifyConfigResponse,
@@ -1239,7 +1239,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/{test_set_id}/dify/variables/refresh",
-            post(refresh_dify_variables),
+            post(refresh_dify_variables).route_layer(middleware::from_fn(connectivity_middleware)),
         )
         .route("/{test_set_id}/dify/config", put(save_dify_config))
         .route(

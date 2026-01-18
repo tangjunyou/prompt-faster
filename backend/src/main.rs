@@ -12,9 +12,12 @@ use tracing::info;
 use prompt_faster::api::middleware::correlation_id::{
     CORRELATION_ID_HEADER, correlation_id_middleware,
 };
-use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
+use prompt_faster::api::middleware::{
+    LoginAttemptStore, SessionStore, auth_middleware, connectivity_middleware,
+};
 use prompt_faster::api::routes::{
-    auth, checkpoints, docs, health, iteration_control, iterations, meta, user_auth, workspaces,
+    auth, checkpoints, docs, health, iteration_control, iterations, meta, recovery, user_auth,
+    workspaces,
 };
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
@@ -23,6 +26,7 @@ use prompt_faster::core::iteration_engine::checkpoint::{
 };
 use prompt_faster::infra::db::pool::{create_pool, init_global_db_pool};
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
+use prompt_faster::infra::external::connectivity::init_connectivity_probe;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
 use prompt_faster::shared::tracing_setup::init_tracing;
@@ -56,6 +60,9 @@ async fn main() -> anyhow::Result<()> {
     // 初始化 HTTP 客户端（复用连接池，提高性能）
     let http_client = create_http_client()?;
     info!("HTTP 客户端初始化成功");
+
+    // 初始化 connectivity 探测地址
+    init_connectivity_probe(format!("http://{}/api/v1/health", config.server_addr()));
 
     // 初始化 API Key 管理器
     //
@@ -158,14 +165,17 @@ async fn main() -> anyhow::Result<()> {
         auth_middleware,
     ));
     let protected_task_checkpoints_routes = checkpoints::task_router().layer(
-        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+        middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
     );
 
     let app = Router::<AppState>::new()
         .merge(docs::router::<AppState>()) // Swagger UI at /swagger (root path, no /api/v1 prefix)
         .nest("/api/v1", health::router::<AppState>())
         .nest("/api/v1/meta", meta::router())
-        .nest("/api/v1/auth", auth::public_router()) // 公开路由：连接测试
+        .nest(
+            "/api/v1/auth",
+            auth::public_router().layer(middleware::from_fn(connectivity_middleware)),
+        ) // 公开路由：连接测试
         .nest("/api/v1/auth", protected_routes) // 受保护路由：配置管理
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
@@ -183,6 +193,14 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/tasks/{task_id}/checkpoints",
             protected_task_checkpoints_routes,
         )
+        .nest(
+            "/api/v1/recovery",
+            recovery::router().layer(middleware::from_fn_with_state(
+                session_store_for_middleware.clone(),
+                auth_middleware,
+            )),
+        )
+        .nest("/api/v1", recovery::connectivity_router())
         .nest("/api/v1", ws::router())
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware))

@@ -279,7 +279,7 @@ async fn insert_checkpoint(
     let checksum = compute_checksum(&CheckpointCreateRequest {
         task_id: checkpoint.task_id.clone(),
         iteration: checkpoint.iteration,
-        state: checkpoint.state.clone(),
+        state: checkpoint.state,
         run_control_state: checkpoint.run_control_state,
         prompt: checkpoint.prompt.clone(),
         rule_system: checkpoint.rule_system.clone(),

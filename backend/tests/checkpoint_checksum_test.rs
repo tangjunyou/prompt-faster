@@ -42,7 +42,7 @@ fn checksum_computes_and_verifies() {
         id: "checkpoint-1".to_string(),
         task_id: req.task_id.clone(),
         iteration: req.iteration,
-        state: req.state.clone(),
+        state: req.state,
         run_control_state: req.run_control_state,
         prompt: req.prompt.clone(),
         rule_system: req.rule_system.clone(),

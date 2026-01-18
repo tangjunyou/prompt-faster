@@ -6,6 +6,12 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::domain::models::ConnectivityStatus;
+use crate::infra::external::connectivity::{
+    record_connectivity_failure, record_connectivity_success,
+};
+use crate::infra::external::retry::{RetryPolicy, with_retry};
+
 use super::dify_client::TestConnectionResult;
 /// Provider 允许列表（白名单验证）
 pub const ALLOWED_PROVIDERS: &[&str] = &["siliconflow", "modelscope"];
@@ -149,39 +155,66 @@ pub async fn list_models(
 
     let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
 
-    let response = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("X-Correlation-Id", correlation_id)
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                LlmConnectionError::Timeout
-            } else {
-                LlmConnectionError::RequestFailed(e)
-            }
-        })?;
-
-    match response.status().as_u16() {
-        200..=299 => {
-            let models: ModelsResponse = response
-                .json()
+    let policy = RetryPolicy::default();
+    with_retry(
+        &policy,
+        correlation_id,
+        "llm:list_models",
+        || async {
+            let response = match client
+                .get(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("X-Correlation-Id", correlation_id)
+                .send()
                 .await
-                .map_err(|e| LlmConnectionError::ParseError(format!("解析模型列表失败: {}", e)))?;
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    if e.is_timeout() {
+                        record_connectivity_failure(
+                            ConnectivityStatus::Offline,
+                            "上游请求超时".to_string(),
+                        )
+                        .await;
+                        return Err(LlmConnectionError::Timeout);
+                    }
+                    record_connectivity_failure(
+                        ConnectivityStatus::Offline,
+                        format!("上游网络错误: {}", e),
+                    )
+                    .await;
+                    return Err(LlmConnectionError::RequestFailed(e));
+                }
+            };
 
-            Ok(models.data.into_iter().map(|m| m.id).collect())
-        }
-        401 => Err(LlmConnectionError::InvalidCredentials),
-        403 => Err(LlmConnectionError::Forbidden),
-        status => {
-            // 不回显上游 body（可能包含敏感信息，如 prompt/testcase/token）。
-            Err(LlmConnectionError::UpstreamError(format!(
-                "HTTP {}",
-                status
-            )))
-        }
-    }
+            match response.status().as_u16() {
+                200..=299 => {
+                    let models: ModelsResponse = response.json().await.map_err(|e| {
+                        LlmConnectionError::ParseError(format!("解析模型列表失败: {}", e))
+                    })?;
+                    record_connectivity_success().await;
+                    Ok(models.data.into_iter().map(|m| m.id).collect())
+                }
+                401 => Err(LlmConnectionError::InvalidCredentials),
+                403 => Err(LlmConnectionError::Forbidden),
+                status => {
+                    record_connectivity_failure(
+                        ConnectivityStatus::Limited,
+                        format!("上游返回 HTTP {}", status),
+                    )
+                    .await;
+                    // 不回显上游 body（可能包含敏感信息，如 prompt/testcase/token）。
+                    Err(LlmConnectionError::UpstreamError(format!(
+                        "HTTP {}",
+                        status
+                    )))
+                }
+            }
+        },
+        is_retryable_llm_error,
+        llm_error_type,
+    )
+    .await
 }
 
 /// 调用 OpenAI 兼容的 `/v1/chat/completions` 获取输出文本（阻塞模式）。
@@ -195,56 +228,111 @@ pub async fn chat_completions(
     req: &ChatCompletionsRequest,
 ) -> Result<String, LlmConnectionError> {
     let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
-    let response = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("X-Correlation-Id", correlation_id)
-        .json(req)
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                LlmConnectionError::Timeout
-            } else {
-                LlmConnectionError::RequestFailed(e)
-            }
-        })?;
-
-    match response.status().as_u16() {
-        200..=299 => {
-            let json = response
-                .json::<ChatCompletionsResponse>()
+    let policy = RetryPolicy::default();
+    with_retry(
+        &policy,
+        correlation_id,
+        "llm:chat_completions",
+        || async {
+            let response = match client
+                .post(&url)
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("X-Correlation-Id", correlation_id)
+                .json(req)
+                .send()
                 .await
-                .map_err(|e| {
-                    LlmConnectionError::ParseError(format!("解析 chat/completions 响应失败: {}", e))
-                })?;
-            let choice = json.choices.into_iter().next().ok_or_else(|| {
-                LlmConnectionError::ParseError("chat/completions 缺少 choices[0]".to_string())
-            })?;
-
-            if let Some(s) = choice
-                .message
-                .and_then(|m| m.content)
-                .filter(|s| !s.trim().is_empty())
             {
-                return Ok(s);
-            }
-            if let Some(s) = choice.text.filter(|s| !s.trim().is_empty()) {
-                return Ok(s);
-            }
+                Ok(resp) => resp,
+                Err(e) => {
+                    if e.is_timeout() {
+                        record_connectivity_failure(
+                            ConnectivityStatus::Offline,
+                            "上游请求超时".to_string(),
+                        )
+                        .await;
+                        return Err(LlmConnectionError::Timeout);
+                    }
+                    record_connectivity_failure(
+                        ConnectivityStatus::Offline,
+                        format!("上游网络错误: {}", e),
+                    )
+                    .await;
+                    return Err(LlmConnectionError::RequestFailed(e));
+                }
+            };
 
-            Err(LlmConnectionError::ParseError(
-                "chat/completions 缺少 message.content/text".to_string(),
-            ))
-        }
-        401 => Err(LlmConnectionError::InvalidCredentials),
-        403 => Err(LlmConnectionError::Forbidden),
-        status => {
-            // 不读取/拼接 body，避免上游回显敏感内容。
-            Err(LlmConnectionError::UpstreamError(format!(
-                "HTTP {}",
-                status
-            )))
-        }
+            match response.status().as_u16() {
+                200..=299 => {
+                    let json = response
+                        .json::<ChatCompletionsResponse>()
+                        .await
+                        .map_err(|e| {
+                            LlmConnectionError::ParseError(format!(
+                                "解析 chat/completions 响应失败: {}",
+                                e
+                            ))
+                        })?;
+                    let choice = json.choices.into_iter().next().ok_or_else(|| {
+                        LlmConnectionError::ParseError(
+                            "chat/completions 缺少 choices[0]".to_string(),
+                        )
+                    })?;
+
+                    if let Some(s) = choice
+                        .message
+                        .and_then(|m| m.content)
+                        .filter(|s| !s.trim().is_empty())
+                    {
+                        record_connectivity_success().await;
+                        return Ok(s);
+                    }
+                    if let Some(s) = choice.text.filter(|s| !s.trim().is_empty()) {
+                        record_connectivity_success().await;
+                        return Ok(s);
+                    }
+
+                    Err(LlmConnectionError::ParseError(
+                        "chat/completions 缺少 message.content/text".to_string(),
+                    ))
+                }
+                401 => Err(LlmConnectionError::InvalidCredentials),
+                403 => Err(LlmConnectionError::Forbidden),
+                status => {
+                    record_connectivity_failure(
+                        ConnectivityStatus::Limited,
+                        format!("上游返回 HTTP {}", status),
+                    )
+                    .await;
+                    // 不读取/拼接 body，避免上游回显敏感内容。
+                    Err(LlmConnectionError::UpstreamError(format!(
+                        "HTTP {}",
+                        status
+                    )))
+                }
+            }
+        },
+        is_retryable_llm_error,
+        llm_error_type,
+    )
+    .await
+}
+
+fn is_retryable_llm_error(err: &LlmConnectionError) -> bool {
+    matches!(
+        err,
+        LlmConnectionError::Timeout | LlmConnectionError::RequestFailed(_)
+    )
+}
+
+fn llm_error_type(err: &LlmConnectionError) -> &'static str {
+    match err {
+        LlmConnectionError::InvalidCredentials => "invalid_credentials",
+        LlmConnectionError::Forbidden => "forbidden",
+        LlmConnectionError::Timeout => "timeout",
+        LlmConnectionError::UpstreamError(_) => "upstream_error",
+        LlmConnectionError::RequestFailed(_) => "request_failed",
+        LlmConnectionError::ParseError(_) => "parse_error",
+        LlmConnectionError::ValidationError(_) => "validation_error",
+        LlmConnectionError::ClientError(_) => "client_error",
     }
 }

@@ -6,6 +6,7 @@ pub mod credential_repo;
 pub mod iteration_repo;
 pub mod migration_repo;
 pub mod optimization_task_repo;
+pub mod recovery_metrics_repo;
 pub mod teacher_settings_repo;
 pub mod test_set_repo;
 pub mod user_repo;
@@ -20,6 +21,7 @@ pub use migration_repo::{MigrationRepo, MigrationRepoError, MigrationResult};
 pub use optimization_task_repo::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,
 };
+pub use recovery_metrics_repo::{RecoveryMetricsRepo, RecoveryMetricsRepoError};
 pub use teacher_settings_repo::{
     TeacherSettingsRecord, TeacherSettingsRepo, TeacherSettingsRepoError,
     UpsertTeacherSettingsInput,

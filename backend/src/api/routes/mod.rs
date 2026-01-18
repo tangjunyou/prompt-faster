@@ -8,6 +8,7 @@ pub mod iteration_control;
 pub mod iterations;
 pub mod meta;
 pub mod optimization_tasks;
+pub mod recovery;
 pub mod test_set_templates;
 pub mod test_sets;
 pub mod user_auth;

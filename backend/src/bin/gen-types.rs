@@ -38,12 +38,14 @@ use prompt_faster::api::ws::events::{
     TaskControlPayload, TaskTerminatedPayload,
 };
 use prompt_faster::domain::models::{
-    Checkpoint, CheckpointListResponse, CheckpointResponse, ConflictResolutionRecord, Constraint,
-    DataSplit, DimensionScore, EvaluationResult, ExecutionResult, ExecutionTargetType,
-    FailurePoint, Iteration, IterationState, LineageType, OptimizationTaskEntity,
-    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, QualityDimension, Rule,
-    RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
-    TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
+    Checkpoint, CheckpointListResponse, CheckpointResponse, ConflictResolutionRecord,
+    ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit, DimensionScore,
+    EvaluationResult, ExecutionResult, ExecutionTargetType, FailurePoint, Iteration,
+    IterationState, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
+    OptimizationTaskStatus, OutputLength, QualityDimension, RecoveryMetrics, RecoveryRequest,
+    RecoveryResponse, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
+    RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, UnfinishedTask,
+    UnfinishedTasksResponse, User, Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
@@ -144,6 +146,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Checkpoint::export_all_to(&out_dir)?;
     CheckpointResponse::export_all_to(&out_dir)?;
     CheckpointListResponse::export_all_to(&out_dir)?;
+    UnfinishedTask::export_all_to(&out_dir)?;
+    UnfinishedTasksResponse::export_all_to(&out_dir)?;
+    RecoveryRequest::export_all_to(&out_dir)?;
+    RecoveryResponse::export_all_to(&out_dir)?;
+    RecoveryMetrics::export_all_to(&out_dir)?;
+    ConnectivityStatus::export_all_to(&out_dir)?;
+    ConnectivityResponse::export_all_to(&out_dir)?;
     // 规则与评估相关模型
     Rule::export_all_to(&out_dir)?;
     RuleTags::export_all_to(&out_dir)?;

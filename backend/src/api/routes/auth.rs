@@ -4,7 +4,7 @@
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::{
-    Json, Router,
+    Json, Router, middleware,
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
@@ -13,8 +13,8 @@ use ts_rs::TS;
 use utoipa::ToSchema;
 use zeroize::Zeroizing;
 
-use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
+use crate::api::middleware::{CurrentUser, connectivity_middleware};
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::infra::db::repositories::{
@@ -1074,7 +1074,10 @@ pub fn protected_router() -> Router<AppState> {
     Router::new()
         .route("/config", post(save_config))
         .route("/config", get(get_config))
-        .route("/generic-llm/models", get(list_generic_llm_models))
+        .route(
+            "/generic-llm/models",
+            get(list_generic_llm_models).route_layer(middleware::from_fn(connectivity_middleware)),
+        )
 }
 
 /// 创建认证路由（向后兼容，包含所有路由）

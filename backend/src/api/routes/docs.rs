@@ -45,6 +45,10 @@ use utoipa_swagger_ui::SwaggerUi;
         (
             name = "optimization_tasks",
             description = "优化任务配置 API（隶属于 workspace）"
+        ),
+        (
+            name = "recovery",
+            description = "断点恢复与连接状态 API"
         )
     ),
     paths(
@@ -78,6 +82,11 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::optimization_tasks::list_optimization_tasks,
         crate::api::routes::optimization_tasks::get_optimization_task,
         crate::api::routes::optimization_tasks::update_optimization_task_config,
+        crate::api::routes::recovery::list_unfinished_tasks,
+        crate::api::routes::recovery::recover_task,
+        crate::api::routes::recovery::abort_recovery,
+        crate::api::routes::recovery::get_recovery_metrics,
+        crate::api::routes::recovery::get_connectivity,
     ),
     components(
         schemas(
@@ -147,6 +156,15 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::DataSplitPercentConfig,
             crate::domain::models::OptimizationTaskMode,
             crate::domain::models::OptimizationTaskStatus,
+            // Recovery
+            crate::domain::models::UnfinishedTask,
+            crate::domain::models::UnfinishedTasksResponse,
+            crate::domain::models::RecoveryRequest,
+            crate::domain::models::RecoveryResponse,
+            crate::domain::models::RecoveryMetrics,
+            crate::domain::models::ConnectivityResponse,
+            crate::domain::models::ConnectivityStatus,
+            crate::api::routes::recovery::AbortRecoveryResponse,
         )
     ),
     info(
