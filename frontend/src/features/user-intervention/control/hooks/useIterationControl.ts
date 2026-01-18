@@ -16,6 +16,7 @@ import {
   type AddRoundsResponse,
   type TerminateTaskResponse,
 } from '../services/iterationControlService'
+import type { CandidatePromptListResponse } from '@/types/generated/models/CandidatePromptListResponse'
 
 /** 候选 Prompt 列表 Query Key */
 export const candidatesQueryKey = (
@@ -33,7 +34,11 @@ export const taskConfigQueryKey = (workspaceId: string, taskId: string) =>
 export function useCandidates(
   taskId: string,
   enabled = true,
-  options?: { limit?: number; offset?: number },
+  options?: {
+    limit?: number
+    offset?: number
+    onSuccess?: (data: CandidatePromptListResponse) => void
+  },
 ) {
   const token = getSessionToken()
 
@@ -55,6 +60,7 @@ export function useCandidates(
     },
     enabled: enabled && !!token,
     staleTime: 30000,
+    onSuccess: options?.onSuccess,
   })
 }
 
