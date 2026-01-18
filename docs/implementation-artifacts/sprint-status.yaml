@@ -120,7 +120,7 @@ development_status:
   6-3-dialogue-guidance-for-teacher-model: done
   6-4-historical-iteration-artifacts-view: done
   6-5-iteration-control-add-rounds-manual-terminate: done
-  epic-6-retrospective: optional
+  epic-6-retrospective: done
 
   # ============================================
   # Epic 7: 可靠性与断点续跑

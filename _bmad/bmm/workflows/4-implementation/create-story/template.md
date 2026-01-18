@@ -21,6 +21,15 @@ so that {{benefit}}.
 - [ ] Task 2 (AC: #)
   - [ ] Subtask 2.1
 
+### Hard Gate Checklist
+
+> 必填：跨 Story 硬门禁清单（若不适用请标注 N/A 并说明原因）。
+
+- [ ] correlationId 全链路透传（HTTP/WS/日志）
+- [ ] A2 日志字段齐全（correlation_id/user_id/task_id/action/prev_state/new_state/iteration_state/timestamp）
+- [ ] 新增/变更类型已运行 gen-types 并提交生成产物
+- [ ] 状态一致性与幂等性已校验（如 RunControlState / IterationState）
+
 ### Review Follow-ups (AI)
 
 > 轻量但强制：把 review 里发现的可执行项落到这里，避免“只记在聊天里/只散落在文档里”。

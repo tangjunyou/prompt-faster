@@ -1780,6 +1780,20 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 
 ## Epic 7: 可靠性与断点续跑
 
+**开工门槛（必须先满足）：**
+
+- P1 Checkpoint ↔ pause_state 收敛设计完成并评审通过
+- P2 iterations ↔ checkpoints 历史口径统一策略明确
+- P3 恢复/回滚测试矩阵与验证脚本就绪
+- P4 Epic 7 规划复核会议完成并更新实现路径
+
+**规划复核结论（2026-01-18）：**
+
+- Checkpoint 必须覆盖用户介入状态（RunControlState + IterationArtifacts + UserGuidance）
+- pause_state 为临时实现，Epic 7 内完成收敛替换或兼容期迁移方案
+- 历史查询口径需统一为“单一入口”，避免 iterations 与 checkpoints 双轨漂移
+- Epic 7 需在开工前完成复核文档与路径更新（见 `docs/implementation-artifacts/epic-7-planning-review-prep-2026-01-18.md`）
+
 ### Story 7.1: Checkpoint 自动保存
 
 **Related FRs:** FR52（每个迭代步骤保存 Checkpoint）
