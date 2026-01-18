@@ -4,7 +4,7 @@
  * 使用 TanStack Query 管理迭代控制相关的状态和操作
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getSessionToken } from '@/stores/useAuthStore'
 import { generateCorrelationId } from '@/stores/useTaskStore'
 import { isApiError, isApiSuccess } from '@/lib/api'
@@ -21,8 +21,8 @@ import type { CandidatePromptListResponse } from '@/types/generated/models/Candi
 /** 候选 Prompt 列表 Query Key */
 export const candidatesQueryKey = (
   taskId: string,
-  options?: { limit?: number; offset?: number },
-) => ['candidates', taskId, options?.limit ?? null, options?.offset ?? null] as const
+  options?: { limit?: number },
+) => ['candidates', taskId, options?.limit ?? null] as const
 
 /** 任务配置 Query Key（用于 invalidate） */
 export const taskConfigQueryKey = (workspaceId: string, taskId: string) =>
@@ -34,23 +34,23 @@ export const taskConfigQueryKey = (workspaceId: string, taskId: string) =>
 export function useCandidates(
   taskId: string,
   enabled = true,
-  options?: {
-    limit?: number
-    offset?: number
-    onSuccess?: (data: CandidatePromptListResponse) => void
-  },
+  options?: { limit?: number },
 ) {
   const token = getSessionToken()
+  const limit = options?.limit ?? 20
 
-  return useQuery({
-    queryKey: candidatesQueryKey(taskId, options),
-    queryFn: async () => {
+  const query = useInfiniteQuery({
+    queryKey: candidatesQueryKey(taskId, { limit }),
+    queryFn: async ({ pageParam = 0 }) => {
       const currentToken = getSessionToken()
       if (!currentToken) {
         throw new Error('未登录')
       }
       const correlationId = generateCorrelationId()
-      const response = await getCandidates(taskId, currentToken, correlationId, options)
+      const response = await getCandidates(taskId, currentToken, correlationId, {
+        limit,
+        offset: pageParam,
+      })
 
       if (isApiError(response)) {
         throw new Error(response.error.message)
@@ -58,10 +58,21 @@ export function useCandidates(
 
       return response.data
     },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage: CandidatePromptListResponse, pages) =>
+      lastPage.candidates.length < limit ? undefined : pages.length * limit,
     enabled: enabled && !!token,
     staleTime: 30000,
-    onSuccess: options?.onSuccess,
   })
+
+  return {
+    candidates: query.data?.pages.flatMap((page) => page.candidates) ?? [],
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isFetchingNextPage: query.isFetchingNextPage,
+    fetchNextPage: query.fetchNextPage,
+    hasMore: query.hasNextPage ?? false,
+  }
 }
 
 /**

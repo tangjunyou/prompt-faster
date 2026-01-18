@@ -17,7 +17,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { useCandidates, useTerminateTask } from './hooks/useIterationControl'
 import { CandidatePromptList } from './CandidatePromptList'
-import type { CandidatePromptSummary } from '@/types/generated/models/CandidatePromptSummary'
 
 export interface TerminateDialogProps {
   /** 任务 ID */
@@ -47,43 +46,20 @@ function TerminateDialogBody({
 }: TerminateDialogBodyProps) {
   const [selectedIterationId, setSelectedIterationId] = useState<string | undefined>()
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [offset, setOffset] = useState(0)
-  const [allCandidates, setAllCandidates] = useState<CandidatePromptSummary[]>([])
-  const [hasMore, setHasMore] = useState(true)
 
   const pageSize = 20
 
   const {
-    data: candidatesData,
+    candidates,
     isLoading: isLoadingCandidates,
-    isFetching,
-  } = useCandidates(taskId, true, {
-    limit: pageSize,
-    offset,
-    onSuccess: (data) => {
-      setAllCandidates((prev) => {
-        if (offset === 0) {
-          return data.candidates
-        }
-        const existing = new Set(prev.map((item) => item.iterationId))
-        const merged = [...prev]
-        for (const item of data.candidates) {
-          if (!existing.has(item.iterationId)) {
-            merged.push(item)
-          }
-        }
-        return merged
-      })
-      setHasMore(data.candidates.length >= pageSize)
-    },
-  })
+    isFetchingNextPage,
+    fetchNextPage,
+    hasMore,
+  } = useCandidates(taskId, true, { limit: pageSize })
   const { mutate: terminate, isPending: isTerminating, error } = useTerminateTask(
     taskId,
     workspaceId
   )
-
-  const candidates =
-    allCandidates.length > 0 ? allCandidates : (candidatesData?.candidates ?? [])
 
   const handleSelect = useCallback((iterationId: string) => {
     setSelectedIterationId((prev) => (prev === iterationId ? undefined : iterationId))
@@ -143,10 +119,10 @@ function TerminateDialogBody({
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setOffset((prev) => prev + pageSize)}
-                  disabled={isFetching}
+                  onClick={() => fetchNextPage()}
+                  disabled={isFetchingNextPage}
                 >
-                  {isFetching ? '加载中...' : '加载更多'}
+                  {isFetchingNextPage ? '加载中...' : '加载更多'}
                 </Button>
               </div>
             ) : (

@@ -31,9 +31,12 @@ const terminateMock = vi.fn()
 
 vi.mock('./hooks/useIterationControl', () => ({
   useCandidates: () => ({
-    data: { candidates },
+    candidates,
     isLoading: false,
     isFetching: false,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+    hasMore: false,
   }),
   useTerminateTask: () => ({ mutate: terminateMock, isPending: false, error: null }),
 }))
