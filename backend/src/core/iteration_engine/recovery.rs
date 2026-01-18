@@ -140,7 +140,7 @@ pub(crate) async fn detect_unfinished_tasks_with_pool(
             let total = CheckpointRepo::count_checkpoints_by_task(pool, &task.task_id).await?;
             let candidates =
                 CheckpointRepo::list_checkpoints_by_task(pool, &task.task_id, total.max(1)).await?;
-            if let Some(valid) = candidates.into_iter().find(|cp| verify_checksum(cp)) {
+            if let Some(valid) = candidates.into_iter().find(verify_checksum) {
                 selected_checkpoint = valid;
             } else {
                 warn!(
