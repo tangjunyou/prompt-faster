@@ -4,7 +4,6 @@ use axum::http::{Request, StatusCode};
 use axum::middleware;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
-use sqlx::Row;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -18,7 +17,7 @@ use prompt_faster::domain::models::{
     RuleSystem, TaskReference, TestCase,
 };
 use prompt_faster::domain::types::{IterationArtifacts, RunControlState};
-use prompt_faster::infra::db::pool::{create_pool, global_db_pool, init_global_db_pool};
+use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::db::repositories::{
     CheckpointRepo, OptimizationTaskRepo, TestSetRepo, WorkspaceRepo,
 };
@@ -31,21 +30,14 @@ use prompt_faster::shared::config::AppConfig;
 use prompt_faster::shared::time::now_millis;
 
 async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
-    let db = if let Some(pool) = global_db_pool() {
-        pool
-    } else {
-        let pool = create_pool("sqlite::memory:")
-            .await
-            .expect("创建测试数据库失败");
-        init_global_db_pool(pool.clone());
-        pool
-    };
+    let db = create_pool("sqlite::memory:")
+        .await
+        .expect("创建测试数据库失败");
 
     sqlx::migrate!()
         .run(&db)
         .await
         .expect("运行 migrations 失败");
-    reset_database(&db).await;
 
     let http_client = create_http_client().expect("创建 HTTP 客户端失败");
     let config = Arc::new(AppConfig {
@@ -100,29 +92,6 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         .layer(middleware::from_fn(correlation_id_middleware));
 
     (router, db)
-}
-
-async fn reset_database(pool: &sqlx::SqlitePool) {
-    sqlx::query("PRAGMA foreign_keys = OFF")
-        .execute(pool)
-        .await
-        .expect("关闭外键失败");
-    let tables = sqlx::query(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
-    )
-    .fetch_all(pool)
-    .await
-    .expect("读取表失败");
-    for row in tables {
-        let name: String = row.try_get("name").expect("读取表名失败");
-        let safe_name = name.replace('"', "\"\"");
-        let sql = format!("DELETE FROM \"{}\"", safe_name);
-        sqlx::query(&sql).execute(pool).await.expect("清理表失败");
-    }
-    sqlx::query("PRAGMA foreign_keys = ON")
-        .execute(pool)
-        .await
-        .expect("开启外键失败");
 }
 
 async fn read_json_body(response: axum::response::Response) -> Value {
