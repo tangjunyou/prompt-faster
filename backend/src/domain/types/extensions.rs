@@ -42,6 +42,9 @@ pub const EXT_EVALUATIONS_BY_TEST_CASE_ID: &str = "layer1_test_results.evaluatio
 /// Optimizer 输出：是否建议采用 best candidate 更新 current_prompt（由编排层执行写回）。
 pub const EXTRA_ADOPT_BEST_CANDIDATE: &str = "adopt_best_candidate";
 
+/// 迭代状态切换前的状态快照（用于日志/审计）。
+pub const EXT_PREV_ITERATION_STATE: &str = "iteration.prev_state";
+
 /// 用户引导信息（由编排层在 resume 时注入，Layer 1-4 消费）。
 ///
 /// 形状：`domain::types::UserGuidance`
@@ -82,6 +85,7 @@ mod tests {
             EXT_CANDIDATE_RANKING,
             EXT_EVALUATIONS_BY_TEST_CASE_ID,
             EXTRA_ADOPT_BEST_CANDIDATE,
+            EXT_PREV_ITERATION_STATE,
             EXT_USER_GUIDANCE,
         ];
         let unique: std::collections::HashSet<_> = keys.iter().collect();

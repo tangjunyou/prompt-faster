@@ -27,6 +27,10 @@ pub struct AppConfig {
     pub allow_localhost_base_url: bool,
     /// 是否允许私有网段 IP（10/172.16-31/192.168/169.254、以及 IPv6 ULA/Link-local）
     pub allow_private_network_base_url: bool,
+    /// Checkpoint 缓存条数上限（默认 10）
+    pub checkpoint_cache_limit: usize,
+    /// Checkpoint 缓存告警阈值（默认 10）
+    pub checkpoint_memory_alert_threshold: usize,
 }
 
 impl AppConfig {
@@ -70,6 +74,16 @@ impl AppConfig {
                 .as_deref()
                 .map(parse_bool_env)
                 .unwrap_or(is_dev),
+            checkpoint_cache_limit: env::var("CHECKPOINT_CACHE_LIMIT")
+                .ok()
+                .as_deref()
+                .and_then(parse_usize_env)
+                .unwrap_or(10),
+            checkpoint_memory_alert_threshold: env::var("CHECKPOINT_MEMORY_ALERT_THRESHOLD")
+                .ok()
+                .as_deref()
+                .and_then(parse_usize_env)
+                .unwrap_or(10),
         })
     }
 
@@ -84,4 +98,12 @@ fn parse_bool_env(v: &str) -> bool {
         v.trim().to_lowercase().as_str(),
         "1" | "true" | "yes" | "y" | "on"
     )
+}
+
+fn parse_usize_env(v: &str) -> Option<usize> {
+    let trimmed = v.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    trimmed.parse::<usize>().ok().filter(|v| *v > 0)
 }

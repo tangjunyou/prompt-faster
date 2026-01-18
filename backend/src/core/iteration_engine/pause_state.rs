@@ -3,6 +3,7 @@
 //! 本模块实现最小暂停持久化与恢复机制。
 //! 注意：这是临时实现，Epic 7 完成后将替换为完整 Checkpoint 机制。
 
+use crate::core::iteration_engine::checkpoint::reset_idle_autosave_timer;
 use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 use crate::shared::ws::{
     EVT_ITERATION_PAUSED, EVT_ITERATION_RESUMED, IterationPausedPayload, IterationResumedPayload,
@@ -141,6 +142,7 @@ impl PauseController {
         // 记录 correlationId / user_id
         *self.last_correlation_id.lock().await = Some(correlation_id.to_string());
         *self.last_user_id.lock().await = Some(user_id.to_string());
+        reset_idle_autosave_timer(&self.task_id).await;
 
         info!(
             task_id = %self.task_id,
@@ -236,6 +238,8 @@ impl PauseController {
 
         // 推送 resumed 事件（不阻塞）
         emit_resumed_event(&self.task_id, correlation_id);
+
+        reset_idle_autosave_timer(&self.task_id).await;
 
         info!(
             task_id = %self.task_id,
@@ -432,6 +436,7 @@ impl PauseController {
             "产物已更新"
         );
 
+        reset_idle_autosave_timer(&self.task_id).await;
         Ok(new_artifacts)
     }
 
@@ -532,6 +537,7 @@ impl PauseController {
             "引导已更新"
         );
 
+        reset_idle_autosave_timer(&self.task_id).await;
         Ok(guidance)
     }
 

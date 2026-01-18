@@ -38,11 +38,12 @@ use prompt_faster::api::ws::events::{
     TaskControlPayload, TaskTerminatedPayload,
 };
 use prompt_faster::domain::models::{
-    Checkpoint, ConflictResolutionRecord, Constraint, DataSplit, DimensionScore, EvaluationResult,
-    ExecutionResult, ExecutionTargetType, FailurePoint, Iteration, IterationState, LineageType,
-    OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus, OutputLength,
-    QualityDimension, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
-    RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
+    Checkpoint, CheckpointListResponse, CheckpointResponse, ConflictResolutionRecord, Constraint,
+    DataSplit, DimensionScore, EvaluationResult, ExecutionResult, ExecutionTargetType,
+    FailurePoint, Iteration, IterationState, LineageType, OptimizationTaskEntity,
+    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, QualityDimension, Rule,
+    RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
+    TaskReference, TestCase, TestSet, TokenUsage, User, Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
@@ -141,6 +142,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Iteration::export_all_to(&out_dir)?;
     EvaluationResult::export_all_to(&out_dir)?;
     Checkpoint::export_all_to(&out_dir)?;
+    CheckpointResponse::export_all_to(&out_dir)?;
+    CheckpointListResponse::export_all_to(&out_dir)?;
     // 规则与评估相关模型
     Rule::export_all_to(&out_dir)?;
     RuleTags::export_all_to(&out_dir)?;

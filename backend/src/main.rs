@@ -14,11 +14,14 @@ use prompt_faster::api::middleware::correlation_id::{
 };
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
 use prompt_faster::api::routes::{
-    auth, docs, health, iteration_control, iterations, meta, user_auth, workspaces,
+    auth, checkpoints, docs, health, iteration_control, iterations, meta, user_auth, workspaces,
 };
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
-use prompt_faster::infra::db::pool::create_pool;
+use prompt_faster::core::iteration_engine::checkpoint::{
+    init_checkpoint_cache_defaults, start_idle_autosave_task,
+};
+use prompt_faster::infra::db::pool::{create_pool, init_global_db_pool};
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
@@ -40,6 +43,12 @@ async fn main() -> anyhow::Result<()> {
 
     // 初始化数据库连接池（包含 WAL/FULL synchronous 设置）
     let db = create_pool(&config.database_url).await?;
+    init_global_db_pool(db.clone());
+    init_checkpoint_cache_defaults(
+        config.checkpoint_cache_limit,
+        config.checkpoint_memory_alert_threshold,
+    );
+    start_idle_autosave_task();
 
     // 自动运行 migrations（确保 schema 就绪）
     sqlx::migrate!().run(&db).await?;
@@ -142,8 +151,17 @@ async fn main() -> anyhow::Result<()> {
     ));
 
     let protected_iteration_control_routes = iteration_control::router().layer(
-        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
+        middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
     );
+    let protected_checkpoints_routes = checkpoints::router().layer(middleware::from_fn_with_state(
+        session_store_for_middleware.clone(),
+        auth_middleware,
+    ));
+    let protected_task_checkpoints_routes =
+        checkpoints::task_router().layer(middleware::from_fn_with_state(
+            session_store_for_middleware,
+            auth_middleware,
+        ));
 
     let app = Router::<AppState>::new()
         .merge(docs::router::<AppState>()) // Swagger UI at /swagger (root path, no /api/v1 prefix)
@@ -161,6 +179,11 @@ async fn main() -> anyhow::Result<()> {
         .nest(
             "/api/v1/tasks/{task_id}",
             protected_iteration_control_routes,
+        )
+        .nest("/api/v1/checkpoints", protected_checkpoints_routes)
+        .nest(
+            "/api/v1/tasks/{task_id}/checkpoints",
+            protected_task_checkpoints_routes,
         )
         .nest("/api/v1", ws::router())
         .with_state(state)

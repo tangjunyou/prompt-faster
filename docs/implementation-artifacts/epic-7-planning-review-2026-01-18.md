@@ -41,7 +41,19 @@
 - 恢复/回滚测试矩阵与脚本
 - Epic 7 规划复核会议完成并更新路径
 
-## 5) 责任人
+## 5) 开工门槛交付物（证据）
+
+- P1 收敛设计：`docs/implementation-artifacts/epic-7-checkpoint-pause-state-convergence-design-2026-01-18.md`
+- P2 历史口径统一策略：`docs/implementation-artifacts/epic-7-history-source-unification-strategy-2026-01-18.md`
+- P3 恢复/回滚测试矩阵与脚本：`docs/implementation-artifacts/epic-7-recovery-rollback-test-matrix-2026-01-18.md`
+
+**评审签收状态：**
+- P1 评审通过 ✅
+- P2 评审通过 ✅
+- P3 待脚本验证 ❌
+- P4 规划复核已完成 ✅
+
+## 6) 责任人
 
 - Winston（Architect）
 - Charlie（Senior Dev）
@@ -49,4 +61,3 @@
 - Amelia（Dev Agent）
 - Alice（Product Owner）
 - Bob（Scrum Master）
-

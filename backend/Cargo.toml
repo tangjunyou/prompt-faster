@@ -40,6 +40,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 aes-gcm = "0.10"
 argon2 = "0.5"
 rand = "0.8"
+sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }  # Code Review Fix: 用于安全清除内存中的敏感数据
 
 # API 文档

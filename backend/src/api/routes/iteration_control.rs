@@ -688,6 +688,10 @@ mod tests {
             allow_http_base_url: true,
             allow_localhost_base_url: true,
             allow_private_network_base_url: true,
+
+            checkpoint_cache_limit: 10,
+
+            checkpoint_memory_alert_threshold: 10,
         });
 
         AppState {

@@ -41,6 +41,10 @@ async fn setup_test_app() -> Router {
         allow_http_base_url: true,
         allow_localhost_base_url: true,
         allow_private_network_base_url: true,
+
+        checkpoint_cache_limit: 10,
+
+        checkpoint_memory_alert_threshold: 10,
     });
     let api_key_manager = Arc::new(ApiKeyManager::new(Some(TEST_MASTER_PASSWORD.to_string())));
 
@@ -105,6 +109,8 @@ async fn setup_test_app_with_db() -> (Router, SqlitePool) {
         allow_http_base_url: true,
         allow_localhost_base_url: true,
         allow_private_network_base_url: true,
+        checkpoint_cache_limit: 10,
+        checkpoint_memory_alert_threshold: 10,
     });
     let api_key_manager = Arc::new(ApiKeyManager::new(Some(TEST_MASTER_PASSWORD.to_string())));
 

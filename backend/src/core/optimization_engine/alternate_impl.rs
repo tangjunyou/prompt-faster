@@ -17,7 +17,8 @@ use crate::domain::types::{
 
 use super::common::{
     apply_checkpoint, checkpoint_pause_if_requested, clear_user_guidance_from_context,
-    run_tests_and_evaluate, stop_if_requested, sync_max_iterations, validate_ctx_for_run,
+    run_tests_and_evaluate, save_checkpoint_after_layer, set_iteration_state, stop_if_requested,
+    sync_max_iterations, validate_ctx_for_run,
 };
 use super::{OptimizationEngine, OptimizationEngineError};
 
@@ -71,6 +72,7 @@ impl AlternateOptimizationEngine {
             &self.task_config,
         )
         .await?;
+        save_checkpoint_after_layer(ctx).await;
         checkpoint_pause_if_requested(ctx).await?;
         if let Some(stopped) = stop_if_requested(ctx, None).await? {
             return Ok(stopped);
@@ -81,7 +83,7 @@ impl AlternateOptimizationEngine {
         // 若已达到通过率阈值：直接终止，不执行 rule_engine/feedback_aggregator/optimizer。
         let pass_threshold = ctx.config.iteration.pass_threshold;
         if stats.pass_rate + METRIC_EPS >= pass_threshold {
-            ctx.state = IterationState::Completed;
+            set_iteration_state(ctx, IterationState::Completed);
             let mut extra = HashMap::new();
             extra.insert("engine_variant".to_string(), serde_json::json!("alternate"));
             extra.insert("alternate_path".to_string(), serde_json::json!("fast_path"));
@@ -122,10 +124,11 @@ impl AlternateOptimizationEngine {
         }
 
         // === full pipeline（与默认实现不同点：仅在 fast-path 未命中时才进入）===
-        ctx.state = IterationState::ExtractingRules;
+        set_iteration_state(ctx, IterationState::ExtractingRules);
         let rules = self.rule_engine.extract_rules(ctx, &ctx.test_cases).await?;
         ctx.rule_system.rules = rules;
         ctx.rule_system.version = ctx.rule_system.version.saturating_add(1);
+        save_checkpoint_after_layer(ctx).await;
         checkpoint_pause_if_requested(ctx).await?;
         if let Some(stopped) = stop_if_requested(ctx, None).await? {
             return Ok(stopped);
@@ -138,7 +141,7 @@ impl AlternateOptimizationEngine {
             .filter_map(|(ev, tc)| (!ev.passed).then_some(tc.id.clone()))
             .collect();
 
-        ctx.state = IterationState::Reflecting;
+        set_iteration_state(ctx, IterationState::Reflecting);
         let rr = ReflectionResult {
             failure_type: FailureType::ExpressionIssue,
             analysis: "alternate deterministic reflection (no prompt/input echo)".to_string(),
@@ -150,16 +153,18 @@ impl AlternateOptimizationEngine {
             extra: HashMap::new(),
         };
         let unified_reflection = self.feedback_aggregator.aggregate(ctx, &[rr]).await?;
+        save_checkpoint_after_layer(ctx).await;
         checkpoint_pause_if_requested(ctx).await?;
         if let Some(stopped) = stop_if_requested(ctx, None).await? {
             return Ok(stopped);
         }
 
-        ctx.state = IterationState::Optimizing;
+        set_iteration_state(ctx, IterationState::Optimizing);
         let mut out = self
             .optimizer
             .optimize_step(ctx, &unified_reflection)
             .await?;
+        save_checkpoint_after_layer(ctx).await;
         checkpoint_pause_if_requested(ctx).await?;
         if let Some(stopped) = stop_if_requested(ctx, None).await? {
             return Ok(stopped);
@@ -218,7 +223,7 @@ impl OptimizationEngine for AlternateOptimizationEngine {
             let out = self.run_one_iteration(ctx).await?;
             last = Some(out.clone());
             if out.should_terminate {
-                ctx.state = IterationState::Completed;
+                set_iteration_state(ctx, IterationState::Completed);
                 if !matches!(out.termination_reason, Some(TerminationReason::UserStopped)) {
                     let _ = ctx
                         .run_control_state

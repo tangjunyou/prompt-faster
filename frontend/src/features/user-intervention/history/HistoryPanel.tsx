@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { History, RefreshCw, PlayCircle } from 'lucide-react'
 import { useIterationHistory } from './hooks/useIterationHistory'
+import { useCheckpoints } from '@/features/checkpoint-recovery/hooks/useCheckpoints'
 import { IterationHistoryItem } from './IterationHistoryItem'
 
 export interface HistoryPanelProps {
@@ -15,6 +16,20 @@ export interface HistoryPanelProps {
   taskId: string
   /** 开始优化回调（空状态 CTA） */
   onStartOptimization?: () => void
+}
+
+function formatTime(isoString: string): string {
+  try {
+    const date = new Date(isoString)
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return isoString
+  }
 }
 
 /**
@@ -30,11 +45,70 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
     error,
     refetch,
   } = useIterationHistory(taskId)
+  const {
+    data: checkpointData,
+    isLoading: isLoadingCheckpoints,
+    error: checkpointError,
+    refetch: refetchCheckpoints,
+  } = useCheckpoints(taskId, { limit: 10 })
 
   // 切换展开状态
   const handleToggle = (iterationId: string) => {
     setExpandedIterationId((prev) => (prev === iterationId ? null : iterationId))
   }
+
+  const handleRefresh = () => {
+    refetch()
+    refetchCheckpoints()
+  }
+
+  const checkpointCount = checkpointData?.total ?? 0
+
+  const checkpointSection = (
+    <div className="pt-4 mt-4 border-t">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Checkpoint</p>
+        <span className="text-xs text-muted-foreground">
+          共 {checkpointCount} 个
+        </span>
+      </div>
+      {isLoadingCheckpoints ? (
+        <div className="flex items-center py-3 text-xs text-muted-foreground">
+          <RefreshCw className="h-3 w-3 animate-spin" />
+          <span className="ml-2">加载中...</span>
+        </div>
+      ) : checkpointError ? (
+        <p className="text-xs text-destructive mt-2">
+          加载失败：{checkpointError.message}
+        </p>
+      ) : checkpointData && checkpointData.checkpoints.length > 0 ? (
+        <div className="mt-2 space-y-2 max-h-[220px] overflow-y-auto">
+          {checkpointData.checkpoints.map((checkpoint) => (
+            <div
+              key={checkpoint.id}
+              className="flex items-start justify-between gap-3 border rounded-md p-2 text-xs"
+            >
+              <div className="flex flex-col gap-1 min-w-0">
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  迭代 #{checkpoint.iteration}
+                </span>
+                <span className="truncate">
+                  {checkpoint.promptPreview || '无 Prompt 摘要'}
+                </span>
+              </div>
+              <span className="text-[11px] text-muted-foreground shrink-0">
+                {formatTime(checkpoint.createdAt)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground mt-2">
+          暂无 Checkpoint
+        </p>
+      )}
+    </div>
+  )
 
   // 加载中状态
   if (isLoading) {
@@ -51,6 +125,7 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
             <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
             <span className="ml-2 text-sm text-muted-foreground">加载中...</span>
           </div>
+          {checkpointSection}
         </CardContent>
       </Card>
     )
@@ -74,13 +149,14 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
             <Button
               variant="outline"
               size="sm"
-              onClick={() => refetch()}
+              onClick={handleRefresh}
               className="min-w-[44px] min-h-[44px]"
             >
               <RefreshCw className="h-4 w-4 mr-1" />
               重试
             </Button>
           </div>
+          {checkpointSection}
         </CardContent>
       </Card>
     )
@@ -116,6 +192,7 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
               </Button>
             )}
           </div>
+          {checkpointSection}
         </CardContent>
       </Card>
     )
@@ -133,7 +210,7 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => refetch()}
+            onClick={handleRefresh}
             className="min-w-[44px] min-h-[44px]"
             title="刷新"
           >
@@ -156,6 +233,7 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
             />
           ))}
         </div>
+        {checkpointSection}
       </CardContent>
     </Card>
   )

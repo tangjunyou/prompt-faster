@@ -8,11 +8,13 @@ import { HistoryPanel } from './HistoryPanel'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { IterationHistorySummary } from '@/types/generated/models/IterationHistorySummary'
 import type { IterationHistoryDetail } from '@/types/generated/models/IterationHistoryDetail'
+import type { CheckpointResponse } from '@/types/generated/models/CheckpointResponse'
 
 const API_BASE = 'http://localhost:3000/api/v1'
 
 let iterations: IterationHistorySummary[] = []
 let detail: IterationHistoryDetail | null = null
+let checkpoints: CheckpointResponse[] = []
 
 vi.mock('@monaco-editor/react', () => ({
   default: (props: { value?: string }) => (
@@ -48,6 +50,22 @@ const server = setupServer(
     }
 
     return HttpResponse.json({ data: detail })
+  }),
+  http.get(`${API_BASE}/tasks/:taskId/checkpoints`, ({ request }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+
+    return HttpResponse.json({
+      data: {
+        checkpoints,
+        total: checkpoints.length,
+      },
+    })
   })
 )
 
@@ -72,6 +90,8 @@ describe('HistoryPanel', () => {
       currentUser: { id: 'u1', username: 'user1' },
       requiresRegistration: null,
     })
+    checkpoints = []
+    detail = null
   })
 
   it('空状态应显示提示与 CTA', async () => {
@@ -100,12 +120,28 @@ describe('HistoryPanel', () => {
         status: 'completed',
       },
     ]
+    checkpoints = [
+      {
+        id: 'cp-1',
+        taskId: 'task-1',
+        iteration: 2,
+        state: 'paused',
+        runControlState: 'pause',
+        promptPreview: 'checkpoint-preview',
+        hasArtifacts: true,
+        hasUserGuidance: false,
+        checksum: 'abc',
+        integrityOk: true,
+        createdAt: '2025-01-01T12:03:00Z',
+      },
+    ]
 
     renderWithQueryClient(<HistoryPanel taskId="task-1" />)
 
     expect(await screen.findByText('共 1 轮迭代')).toBeInTheDocument()
     expect(screen.getByText('#2')).toBeInTheDocument()
     expect(screen.getByText('85.0%')).toBeInTheDocument()
+    expect(screen.getByText('checkpoint-preview')).toBeInTheDocument()
   })
 
   it('集成流程应支持从列表展开到查看评估与反思', async () => {

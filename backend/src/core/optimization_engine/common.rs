@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
 use crate::core::iteration_engine::orchestrator::IterationEngine;
+use crate::core::iteration_engine::checkpoint::save_checkpoint;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
@@ -13,7 +14,8 @@ use crate::domain::models::{
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
-    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_USER_GUIDANCE,
+    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_PREV_ITERATION_STATE,
+    EXT_USER_GUIDANCE,
     IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
 };
 use crate::shared::ws::chrono_timestamp;
@@ -51,7 +53,7 @@ pub fn validate_ctx_for_run(ctx: &OptimizationContext) -> Result<(), Optimizatio
 pub fn apply_checkpoint(checkpoint: Checkpoint, ctx: &mut OptimizationContext) {
     ctx.task_id = checkpoint.task_id;
     ctx.iteration = checkpoint.iteration;
-    ctx.state = checkpoint.state;
+    set_iteration_state(ctx, checkpoint.state);
     ctx.current_prompt = checkpoint.prompt;
     ctx.rule_system = checkpoint.rule_system;
 }
@@ -171,13 +173,16 @@ fn apply_artifacts_to_context(ctx: &mut OptimizationContext, artifacts: &Iterati
     }
 }
 
-fn build_context_snapshot(ctx: &OptimizationContext) -> serde_json::Value {
+fn build_context_snapshot(
+    ctx: &OptimizationContext,
+    run_control_state: RunControlState,
+) -> serde_json::Value {
     let artifacts = build_iteration_artifacts(ctx);
     serde_json::json!({
         "taskId": ctx.task_id,
         "iteration": ctx.iteration,
         "iterationState": ctx.state,
-        "runControlState": ctx.run_control_state,
+        "runControlState": run_control_state,
         "artifacts": artifacts,
     })
 }
@@ -187,6 +192,15 @@ fn iteration_state_label(state: IterationState) -> String {
         .ok()
         .and_then(|v| v.as_str().map(|s| s.to_string()))
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+pub(crate) fn set_iteration_state(ctx: &mut OptimizationContext, next: IterationState) {
+    let prev_label = iteration_state_label(ctx.state);
+    ctx.extensions.insert(
+        EXT_PREV_ITERATION_STATE.to_string(),
+        serde_json::Value::String(prev_label),
+    );
+    ctx.state = next;
 }
 
 fn transition_run_control_state(
@@ -272,10 +286,32 @@ pub async fn checkpoint_pause_if_requested(
 
     let stage = iteration_state_label(ctx.state);
     if controller
-        .checkpoint_pause(ctx.iteration, &stage, None, build_context_snapshot(ctx))
+        .checkpoint_pause(
+            ctx.iteration,
+            &stage,
+            None,
+            build_context_snapshot(ctx, RunControlState::Paused),
+        )
         .await?
     {
         transition_run_control_state(ctx, RunControlState::Paused)?;
+        if let Err(err) = save_checkpoint(ctx, "", "").await {
+            let correlation_id = read_optional_string(ctx, "correlation_id")
+                .unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
+            let user_id = read_optional_string(ctx, "user_id").unwrap_or_else(|| "system".to_string());
+            tracing::error!(
+                correlation_id = %correlation_id,
+                user_id = %user_id,
+                task_id = %ctx.task_id,
+                action = "checkpoint_save_failed",
+                prev_state = ?ctx.state,
+                new_state = ?ctx.state,
+                iteration_state = ?ctx.state,
+                timestamp = crate::shared::time::now_millis(),
+                error = %err,
+                "Checkpoint 保存失败（已降级，继续执行）"
+            );
+        }
         controller.wait_for_resume().await;
         if let Some(artifacts) = controller.get_artifacts().await {
             apply_artifacts_to_context(ctx, &artifacts);
@@ -288,6 +324,27 @@ pub async fn checkpoint_pause_if_requested(
     }
 
     Ok(false)
+}
+
+/// Layer 级别自动保存 Checkpoint（失败时降级不阻塞）
+pub async fn save_checkpoint_after_layer(ctx: &OptimizationContext) {
+    if let Err(err) = save_checkpoint(ctx, "", "").await {
+        let correlation_id =
+            read_optional_string(ctx, "correlation_id").unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
+        let user_id = read_optional_string(ctx, "user_id").unwrap_or_else(|| "system".to_string());
+        tracing::error!(
+            correlation_id = %correlation_id,
+            user_id = %user_id,
+            task_id = %ctx.task_id,
+            action = "checkpoint_save_failed",
+            prev_state = ?ctx.state,
+            new_state = ?ctx.state,
+            iteration_state = ?ctx.state,
+            timestamp = crate::shared::time::now_millis(),
+            error = %err,
+            "Layer Checkpoint 保存失败（已降级，继续执行）"
+        );
+    }
 }
 
 /// 同步运行中迭代上限（用于增加轮数）
@@ -347,7 +404,7 @@ pub async fn run_tests_and_evaluate(
     evaluator: Arc<dyn Evaluator>,
     task_config: &OptimizationTaskConfig,
 ) -> Result<RunTestsAndEvaluateOutput, OptimizationEngineError> {
-    ctx.state = IterationState::RunningTests;
+    set_iteration_state(ctx, IterationState::RunningTests);
 
     let prompt = ctx.current_prompt.clone();
     let batch = ctx.test_cases.clone();
@@ -356,7 +413,7 @@ pub async fn run_tests_and_evaluate(
 
     let pairs = IterationEngine::build_evaluation_pairs(&batch, &exec_results)?;
 
-    ctx.state = IterationState::Evaluating;
+    set_iteration_state(ctx, IterationState::Evaluating);
     // DefaultEvaluator 依赖 task 级 evaluator_config（写入方约定为编排层）。
     // OptimizationEngine 作为门面/编排入口，必须补齐该上下文，避免默认评估路径“隐式失败”。
     let evaluator_cfg_value =

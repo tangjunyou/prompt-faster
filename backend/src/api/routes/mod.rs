@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod checkpoints;
 pub mod dify;
 pub mod docs;
 pub mod generic;

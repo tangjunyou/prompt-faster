@@ -5,6 +5,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 use std::str::FromStr;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 fn normalize_sqlite_url(database_url: &str) -> String {
@@ -38,4 +39,16 @@ pub async fn create_pool(database_url: &str) -> anyhow::Result<SqlitePool> {
         .await?;
 
     Ok(pool)
+}
+
+static GLOBAL_DB_POOL: OnceLock<SqlitePool> = OnceLock::new();
+
+/// 初始化全局数据库连接池（用于核心流程访问数据库）
+pub fn init_global_db_pool(pool: SqlitePool) {
+    let _ = GLOBAL_DB_POOL.set(pool);
+}
+
+/// 获取全局数据库连接池（如未初始化则返回 None）
+pub fn global_db_pool() -> Option<SqlitePool> {
+    GLOBAL_DB_POOL.get().cloned()
 }
