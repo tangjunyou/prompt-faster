@@ -13,11 +13,14 @@ use prompt_faster::api::routes::{auth, history, user_auth, workspaces};
 use prompt_faster::api::state::AppState;
 use prompt_faster::core::iteration_engine::checkpoint::compute_checksum;
 use prompt_faster::domain::models::{
-    CheckpointCreateRequest, CheckpointEntity, IterationState, LineageType, RuleSystem,
+    Actor, CheckpointCreateRequest, CheckpointEntity, EventType, HistoryEvent, IterationState,
+    LineageType, RuleSystem,
 };
-use prompt_faster::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
+use prompt_faster::domain::types::{
+    IterationArtifacts, RunControlState, UserGuidance, unix_ms_to_iso8601,
+};
 use prompt_faster::infra::db::pool::create_pool;
-use prompt_faster::infra::db::repositories::CheckpointRepo;
+use prompt_faster::infra::db::repositories::{CheckpointRepo, HistoryEventRepo};
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
@@ -322,6 +325,31 @@ async fn insert_iteration(db: &sqlx::SqlitePool, task_id: &str, round: i32) -> S
     id
 }
 
+async fn insert_history_event(
+    db: &sqlx::SqlitePool,
+    task_id: &str,
+    event_type: EventType,
+    actor: Actor,
+    iteration: Option<u32>,
+    created_at: i64,
+) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let event = HistoryEvent {
+        id: id.clone(),
+        task_id: task_id.to_string(),
+        event_type,
+        actor,
+        details: Some(json!({ "sample": true })),
+        iteration,
+        correlation_id: Some("corr-test".to_string()),
+        created_at: unix_ms_to_iso8601(created_at),
+    };
+    HistoryEventRepo::create_event(db, &event)
+        .await
+        .expect("插入 history event 失败");
+    id
+}
+
 #[tokio::test]
 async fn test_history_combines_iterations_and_checkpoints() {
     let (app, db) = setup_test_app_with_db().await;
@@ -385,6 +413,189 @@ async fn test_history_forbidden_for_other_user() {
 
     let req = with_bearer(
         build_empty_request("GET", &format!("/api/v1/tasks/{}/history", task_id)),
+        &token_other,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_history_events_filtering() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "history_events_user", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
+
+    let now = now_millis();
+    insert_history_event(
+        &db,
+        &task_id,
+        EventType::IterationStarted,
+        Actor::System,
+        Some(1),
+        now - 1000,
+    )
+    .await;
+    insert_history_event(
+        &db,
+        &task_id,
+        EventType::UserPause,
+        Actor::User,
+        Some(1),
+        now,
+    )
+    .await;
+
+    let req = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!(
+                "/api/v1/tasks/{}/history/events?event_types=user_pause&actor=user",
+                task_id
+            ),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    let events = body["data"]["events"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["eventType"].as_str(), Some("user_pause"));
+    assert_eq!(events[0]["actor"].as_str(), Some("user"));
+}
+
+#[tokio::test]
+async fn test_history_timeline_pagination_and_order() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "history_timeline_user", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
+
+    let _iteration_id = insert_iteration(&db, &task_id, 1).await;
+    let _checkpoint_id = insert_checkpoint(&db, &task_id, "checkpoint-timeline", 1).await;
+    let now = now_millis();
+    let event_id = insert_history_event(
+        &db,
+        &task_id,
+        EventType::UserPause,
+        Actor::User,
+        Some(1),
+        now + 2000,
+    )
+    .await;
+
+    let req = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!("/api/v1/tasks/{}/history/timeline?limit=2", task_id),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    let entries = body["data"]["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0]["id"].as_str(), Some(event_id.as_str()));
+    assert_eq!(entries[0]["entryType"].as_str(), Some("event"));
+
+    let req_page2 = with_bearer(
+        build_empty_request(
+            "GET",
+            &format!(
+                "/api/v1/tasks/{}/history/timeline?limit=2&offset=2",
+                task_id
+            ),
+        ),
+        &token,
+    );
+    let resp_page2 = app.clone().oneshot(req_page2).await.unwrap();
+    assert_eq!(resp_page2.status(), StatusCode::OK);
+    let body_page2 = read_json_body(resp_page2).await;
+    let entries_page2 = body_page2["data"]["entries"].as_array().unwrap();
+    assert!(!entries_page2.is_empty());
+}
+
+#[tokio::test]
+async fn test_history_export_contains_sections() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "history_export_user", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
+
+    let _iteration_id = insert_iteration(&db, &task_id, 1).await;
+    let _checkpoint_id = insert_checkpoint(&db, &task_id, "checkpoint-export", 1).await;
+    insert_history_event(
+        &db,
+        &task_id,
+        EventType::IterationStarted,
+        Actor::System,
+        Some(1),
+        now_millis(),
+    )
+    .await;
+
+    let req = with_bearer(
+        build_empty_request("GET", &format!("/api/v1/tasks/{}/history/export", task_id)),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let headers = resp.headers();
+    let content_disposition = headers
+        .get("content-disposition")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(content_disposition.contains("attachment"));
+    let body = read_json_body(resp).await;
+    let data = &body["data"];
+    assert_eq!(data["task"]["id"].as_str(), Some(task_id.as_str()));
+    assert!(data["iterations"].as_array().unwrap().len() >= 1);
+    assert!(data["checkpoints"].as_array().unwrap().len() >= 1);
+    assert!(data["events"].as_array().unwrap().len() >= 1);
+    assert!(data["branches"].as_array().is_some());
+    assert!(data["exportedAt"].is_string());
+}
+
+#[tokio::test]
+async fn test_history_events_forbidden_for_other_user() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token_owner = register_user(&app, "history_events_owner", "TestPass123!").await;
+    let token_other = register_user(&app, "history_events_other", "TestPass123!").await;
+
+    let workspace_id = create_workspace(&app, &token_owner).await;
+    let test_set_id = create_test_set_with_cases(
+        &app,
+        &workspace_id,
+        &token_owner,
+        "ts",
+        sample_exact_cases_json(),
+    )
+    .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token_owner, test_set_id).await;
+
+    insert_history_event(
+        &db,
+        &task_id,
+        EventType::IterationStarted,
+        Actor::System,
+        Some(1),
+        now_millis(),
+    )
+    .await;
+
+    let req = with_bearer(
+        build_empty_request("GET", &format!("/api/v1/tasks/{}/history/events", task_id)),
         &token_other,
     );
     let resp = app.clone().oneshot(req).await.unwrap();

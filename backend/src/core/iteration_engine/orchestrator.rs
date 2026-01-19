@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::core::evaluator::EvaluatorError;
 use crate::core::execution_target::ExecutionError;
 use crate::core::feedback_aggregator::AggregatorError;
+use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::executor::{parallel_execute, serial_execute};
 use crate::core::prompt_generator::{EXT_CANDIDATE_INDEX, GeneratorError, TEMPLATE_VARIANT_COUNT};
 use crate::core::traits::Evaluator;
@@ -11,9 +12,9 @@ use crate::core::traits::ExecutionTarget;
 use crate::core::traits::FeedbackAggregator;
 use crate::core::traits::PromptGenerator;
 use crate::domain::models::{
-    EvaluationResult, ExecutionMode, ExecutionResult, FailureArchiveEntry, FailureType,
-    IterationState, OptimizationTaskConfig, RecommendedAction, ReflectionResult, Suggestion,
-    SuggestionType, TestCase, UnifiedReflection,
+    Actor, EvaluationResult, EventType, ExecutionMode, ExecutionResult, FailureArchiveEntry,
+    FailureType, IterationState, OptimizationTaskConfig, RecommendedAction, ReflectionResult,
+    Suggestion, SuggestionType, TestCase, UnifiedReflection,
 };
 use crate::domain::types::{
     CandidateStats, EXT_BEST_CANDIDATE_STATS, EXT_CONSECUTIVE_NO_IMPROVEMENT,
@@ -116,6 +117,58 @@ impl IterationEngine {
         }
         Ok(out)
     }
+}
+
+pub fn record_iteration_started(ctx: &OptimizationContext) {
+    record_event_async(
+        ctx.task_id.clone(),
+        EventType::IterationStarted,
+        Actor::System,
+        Some(json!({ "iteration": ctx.iteration })),
+        Some(ctx.iteration),
+        ctx_correlation_id(ctx),
+    );
+}
+
+pub fn record_iteration_completed(ctx: &OptimizationContext, should_terminate: bool) {
+    record_event_async(
+        ctx.task_id.clone(),
+        EventType::IterationCompleted,
+        Actor::System,
+        Some(json!({
+            "iteration": ctx.iteration,
+            "should_terminate": should_terminate,
+        })),
+        Some(ctx.iteration),
+        ctx_correlation_id(ctx),
+    );
+}
+
+pub fn record_evaluation_completed(
+    ctx: &OptimizationContext,
+    pass_rate: f64,
+    total_cases: usize,
+    passed_cases: usize,
+) {
+    record_event_async(
+        ctx.task_id.clone(),
+        EventType::EvaluationCompleted,
+        Actor::System,
+        Some(json!({
+            "iteration": ctx.iteration,
+            "pass_rate": pass_rate,
+            "total_cases": total_cases,
+            "passed_cases": passed_cases,
+        })),
+        Some(ctx.iteration),
+        ctx_correlation_id(ctx),
+    );
+}
+
+fn ctx_correlation_id(ctx: &OptimizationContext) -> Option<String> {
+    ctx.extensions
+        .get("correlation_id")
+        .and_then(|value| value.as_str().map(|s| s.to_string()))
 }
 
 /// 编排层契约：维护连续无提升计数（只写 extensions；Layer 4 只读使用）。

@@ -38,14 +38,16 @@ use prompt_faster::api::ws::events::{
     TaskControlPayload, TaskTerminatedPayload,
 };
 use prompt_faster::domain::models::{
-    Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
+    Actor, BranchInfo, Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
     ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit,
-    DimensionScore, EvaluationResult, ExecutionResult, ExecutionTargetType, FailurePoint,
-    Iteration, IterationState, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
-    OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension, RecoveryMetrics,
-    RecoveryRequest, RecoveryResponse, RollbackRequest, RollbackResponse, Rule, RuleConflict,
-    RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskHistoryResponse,
-    TaskReference, TestCase, TestSet, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User,
+    DimensionScore, EvaluationResult, EventType, ExecutionResult, ExecutionTargetType,
+    FailurePoint, HistoryEvent, HistoryEventResponse, HistoryExportData, Iteration,
+    IterationExportEntry, IterationState, LineageType, OptimizationTaskEntity,
+    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension,
+    RecoveryMetrics, RecoveryRequest, RecoveryResponse, RollbackRequest, RollbackResponse, Rule,
+    RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
+    TaskExportMeta, TaskHistoryResponse, TaskReference, TestCase, TestSet, TimelineEntry,
+    TimelineEntryType, TimelineResponse, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User,
     Workspace,
 };
 use prompt_faster::domain::types::{
@@ -150,6 +152,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     CheckpointSummary::export_all_to(&out_dir)?;
     PassRateSummary::export_all_to(&out_dir)?;
     TaskHistoryResponse::export_all_to(&out_dir)?;
+    HistoryEvent::export_all_to(&out_dir)?;
+    HistoryEventResponse::export_all_to(&out_dir)?;
+    TimelineEntry::export_all_to(&out_dir)?;
+    TimelineEntryType::export_all_to(&out_dir)?;
+    TimelineResponse::export_all_to(&out_dir)?;
+    HistoryExportData::export_all_to(&out_dir)?;
+    TaskExportMeta::export_all_to(&out_dir)?;
+    IterationExportEntry::export_all_to(&out_dir)?;
+    BranchInfo::export_all_to(&out_dir)?;
+    EventType::export_all_to(&out_dir)?;
+    Actor::export_all_to(&out_dir)?;
     UnfinishedTask::export_all_to(&out_dir)?;
     UnfinishedTasksResponse::export_all_to(&out_dir)?;
     RecoveryRequest::export_all_to(&out_dir)?;

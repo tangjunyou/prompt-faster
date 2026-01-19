@@ -3,6 +3,7 @@
 pub mod algorithm;
 pub mod checkpoint;
 pub mod history;
+pub mod history_event;
 pub mod iteration_stage;
 pub mod optimization_task;
 pub mod optimization_task_config;
@@ -22,7 +23,11 @@ pub use checkpoint::{
     Checkpoint, CheckpointCreateRequest, CheckpointEntity, CheckpointFull, CheckpointListResponse,
     CheckpointResponse,
 };
-pub use history::TaskHistoryResponse;
+pub use history::{
+    BranchInfo, HistoryEventResponse, HistoryExportData, IterationExportEntry, TaskExportMeta,
+    TaskHistoryResponse, TimelineEntry, TimelineEntryType, TimelineResponse,
+};
+pub use history_event::{Actor, EventType, HistoryEvent, HistoryEventFilter};
 pub use iteration_stage::{
     IterationStageDescriptor, all_stages as all_iteration_stages, stage_for_state,
 };

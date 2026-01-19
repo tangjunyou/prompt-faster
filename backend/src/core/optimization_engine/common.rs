@@ -4,12 +4,13 @@ use std::sync::Arc;
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
 use crate::core::iteration_engine::checkpoint::save_checkpoint;
-use crate::core::iteration_engine::orchestrator::IterationEngine;
+use crate::core::iteration_engine::events::record_event_async;
+use crate::core::iteration_engine::orchestrator::{IterationEngine, record_evaluation_completed};
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
-    CandidateSource, Checkpoint, EvaluationResult, IterationState, OptimizationResult,
-    OptimizationTaskConfig, PromptCandidate, TerminationReason, TestCase,
+    Actor, CandidateSource, Checkpoint, EvaluationResult, EventType, IterationState,
+    OptimizationResult, OptimizationTaskConfig, PromptCandidate, TerminationReason, TestCase,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
@@ -20,6 +21,7 @@ use crate::domain::types::{
 use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
 use crate::shared::ws_bus::global_ws_bus;
+use serde_json::json;
 
 use super::OptimizationEngineError;
 
@@ -61,6 +63,21 @@ fn read_optional_string(ctx: &OptimizationContext, key: &str) -> Option<String> 
     ctx.extensions
         .get(key)
         .and_then(|v| v.as_str().map(|s| s.to_string()))
+}
+
+fn record_error_event(ctx: &OptimizationContext, stage: &str, message: &str) {
+    let correlation_id = read_optional_string(ctx, "correlation_id");
+    record_event_async(
+        ctx.task_id.clone(),
+        EventType::ErrorOccurred,
+        Actor::System,
+        Some(json!({
+            "stage": stage,
+            "message": message,
+        })),
+        Some(ctx.iteration),
+        correlation_id,
+    );
 }
 
 fn read_optional_usize(ctx: &OptimizationContext, key: &str) -> Option<usize> {
@@ -295,6 +312,7 @@ pub async fn checkpoint_pause_if_requested(
     {
         transition_run_control_state(ctx, RunControlState::Paused)?;
         if let Err(err) = save_checkpoint(ctx, "", "").await {
+            record_error_event(ctx, "checkpoint_pause_save", &err.to_string());
             let correlation_id = read_optional_string(ctx, "correlation_id")
                 .unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
             let user_id =
@@ -329,6 +347,7 @@ pub async fn checkpoint_pause_if_requested(
 /// Layer 级别自动保存 Checkpoint（失败时降级不阻塞）
 pub async fn save_checkpoint_after_layer(ctx: &OptimizationContext) {
     if let Err(err) = save_checkpoint(ctx, "", "").await {
+        record_error_event(ctx, "checkpoint_layer_save", &err.to_string());
         let correlation_id = read_optional_string(ctx, "correlation_id")
             .unwrap_or_else(|| format!("checkpoint-{}", ctx.task_id));
         let user_id = read_optional_string(ctx, "user_id").unwrap_or_else(|| "system".to_string());
@@ -409,9 +428,18 @@ pub async fn run_tests_and_evaluate(
     let prompt = ctx.current_prompt.clone();
     let batch = ctx.test_cases.clone();
     let engine = IterationEngine::new(execution_target);
-    let exec_results = engine.run_tests(ctx, &prompt, &batch, task_config).await?;
+    let exec_results = engine
+        .run_tests(ctx, &prompt, &batch, task_config)
+        .await
+        .map_err(|err| {
+            record_error_event(ctx, "run_tests", &err.to_string());
+            OptimizationEngineError::from(err)
+        })?;
 
-    let pairs = IterationEngine::build_evaluation_pairs(&batch, &exec_results)?;
+    let pairs = IterationEngine::build_evaluation_pairs(&batch, &exec_results).map_err(|err| {
+        record_error_event(ctx, "build_evaluation_pairs", &err.to_string());
+        OptimizationEngineError::from(err)
+    })?;
 
     set_iteration_state(ctx, IterationState::Evaluating);
     // DefaultEvaluator 依赖 task 级 evaluator_config（写入方约定为编排层）。
@@ -423,7 +451,10 @@ pub async fn run_tests_and_evaluate(
     ctx.extensions
         .insert(EXT_TASK_EVALUATOR_CONFIG.to_string(), evaluator_cfg_value);
 
-    let evaluations = evaluator.evaluate_batch(ctx, &pairs).await?;
+    let evaluations = evaluator.evaluate_batch(ctx, &pairs).await.map_err(|err| {
+        record_error_event(ctx, "evaluate_batch", &err.to_string());
+        OptimizationEngineError::from(err)
+    })?;
 
     let evaluations_by_id = build_evaluations_by_test_case_id(&pairs, &evaluations)?;
     let executions_by_id: HashMap<String, _> = exec_results
@@ -453,6 +484,8 @@ pub async fn run_tests_and_evaluate(
         pass_rate: stats.pass_rate,
         mean_score: stats.mean_score,
     };
+
+    record_evaluation_completed(ctx, stats.pass_rate, stats.total_count, stats.passed_count);
 
     // 统一写入 Layer 4 约定的候选/最佳候选口径，确保与 Optimizer 的接口契约一致。
     ctx.extensions.insert(

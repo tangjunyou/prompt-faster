@@ -4,15 +4,18 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::OnceLock;
 
 use serde::Serialize;
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::sync::Mutex;
 use tokio::time::{Duration, sleep};
 use tracing::{info, warn};
 
+use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::models::{
-    CheckpointCreateRequest, CheckpointEntity, EvaluationResult, LineageType, PassRateSummary,
+    Actor, CheckpointCreateRequest, CheckpointEntity, EvaluationResult, EventType, LineageType,
+    PassRateSummary,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
@@ -233,6 +236,20 @@ pub async fn save_checkpoint(
         iteration_state = %new_state,
         timestamp = checkpoint.created_at,
         "Checkpoint 已保存"
+    );
+
+    let actor = if safe_user_id == "system" {
+        Actor::System
+    } else {
+        Actor::User
+    };
+    record_event_async(
+        checkpoint.task_id.clone(),
+        EventType::CheckpointSaved,
+        actor,
+        Some(json!({ "checkpoint_id": checkpoint.id })),
+        Some(checkpoint.iteration),
+        Some(safe_correlation_id.clone()),
     );
 
     if let Some(evicted) = evicted {
@@ -545,7 +562,7 @@ mod tests {
     use super::*;
     use crate::domain::models::{IterationState, RuleSystem};
     use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig};
-    use crate::infra::db::pool::{create_pool, init_global_db_pool};
+    use crate::infra::db::pool::{create_pool, global_db_pool, init_global_db_pool};
     use crate::infra::db::repositories::CheckpointRepo;
     use sqlx::SqlitePool;
     use std::collections::HashMap;
@@ -555,6 +572,9 @@ mod tests {
     static TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
     async fn setup_test_pool() -> SqlitePool {
+        if let Some(pool) = global_db_pool() {
+            return pool;
+        }
         if let Some(pool) = TEST_POOL.get() {
             return pool.clone();
         }

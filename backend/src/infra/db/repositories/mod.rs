@@ -3,6 +3,7 @@
 
 pub mod checkpoint_repo;
 pub mod credential_repo;
+pub mod history_event_repo;
 pub mod iteration_repo;
 pub mod migration_repo;
 pub mod optimization_task_repo;
@@ -16,6 +17,7 @@ pub use checkpoint_repo::{CheckpointRepo, CheckpointRepoError};
 pub use credential_repo::{
     CredentialRecord, CredentialRepo, CredentialRepoError, CredentialType, UpsertCredentialInput,
 };
+pub use history_event_repo::{HistoryEventRepo, HistoryEventRepoError};
 pub use iteration_repo::{IterationRepo, IterationRepoError, IterationSummaryWithArtifacts};
 pub use migration_repo::{MigrationRepo, MigrationRepoError, MigrationResult};
 pub use optimization_task_repo::{

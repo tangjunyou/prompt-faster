@@ -3,6 +3,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use crate::core::iteration_engine::orchestrator::{
+    record_iteration_completed, record_iteration_started,
+};
 use crate::core::traits::{
     Evaluator, ExecutionTarget, FeedbackAggregator, Optimizer, RuleEngine, TeacherModel,
 };
@@ -220,7 +223,9 @@ impl OptimizationEngine for AlternateOptimizationEngine {
             }
 
             ctx.iteration = ctx.iteration.saturating_add(1);
+            record_iteration_started(ctx);
             let out = self.run_one_iteration(ctx).await?;
+            record_iteration_completed(ctx, out.should_terminate);
             last = Some(out.clone());
             if out.should_terminate {
                 set_iteration_state(ctx, IterationState::Completed);

@@ -14,10 +14,11 @@ use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
+use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::recovery as recovery_core;
 use crate::domain::models::{
-    ConnectivityResponse, RecoveryMetrics, RecoveryRequest, RecoveryResponse, RollbackRequest,
-    RollbackResponse, UnfinishedTasksResponse,
+    Actor, ConnectivityResponse, EventType, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
+    RollbackRequest, RollbackResponse, UnfinishedTasksResponse,
 };
 use crate::infra::db::repositories::OptimizationTaskRepo;
 use crate::infra::external::connectivity::check_connectivity;
@@ -150,6 +151,18 @@ pub(crate) async fn recover_task(
                 timestamp = crate::shared::time::now_millis(),
                 "恢复任务成功"
             );
+
+            record_event_async(
+                task_id.clone(),
+                EventType::CheckpointRecovered,
+                Actor::User,
+                Some(serde_json::json!({
+                    "checkpoint_id": used_checkpoint.id,
+                    "source": if checkpoint_id.is_some() { "checkpoint" } else { "pause_state" },
+                })),
+                Some(ctx.iteration),
+                Some(correlation_id.clone()),
+            );
             ApiResponse::ok(RecoveryResponse {
                 success: true,
                 task_id,
@@ -166,17 +179,54 @@ pub(crate) async fn recover_task(
             "任务不存在或无权访问",
         ),
         Err(recovery_core::RecoveryError::CheckpointNotFound)
-        | Err(recovery_core::RecoveryError::PauseStateNotFound) => ApiResponse::err(
-            StatusCode::NOT_FOUND,
-            error_codes::RESOURCE_NOT_FOUND,
-            "未找到可用的 Checkpoint",
-        ),
-        Err(recovery_core::RecoveryError::NoValidCheckpoint) => ApiResponse::err(
-            StatusCode::CONFLICT,
-            error_codes::UPSTREAM_ERROR,
-            "无法恢复，请重新开始任务",
-        ),
+        | Err(recovery_core::RecoveryError::PauseStateNotFound) => {
+            record_event_async(
+                task_id.clone(),
+                EventType::ErrorOccurred,
+                Actor::System,
+                Some(serde_json::json!({
+                    "action": "recovery",
+                    "reason": "checkpoint_not_found",
+                })),
+                None,
+                Some(correlation_id.clone()),
+            );
+            ApiResponse::err(
+                StatusCode::NOT_FOUND,
+                error_codes::RESOURCE_NOT_FOUND,
+                "未找到可用的 Checkpoint",
+            )
+        }
+        Err(recovery_core::RecoveryError::NoValidCheckpoint) => {
+            record_event_async(
+                task_id.clone(),
+                EventType::ErrorOccurred,
+                Actor::System,
+                Some(serde_json::json!({
+                    "action": "recovery",
+                    "reason": "no_valid_checkpoint",
+                })),
+                None,
+                Some(correlation_id.clone()),
+            );
+            ApiResponse::err(
+                StatusCode::CONFLICT,
+                error_codes::UPSTREAM_ERROR,
+                "无法恢复，请重新开始任务",
+            )
+        }
         Err(err) => {
+            record_event_async(
+                task_id.clone(),
+                EventType::ErrorOccurred,
+                Actor::System,
+                Some(serde_json::json!({
+                    "action": "recovery",
+                    "error": err.to_string(),
+                })),
+                None,
+                Some(correlation_id.clone()),
+            );
             warn!(
                 correlation_id = %correlation_id,
                 error = %err,
