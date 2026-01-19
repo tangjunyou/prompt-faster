@@ -4,9 +4,9 @@ use axum::http::{Request, StatusCode};
 use axum::middleware;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
+use sqlx::query;
 use std::sync::Arc;
 use tower::ServiceExt;
-use sqlx::query;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
@@ -220,14 +220,9 @@ async fn test_event_record_failure_does_not_block_add_rounds() {
     // 不初始化 global_db_pool，让 record_event_async 触发降级路径
     let token = register_user(&app, "event_degrade_user", "TestPass123!").await;
     let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id = create_test_set_with_cases(
-        &app,
-        &workspace_id,
-        &token,
-        "ts",
-        sample_exact_cases_json(),
-    )
-    .await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
     let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
     query("UPDATE optimization_tasks SET status = 'running' WHERE id = ?")
         .bind(&task_id)

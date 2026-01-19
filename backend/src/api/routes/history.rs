@@ -16,14 +16,14 @@ use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::domain::models::{
     Actor, BranchInfo, CheckpointListResponse, CheckpointSummary, EventType, HistoryEvent,
-    HistoryEventFilter, HistoryEventResponse, HistoryExportData, IterationExportEntry, TaskExportMeta,
-    TaskHistoryResponse, TimelineResponse,
+    HistoryEventFilter, HistoryEventResponse, HistoryExportData, IterationExportEntry,
+    TaskExportMeta, TaskHistoryResponse, TimelineResponse,
 };
+use crate::domain::types::{IterationArtifacts, unix_ms_to_iso8601};
 use crate::infra::db::repositories::{
     CheckpointRepo, CheckpointRepoError, HistoryEventRepo, HistoryEventRepoError, IterationRepo,
     IterationRepoError, OptimizationTaskRepo,
 };
-use crate::domain::types::{IterationArtifacts, unix_ms_to_iso8601};
 use crate::shared::error_codes;
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -368,41 +368,32 @@ pub(crate) async fn list_history_events(
     let filter = match build_history_event_filter(&query) {
         Ok(filter) => filter,
         Err(msg) => {
-            return ApiResponse::err(
-                StatusCode::BAD_REQUEST,
-                error_codes::VALIDATION_ERROR,
-                msg,
-            )
+            return ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg);
         }
     };
     let (limit, offset) = match normalize_limit_offset(&query) {
         Ok(value) => value,
         Err(msg) => {
-            return ApiResponse::err(
-                StatusCode::BAD_REQUEST,
-                error_codes::VALIDATION_ERROR,
-                msg,
-            )
+            return ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg);
         }
     };
 
-    let events = match HistoryEventRepo::list_events(&state.db, &task_id, &filter, limit, offset)
-        .await
-    {
-        Ok(list) => list,
-        Err(err) => {
-            warn!(
-                correlation_id = %correlation_id,
-                error = %err,
-                "查询历史事件失败"
-            );
-            return ApiResponse::err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error_codes::DATABASE_ERROR,
-                "查询历史事件失败",
-            );
-        }
-    };
+    let events =
+        match HistoryEventRepo::list_events(&state.db, &task_id, &filter, limit, offset).await {
+            Ok(list) => list,
+            Err(err) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %err,
+                    "查询历史事件失败"
+                );
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询历史事件失败",
+                );
+            }
+        };
 
     let total = match HistoryEventRepo::count_events(&state.db, &task_id, &filter).await {
         Ok(value) => value,
@@ -482,21 +473,13 @@ pub(crate) async fn get_history_timeline(
     let filter = match build_history_event_filter(&query) {
         Ok(filter) => filter,
         Err(msg) => {
-            return ApiResponse::err(
-                StatusCode::BAD_REQUEST,
-                error_codes::VALIDATION_ERROR,
-                msg,
-            )
+            return ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg);
         }
     };
     let (limit, offset) = match normalize_limit_offset(&query) {
         Ok(value) => value,
         Err(msg) => {
-            return ApiResponse::err(
-                StatusCode::BAD_REQUEST,
-                error_codes::VALIDATION_ERROR,
-                msg,
-            )
+            return ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg);
         }
     };
 
@@ -600,23 +583,22 @@ pub(crate) async fn export_history(
         updated_at: unix_ms_to_iso8601(task.updated_at),
     };
 
-    let rule_system_map =
-        match load_latest_rule_system_by_iteration(&state.db, &task_id).await {
-            Ok(value) => value,
-            Err(err) => {
-                warn!(
-                    correlation_id = %correlation_id,
-                    error = %err,
-                    "查询 rule_system 失败"
-                );
-                return ApiResponse::<HistoryExportData>::err(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    error_codes::DATABASE_ERROR,
-                    "导出历史失败",
-                )
-                .into_response();
-            }
-        };
+    let rule_system_map = match load_latest_rule_system_by_iteration(&state.db, &task_id).await {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(
+                correlation_id = %correlation_id,
+                error = %err,
+                "查询 rule_system 失败"
+            );
+            return ApiResponse::<HistoryExportData>::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::DATABASE_ERROR,
+                "导出历史失败",
+            )
+            .into_response();
+        }
+    };
 
     let iterations = match load_iteration_exports(&state.db, &task_id, &rule_system_map).await {
         Ok(value) => value,
@@ -635,31 +617,27 @@ pub(crate) async fn export_history(
         }
     };
 
-    let checkpoint_total = match CheckpointRepo::count_checkpoints_by_task_with_archived(
-        &state.db,
-        &task_id,
-        true,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(err) => {
-            warn!(
-                correlation_id = %correlation_id,
-                error = %err,
-                "统计 checkpoint 总数失败"
-            );
-            return ApiResponse::<HistoryExportData>::err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error_codes::DATABASE_ERROR,
-                "导出历史失败",
-            )
-            .into_response();
-        }
-    };
+    let checkpoint_total =
+        match CheckpointRepo::count_checkpoints_by_task_with_archived(&state.db, &task_id, true)
+            .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %err,
+                    "统计 checkpoint 总数失败"
+                );
+                return ApiResponse::<HistoryExportData>::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "导出历史失败",
+                )
+                .into_response();
+            }
+        };
 
-    let checkpoints =
-        match fetch_all_checkpoint_summaries(&state.db, &task_id).await {
+    let checkpoints = match fetch_all_checkpoint_summaries(&state.db, &task_id).await {
         Ok(value) => value,
         Err(err) => {
             warn!(
@@ -676,31 +654,27 @@ pub(crate) async fn export_history(
         }
     };
 
-    let event_total = match HistoryEventRepo::count_events(
-        &state.db,
-        &task_id,
-        &HistoryEventFilter::default(),
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(err) => {
-            warn!(
-                correlation_id = %correlation_id,
-                error = %err,
-                "统计历史事件总数失败"
-            );
-            return ApiResponse::<HistoryExportData>::err(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                error_codes::DATABASE_ERROR,
-                "导出历史失败",
-            )
-            .into_response();
-        }
-    };
+    let event_total =
+        match HistoryEventRepo::count_events(&state.db, &task_id, &HistoryEventFilter::default())
+            .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %err,
+                    "统计历史事件总数失败"
+                );
+                return ApiResponse::<HistoryExportData>::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "导出历史失败",
+                )
+                .into_response();
+            }
+        };
 
-    let events =
-        match fetch_all_history_events(&state.db, &task_id).await {
+    let events = match fetch_all_history_events(&state.db, &task_id).await {
         Ok(value) => value,
         Err(err) => {
             warn!(
@@ -832,14 +806,8 @@ async fn fetch_all_checkpoint_summaries(
     let mut offset = 0usize;
     let limit = 200usize;
     loop {
-        let batch = CheckpointRepo::list_checkpoint_summaries(
-            pool,
-            task_id,
-            true,
-            limit,
-            offset,
-        )
-        .await?;
+        let batch =
+            CheckpointRepo::list_checkpoint_summaries(pool, task_id, true, limit, offset).await?;
         if batch.is_empty() {
             break;
         }
@@ -877,12 +845,14 @@ fn summarize_branches_from_checkpoints(checkpoints: &[CheckpointSummary]) -> Vec
     }
 
     for checkpoint in checkpoints {
-        let entry = branch_map.entry(checkpoint.branch_id.clone()).or_insert(BranchInfo {
-            branch_id: checkpoint.branch_id.clone(),
-            parent_branch_id: None,
-            created_at: checkpoint.created_at.clone(),
-            checkpoint_count: 0,
-        });
+        let entry = branch_map
+            .entry(checkpoint.branch_id.clone())
+            .or_insert(BranchInfo {
+                branch_id: checkpoint.branch_id.clone(),
+                parent_branch_id: None,
+                created_at: checkpoint.created_at.clone(),
+                checkpoint_count: 0,
+            });
         entry.checkpoint_count = entry.checkpoint_count.saturating_add(1);
         if checkpoint.created_at < entry.created_at {
             entry.created_at = checkpoint.created_at.clone();

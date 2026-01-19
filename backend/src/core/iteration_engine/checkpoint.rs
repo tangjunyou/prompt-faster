@@ -14,7 +14,7 @@ use tracing::{info, warn};
 use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::models::{
-    Actor, CheckpointCreateRequest, CheckpointEntity, EventType, EvaluationResult, LineageType,
+    Actor, CheckpointCreateRequest, CheckpointEntity, EvaluationResult, EventType, LineageType,
     PassRateSummary,
 };
 use crate::domain::types::{

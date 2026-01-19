@@ -5,9 +5,9 @@ use thiserror::Error;
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::models::{Actor, EventType, HistoryEvent};
 use crate::domain::types::unix_ms_to_iso8601;
-use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{HistoryEventRepo, HistoryEventRepoError};
 use crate::shared::time::now_millis;

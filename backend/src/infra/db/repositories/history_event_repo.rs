@@ -1,11 +1,11 @@
 //! 历史事件仓库
 
 use chrono::DateTime;
-use std::str::FromStr;
+use serde_json::json;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool};
+use std::str::FromStr;
 use thiserror::Error;
 use tracing::info;
-use serde_json::json;
 
 use crate::domain::models::{
     Actor, EventType, HistoryEvent, HistoryEventFilter, TimelineEntry, TimelineEntryType,
@@ -172,9 +172,13 @@ impl HistoryEventRepo {
             "SELECT id, entry_type, timestamp, iteration, title, description, actor, details, pass_rate, passed_cases, total_cases FROM (",
         );
 
-        qb.push("SELECT id, 'iteration' AS entry_type, started_at AS timestamp, round AS iteration, ");
+        qb.push(
+            "SELECT id, 'iteration' AS entry_type, started_at AS timestamp, round AS iteration, ",
+        );
         qb.push("'iteration' AS title, status AS description, NULL AS actor, NULL AS details, ");
-        qb.push("pass_rate AS pass_rate, passed_cases AS passed_cases, total_cases AS total_cases ");
+        qb.push(
+            "pass_rate AS pass_rate, passed_cases AS passed_cases, total_cases AS total_cases ",
+        );
         qb.push("FROM iterations WHERE task_id = ");
         qb.push_bind(task_id);
         apply_timeline_filters(&mut qb, filter, TimelineFilterScope::Iteration);
@@ -188,7 +192,9 @@ impl HistoryEventRepo {
         apply_timeline_filters(&mut qb, filter, TimelineFilterScope::Checkpoint);
 
         qb.push(" UNION ALL ");
-        qb.push("SELECT id, 'event' AS entry_type, created_at AS timestamp, iteration AS iteration, ");
+        qb.push(
+            "SELECT id, 'event' AS entry_type, created_at AS timestamp, iteration AS iteration, ",
+        );
         qb.push("event_type AS title, NULL AS description, actor AS actor, details AS details, ");
         qb.push("NULL AS pass_rate, NULL AS passed_cases, NULL AS total_cases ");
         qb.push("FROM history_events WHERE task_id = ");
@@ -240,7 +246,11 @@ enum TimelineFilterScope {
 }
 
 fn apply_event_filters(qb: &mut QueryBuilder<Sqlite>, filter: &HistoryEventFilter) {
-    if let Some(event_types) = filter.event_types.as_ref().filter(|items| !items.is_empty()) {
+    if let Some(event_types) = filter
+        .event_types
+        .as_ref()
+        .filter(|items| !items.is_empty())
+    {
         qb.push(" AND event_type IN (");
         let mut separated = qb.separated(", ");
         for event_type in event_types {
@@ -314,7 +324,11 @@ fn apply_timeline_filters(
     }
 
     if matches!(scope, TimelineFilterScope::Event) {
-        if let Some(event_types) = filter.event_types.as_ref().filter(|items| !items.is_empty()) {
+        if let Some(event_types) = filter
+            .event_types
+            .as_ref()
+            .filter(|items| !items.is_empty())
+        {
             qb.push(" AND event_type IN (");
             let mut separated = qb.separated(", ");
             for event_type in event_types {
@@ -335,7 +349,8 @@ fn apply_timeline_filters(
 fn row_to_event(row: HistoryEventRow) -> Result<HistoryEvent, HistoryEventRepoError> {
     let event_type = EventType::from_str(&row.event_type)
         .map_err(|err| HistoryEventRepoError::InvalidData(err))?;
-    let actor = Actor::from_str(&row.actor).map_err(|err| HistoryEventRepoError::InvalidData(err))?;
+    let actor =
+        Actor::from_str(&row.actor).map_err(|err| HistoryEventRepoError::InvalidData(err))?;
     let details = parse_optional_json(row.details.as_deref())?;
 
     Ok(HistoryEvent {
@@ -358,7 +373,7 @@ fn row_to_timeline_entry(row: TimelineRow) -> Result<TimelineEntry, HistoryEvent
         other => {
             return Err(HistoryEventRepoError::InvalidData(format!(
                 "unknown timeline entry_type: {other}"
-            )))
+            )));
         }
     };
 
@@ -370,7 +385,10 @@ fn row_to_timeline_entry(row: TimelineRow) -> Result<TimelineEntry, HistoryEvent
             (row.pass_rate, row.passed_cases, row.total_cases)
         {
             let percent = (pass_rate * 100.0).max(0.0);
-            let status = row.description.clone().unwrap_or_else(|| "unknown".to_string());
+            let status = row
+                .description
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
             description = Some(format!(
                 "{} · {:.1}% ({}/{})",
                 status, percent, passed_cases, total_cases
@@ -400,7 +418,9 @@ fn row_to_timeline_entry(row: TimelineRow) -> Result<TimelineEntry, HistoryEvent
     })
 }
 
-fn serialize_optional_json(value: &Option<serde_json::Value>) -> Result<Option<String>, HistoryEventRepoError> {
+fn serialize_optional_json(
+    value: &Option<serde_json::Value>,
+) -> Result<Option<String>, HistoryEventRepoError> {
     match value {
         Some(v) => serde_json::to_string(v)
             .map(Some)
@@ -409,7 +429,9 @@ fn serialize_optional_json(value: &Option<serde_json::Value>) -> Result<Option<S
     }
 }
 
-fn parse_optional_json(value: Option<&str>) -> Result<Option<serde_json::Value>, HistoryEventRepoError> {
+fn parse_optional_json(
+    value: Option<&str>,
+) -> Result<Option<serde_json::Value>, HistoryEventRepoError> {
     match value {
         Some(raw) => serde_json::from_str(raw)
             .map(Some)

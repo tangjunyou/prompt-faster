@@ -40,14 +40,15 @@ use prompt_faster::api::ws::events::{
 use prompt_faster::domain::models::{
     Actor, BranchInfo, Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
     ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit,
-    DimensionScore, EvaluationResult, EventType, ExecutionResult, ExecutionTargetType, FailurePoint,
-    HistoryEvent, HistoryEventResponse, HistoryExportData, Iteration, IterationExportEntry,
-    IterationState, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
-    OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension, RecoveryMetrics,
-    RecoveryRequest, RecoveryResponse, RollbackRequest, RollbackResponse, Rule, RuleConflict,
-    RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskExportMeta,
-    TaskHistoryResponse, TaskReference, TestCase, TestSet, TimelineEntry, TimelineEntryType,
-    TimelineResponse, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
+    DimensionScore, EvaluationResult, EventType, ExecutionResult, ExecutionTargetType,
+    FailurePoint, HistoryEvent, HistoryEventResponse, HistoryExportData, Iteration,
+    IterationExportEntry, IterationState, LineageType, OptimizationTaskEntity,
+    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension,
+    RecoveryMetrics, RecoveryRequest, RecoveryResponse, RollbackRequest, RollbackResponse, Rule,
+    RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
+    TaskExportMeta, TaskHistoryResponse, TaskReference, TestCase, TestSet, TimelineEntry,
+    TimelineEntryType, TimelineResponse, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User,
+    Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,

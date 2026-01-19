@@ -595,10 +595,7 @@ async fn test_history_events_forbidden_for_other_user() {
     .await;
 
     let req = with_bearer(
-        build_empty_request(
-            "GET",
-            &format!("/api/v1/tasks/{}/history/events", task_id),
-        ),
+        build_empty_request("GET", &format!("/api/v1/tasks/{}/history/events", task_id)),
         &token_other,
     );
     let resp = app.clone().oneshot(req).await.unwrap();

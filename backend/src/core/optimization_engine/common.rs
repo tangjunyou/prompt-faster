@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use serde_json::json;
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
 use crate::core::iteration_engine::checkpoint::save_checkpoint;
@@ -22,6 +21,7 @@ use crate::domain::types::{
 use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
 use crate::shared::ws_bus::global_ws_bus;
+use serde_json::json;
 
 use super::OptimizationEngineError;
 
@@ -428,16 +428,18 @@ pub async fn run_tests_and_evaluate(
     let prompt = ctx.current_prompt.clone();
     let batch = ctx.test_cases.clone();
     let engine = IterationEngine::new(execution_target);
-    let exec_results = engine.run_tests(ctx, &prompt, &batch, task_config).await.map_err(|err| {
-        record_error_event(ctx, "run_tests", &err.to_string());
-        OptimizationEngineError::from(err)
-    })?;
-
-    let pairs =
-        IterationEngine::build_evaluation_pairs(&batch, &exec_results).map_err(|err| {
-            record_error_event(ctx, "build_evaluation_pairs", &err.to_string());
+    let exec_results = engine
+        .run_tests(ctx, &prompt, &batch, task_config)
+        .await
+        .map_err(|err| {
+            record_error_event(ctx, "run_tests", &err.to_string());
             OptimizationEngineError::from(err)
         })?;
+
+    let pairs = IterationEngine::build_evaluation_pairs(&batch, &exec_results).map_err(|err| {
+        record_error_event(ctx, "build_evaluation_pairs", &err.to_string());
+        OptimizationEngineError::from(err)
+    })?;
 
     set_iteration_state(ctx, IterationState::Evaluating);
     // DefaultEvaluator 依赖 task 级 evaluator_config（写入方约定为编排层）。
@@ -483,12 +485,7 @@ pub async fn run_tests_and_evaluate(
         mean_score: stats.mean_score,
     };
 
-    record_evaluation_completed(
-        ctx,
-        stats.pass_rate,
-        stats.total_count,
-        stats.passed_count,
-    );
+    record_evaluation_completed(ctx, stats.pass_rate, stats.total_count, stats.passed_count);
 
     // 统一写入 Layer 4 约定的候选/最佳候选口径，确保与 Optimizer 的接口契约一致。
     ctx.extensions.insert(
