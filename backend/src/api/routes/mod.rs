@@ -4,6 +4,7 @@ pub mod dify;
 pub mod docs;
 pub mod generic;
 pub mod health;
+pub mod history;
 pub mod iteration_control;
 pub mod iterations;
 pub mod meta;

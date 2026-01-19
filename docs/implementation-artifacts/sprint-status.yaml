@@ -129,7 +129,7 @@ development_status:
   epic-7: in-progress
   7-1-checkpoint-auto-save: done
   7-2-breakpoint-recovery-and-exception-handling: done
-  7-3-historical-checkpoint-rollback: backlog
+  7-3-historical-checkpoint-rollback: done
   7-4-complete-iteration-history-record: backlog
   epic-7-retrospective: optional
 

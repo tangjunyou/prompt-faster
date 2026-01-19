@@ -8,13 +8,13 @@ import { HistoryPanel } from './HistoryPanel'
 import { useAuthStore } from '@/stores/useAuthStore'
 import type { IterationHistorySummary } from '@/types/generated/models/IterationHistorySummary'
 import type { IterationHistoryDetail } from '@/types/generated/models/IterationHistoryDetail'
-import type { CheckpointResponse } from '@/types/generated/models/CheckpointResponse'
+import type { CheckpointSummary } from '@/types/generated/models/CheckpointSummary'
 
 const API_BASE = 'http://localhost:3000/api/v1'
 
 let iterations: IterationHistorySummary[] = []
 let detail: IterationHistoryDetail | null = null
-let checkpoints: CheckpointResponse[] = []
+let checkpoints: CheckpointSummary[] = []
 
 vi.mock('@monaco-editor/react', () => ({
   default: (props: { value?: string }) => (
@@ -23,7 +23,7 @@ vi.mock('@monaco-editor/react', () => ({
 }))
 
 const server = setupServer(
-  http.get(`${API_BASE}/tasks/:taskId/iterations`, ({ request }) => {
+  http.get(`${API_BASE}/tasks/:taskId/history`, ({ request }) => {
     const auth = request.headers.get('authorization')
     if (auth !== 'Bearer test-token') {
       return HttpResponse.json(
@@ -32,8 +32,28 @@ const server = setupServer(
       )
     }
 
-    return HttpResponse.json({ data: iterations })
+    return HttpResponse.json({
+      data: {
+        iterations,
+        checkpoints: {
+          checkpoints,
+          total: checkpoints.length,
+          currentBranchId: 'branch',
+        },
+      },
+    })
   }),
+  http.get(`${API_BASE}/connectivity`, () =>
+    HttpResponse.json({
+      data: {
+        status: 'online',
+        lastCheckedAt: '2025-01-01T12:00:00Z',
+        message: null,
+        availableFeatures: [],
+        restrictedFeatures: [],
+      },
+    }),
+  ),
   http.get(`${API_BASE}/tasks/:taskId/iterations/:iterationId`, ({ request }) => {
     const auth = request.headers.get('authorization')
     if (auth !== 'Bearer test-token') {
@@ -51,22 +71,6 @@ const server = setupServer(
 
     return HttpResponse.json({ data: detail })
   }),
-  http.get(`${API_BASE}/tasks/:taskId/checkpoints`, ({ request }) => {
-    const auth = request.headers.get('authorization')
-    if (auth !== 'Bearer test-token') {
-      return HttpResponse.json(
-        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
-        { status: 401 }
-      )
-    }
-
-    return HttpResponse.json({
-      data: {
-        checkpoints,
-        total: checkpoints.length,
-      },
-    })
-  })
 )
 
 function renderWithQueryClient(ui: React.ReactElement) {
@@ -125,14 +129,29 @@ describe('HistoryPanel', () => {
         id: 'cp-1',
         taskId: 'task-1',
         iteration: 2,
-        state: 'paused',
-        runControlState: 'pause',
-        promptPreview: 'checkpoint-preview',
-        hasArtifacts: true,
-        hasUserGuidance: false,
-        checksum: 'abc',
-        integrityOk: true,
+        state: 'completed',
+        passRateSummary: {
+          totalCases: 20,
+          passedCases: 15,
+          passRate: 0.75,
+        },
         createdAt: '2025-01-01T12:03:00Z',
+        archivedAt: null,
+        archiveReason: null,
+        branchId: 'branch',
+        parentId: null,
+      },
+      {
+        id: 'cp-2',
+        taskId: 'task-1',
+        iteration: 1,
+        state: 'completed',
+        passRateSummary: null,
+        createdAt: '2025-01-01T11:03:00Z',
+        archivedAt: '2025-01-01T12:10:00Z',
+        archiveReason: '回滚归档',
+        branchId: 'branch',
+        parentId: null,
       },
     ]
 
@@ -141,7 +160,8 @@ describe('HistoryPanel', () => {
     expect(await screen.findByText('共 1 轮迭代')).toBeInTheDocument()
     expect(screen.getByText('#2')).toBeInTheDocument()
     expect(screen.getByText('85.0%')).toBeInTheDocument()
-    expect(screen.getByText('checkpoint-preview')).toBeInTheDocument()
+    expect(screen.getByText('通过率 75% (15/20)')).toBeInTheDocument()
+    expect(screen.getByText('已归档：回滚归档')).toBeInTheDocument()
   })
 
   it('集成流程应支持从列表展开到查看评估与反思', async () => {

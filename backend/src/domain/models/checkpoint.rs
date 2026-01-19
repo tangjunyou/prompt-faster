@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
 
-use crate::domain::models::{IterationState, LineageType, RuleSystem};
+use crate::domain::models::{
+    CheckpointSummary, IterationState, LineageType, PassRateSummary, RuleSystem,
+};
 use crate::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 
 pub use crate::domain::models::algorithm::Checkpoint;
@@ -27,6 +29,9 @@ pub struct CheckpointEntity {
     pub branch_description: Option<String>,
     pub checksum: String,
     pub created_at: i64,
+    pub archived_at: Option<i64>,
+    pub archive_reason: Option<String>,
+    pub pass_rate_summary: Option<PassRateSummary>,
 }
 
 /// Checkpoint 全量结构（与数据库实体一致）
@@ -72,6 +77,8 @@ pub struct CheckpointResponse {
 #[serde(rename_all = "camelCase")]
 #[ts(export_to = "models/")]
 pub struct CheckpointListResponse {
-    pub checkpoints: Vec<CheckpointResponse>,
+    pub checkpoints: Vec<CheckpointSummary>,
     pub total: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_branch_id: Option<String>,
 }

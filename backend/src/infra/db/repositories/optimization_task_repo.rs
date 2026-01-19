@@ -860,6 +860,9 @@ mod tests {
             branch_description: req.branch_description,
             checksum,
             created_at: now_millis(),
+            archived_at: None,
+            archive_reason: None,
+            pass_rate_summary: None,
         }
     }
 }

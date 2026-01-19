@@ -2,6 +2,7 @@
 
 pub mod algorithm;
 pub mod checkpoint;
+pub mod history;
 pub mod iteration_stage;
 pub mod optimization_task;
 pub mod optimization_task_config;
@@ -21,6 +22,7 @@ pub use checkpoint::{
     Checkpoint, CheckpointCreateRequest, CheckpointEntity, CheckpointFull, CheckpointListResponse,
     CheckpointResponse,
 };
+pub use history::TaskHistoryResponse;
 pub use iteration_stage::{
     IterationStageDescriptor, all_stages as all_iteration_stages, stage_for_state,
 };
@@ -35,8 +37,9 @@ pub use optimization_task_config::{
     TeacherModelEvaluatorConfig,
 };
 pub use recovery::{
-    ConnectivityResponse, ConnectivityStatus, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
-    UnfinishedTask, UnfinishedTasksResponse,
+    CheckpointSummary, CheckpointWithSummary, ConnectivityResponse, ConnectivityStatus,
+    PassRateSummary, RecoveryMetrics, RecoveryRequest, RecoveryResponse, RollbackRequest,
+    RollbackResponse, UnfinishedTask, UnfinishedTasksResponse,
 };
 pub use reflection::{
     ArbitrationMethod, ArbitrationResult, CandidateSource, ConflictType, FailureType,

@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/useAuthStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import type { WorkspaceResponse } from '@/types/generated/api/WorkspaceResponse'
 import type { OptimizationTaskListItemResponse } from '@/types/generated/api/OptimizationTaskListItemResponse'
+import type { OptimizationTaskResponse } from '@/types/generated/api/OptimizationTaskResponse'
 import type { TestSetListItemResponse } from '@/types/generated/api/TestSetListItemResponse'
 import type { TestSetTemplateListItemResponse } from '@/types/generated/api/TestSetTemplateListItemResponse'
 
@@ -18,8 +19,52 @@ let workspaces: WorkspaceResponse[] = []
 let tasksByWorkspace: Record<string, OptimizationTaskListItemResponse[]> = {}
 let testSetsByWorkspace: Record<string, TestSetListItemResponse[]> = {}
 let deleteWorkspaceCalls = 0
+const defaultTaskConfig: OptimizationTaskResponse['config'] = {
+  schema_version: 1,
+  initial_prompt: null,
+  max_iterations: 10,
+  pass_threshold_percent: 95,
+  candidate_prompt_count: 5,
+  diversity_injection_threshold: 3,
+  execution_mode: 'serial',
+  max_concurrency: 4,
+  data_split: { train_percent: 80, validation_percent: 20, holdout_percent: 0 },
+  output_config: { strategy: 'single', conflict_alert_threshold: 3, auto_recommend: true },
+  evaluator_config: {
+    evaluator_type: 'auto',
+    exact_match: { case_sensitive: false },
+    semantic_similarity: { threshold_percent: 85 },
+    constraint_check: { strict: true },
+    teacher_model: { llm_judge_samples: 1 },
+  },
+  teacher_llm: { model_id: null },
+  advanced_data_split: { strategy: 'percent', k_fold_folds: 5, sampling_strategy: 'random' },
+}
 
 const server = setupServer(
+  http.get(`${API_BASE}/connectivity`, () => {
+    return HttpResponse.json({
+      data: {
+        status: 'online',
+        lastCheckedAt: new Date().toISOString(),
+        message: null,
+        availableFeatures: [],
+        restrictedFeatures: [],
+      },
+    })
+  }),
+
+  http.get(`${API_BASE}/recovery/unfinished-tasks`, ({ request }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 },
+      )
+    }
+    return HttpResponse.json({ data: { tasks: [], total: 0 } })
+  }),
+
   http.get(`${API_BASE}/auth/status`, () => {
     return HttpResponse.json({ data: { has_users: true, requires_registration: false } })
   }),
@@ -93,6 +138,40 @@ const server = setupServer(
     }
     const workspaceId = String(params.workspaceId)
     return HttpResponse.json({ data: tasksByWorkspace[workspaceId] ?? [] })
+  }),
+
+  http.get(`${API_BASE}/workspaces/:workspaceId/optimization-tasks/:taskId`, ({ request, params }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+
+    const workspaceId = String(params.workspaceId)
+    const taskId = String(params.taskId)
+    const listItem = (tasksByWorkspace[workspaceId] ?? []).find((task) => task.id === taskId)
+
+    const task: OptimizationTaskResponse = {
+      id: taskId,
+      workspace_id: workspaceId,
+      name: listItem?.name ?? (taskId === 'demo-task' ? 'Demo Task' : `任务 ${taskId}`),
+      description: null,
+      goal: listItem?.goal ?? 'g',
+      execution_target_type: listItem?.execution_target_type ?? 'dify',
+      task_mode: listItem?.task_mode ?? 'fixed',
+      status: listItem?.status ?? 'draft',
+      test_set_ids: [],
+      config: defaultTaskConfig,
+      final_prompt: null,
+      terminated_at: null,
+      selected_iteration_id: null,
+      created_at: listItem?.created_at ?? 1,
+      updated_at: listItem?.updated_at ?? 1,
+    }
+
+    return HttpResponse.json({ data: task })
   }),
 
   http.get(`${API_BASE}/workspaces/:workspaceId/test-sets`, ({ request, params }) => {

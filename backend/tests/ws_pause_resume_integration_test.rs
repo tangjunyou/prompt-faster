@@ -343,7 +343,8 @@ async fn ws_pause_resume_ack_and_events() {
     assert_eq!(resume_ack["payload"]["applied"], true);
     assert_eq!(resume_ack["payload"]["targetState"], "running");
 
-    let resumed_evt = read_message_of_type(&mut socket, "iteration:resumed").await;
+    let resumed_evt =
+        read_message_of_type_for_task(&mut socket, "iteration:resumed", task_id).await;
     assert_eq!(resumed_evt["payload"]["taskId"], task_id);
     assert_eq!(resumed_evt["correlationId"], "cid-2");
 }

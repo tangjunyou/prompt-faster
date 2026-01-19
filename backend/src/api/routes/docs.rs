@@ -47,6 +47,10 @@ use utoipa_swagger_ui::SwaggerUi;
             description = "优化任务配置 API（隶属于 workspace）"
         ),
         (
+            name = "history",
+            description = "历史聚合 API（迭代历史 + 回滚候选）"
+        ),
+        (
             name = "recovery",
             description = "断点恢复与连接状态 API"
         )
@@ -82,11 +86,15 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::optimization_tasks::list_optimization_tasks,
         crate::api::routes::optimization_tasks::get_optimization_task,
         crate::api::routes::optimization_tasks::update_optimization_task_config,
+        crate::api::routes::history::get_history,
+        crate::api::routes::checkpoints::list_checkpoints,
+        crate::api::routes::checkpoints::get_checkpoint,
         crate::api::routes::recovery::list_unfinished_tasks,
         crate::api::routes::recovery::recover_task,
         crate::api::routes::recovery::abort_recovery,
         crate::api::routes::recovery::get_recovery_metrics,
         crate::api::routes::recovery::get_connectivity,
+        crate::api::routes::recovery::rollback_task,
     ),
     components(
         schemas(
@@ -156,12 +164,22 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::DataSplitPercentConfig,
             crate::domain::models::OptimizationTaskMode,
             crate::domain::models::OptimizationTaskStatus,
+            // Checkpoints
+            crate::domain::models::CheckpointListResponse,
+            crate::domain::models::CheckpointResponse,
+            crate::domain::models::CheckpointSummary,
+            crate::domain::models::PassRateSummary,
+            // History
+            crate::domain::models::TaskHistoryResponse,
+            crate::domain::types::IterationHistorySummary,
             // Recovery
             crate::domain::models::UnfinishedTask,
             crate::domain::models::UnfinishedTasksResponse,
             crate::domain::models::RecoveryRequest,
             crate::domain::models::RecoveryResponse,
             crate::domain::models::RecoveryMetrics,
+            crate::domain::models::RollbackRequest,
+            crate::domain::models::RollbackResponse,
             crate::domain::models::ConnectivityResponse,
             crate::domain::models::ConnectivityStatus,
             crate::api::routes::recovery::AbortRecoveryResponse,

@@ -16,8 +16,8 @@ use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::core::iteration_engine::recovery as recovery_core;
 use crate::domain::models::{
-    ConnectivityResponse, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
-    UnfinishedTasksResponse,
+    ConnectivityResponse, RecoveryMetrics, RecoveryRequest, RecoveryResponse, RollbackRequest,
+    RollbackResponse, UnfinishedTasksResponse,
 };
 use crate::infra::db::repositories::OptimizationTaskRepo;
 use crate::infra::external::connectivity::check_connectivity;
@@ -191,6 +191,98 @@ pub(crate) async fn recover_task(
     }
 }
 
+/// 执行回滚操作
+#[utoipa::path(
+    post,
+    path = "/api/v1/tasks/{task_id}/rollback",
+    request_body = RollbackRequest,
+    responses(
+        (status = 200, description = "回滚成功", body = ApiSuccess<RollbackResponse>),
+        (status = 400, description = "请求非法"),
+        (status = 403, description = "无权访问"),
+        (status = 404, description = "Checkpoint 不存在"),
+        (status = 409, description = "无法回滚"),
+        (status = 500, description = "服务器错误")
+    ),
+    tag = "recovery"
+)]
+pub(crate) async fn rollback_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(task_id): Path<String>,
+    current_user: CurrentUser,
+    Json(body): Json<RollbackRequest>,
+) -> ApiResponse<RollbackResponse> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = current_user.user_id;
+
+    if !body.confirm {
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_ERROR,
+            "请确认回滚操作",
+        );
+    }
+    if body.checkpoint_id.trim().is_empty() {
+        return ApiResponse::err(
+            StatusCode::BAD_REQUEST,
+            error_codes::VALIDATION_ERROR,
+            "checkpoint_id 不能为空",
+        );
+    }
+
+    let result = recovery_core::rollback_to_checkpoint_with_pool(
+        &state.db,
+        &task_id,
+        &body.checkpoint_id,
+        &user_id,
+        &correlation_id,
+    )
+    .await;
+
+    match result {
+        Ok(response) => ApiResponse::ok(response),
+        Err(recovery_core::RecoveryError::TaskNotFound) => ApiResponse::err(
+            StatusCode::FORBIDDEN,
+            error_codes::FORBIDDEN,
+            "任务不存在或无权访问",
+        ),
+        Err(recovery_core::RecoveryError::CheckpointNotFound) => ApiResponse::err(
+            StatusCode::NOT_FOUND,
+            error_codes::RESOURCE_NOT_FOUND,
+            "Checkpoint 不存在",
+        ),
+        Err(recovery_core::RecoveryError::ChecksumMismatch) => ApiResponse::err(
+            StatusCode::CONFLICT,
+            error_codes::UPSTREAM_ERROR,
+            "该 Checkpoint 数据已损坏，无法回滚",
+        ),
+        Err(recovery_core::RecoveryError::CheckpointArchived) => ApiResponse::err(
+            StatusCode::CONFLICT,
+            error_codes::UPSTREAM_ERROR,
+            "该 Checkpoint 已归档，无法回滚",
+        ),
+        Err(recovery_core::RecoveryError::NoValidCheckpoint)
+        | Err(recovery_core::RecoveryError::Context(_)) => ApiResponse::err(
+            StatusCode::CONFLICT,
+            error_codes::UPSTREAM_ERROR,
+            "无法回滚，请选择其他有效 Checkpoint",
+        ),
+        Err(err) => {
+            warn!(
+                correlation_id = %correlation_id,
+                error = %err,
+                "回滚任务失败"
+            );
+            ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::INTERNAL_ERROR,
+                "回滚任务失败",
+            )
+        }
+    }
+}
+
 /// 放弃恢复
 #[utoipa::path(
     post,
@@ -309,6 +401,11 @@ pub fn router() -> Router<AppState> {
         .route("/tasks/{task_id}/recover", post(recover_task))
         .route("/tasks/{task_id}/abort", post(abort_recovery))
         .route("/tasks/{task_id}/metrics", get(get_recovery_metrics))
+}
+
+/// 创建任务级恢复路由（/api/v1/tasks/{task_id}/*）
+pub fn task_router() -> Router<AppState> {
+    Router::new().route("/rollback", post(rollback_task))
 }
 
 /// 创建 connectivity 路由（公开）

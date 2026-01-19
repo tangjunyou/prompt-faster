@@ -22,6 +22,8 @@ use crate::shared::error_codes;
 pub struct ListCheckpointsQuery {
     /// 最大返回条数（默认 20，最大 100）
     pub limit: Option<u32>,
+    /// 是否包含已归档的 Checkpoint（默认 false）
+    pub include_archived: Option<bool>,
 }
 
 fn extract_correlation_id(headers: &HeaderMap) -> String {
@@ -122,19 +124,55 @@ pub(crate) async fn list_checkpoints(
         );
     }
 
-    let limit = query.limit.unwrap_or(20).min(100);
-    match CheckpointRepo::list_checkpoints_by_task(&state.db, &task_id, limit).await {
-        Ok(checkpoints) => {
-            let total = CheckpointRepo::count_checkpoints_by_task(&state.db, &task_id)
-                .await
-                .unwrap_or(checkpoints.len() as u32);
-            let items: Vec<CheckpointResponse> =
-                checkpoints.iter().map(to_checkpoint_response).collect();
-            ApiResponse::ok(CheckpointListResponse {
-                total,
-                checkpoints: items,
-            })
+    let limit = query.limit.unwrap_or(20).min(100) as usize;
+    let include_archived = query.include_archived.unwrap_or(false);
+    let total = match CheckpointRepo::count_checkpoints_by_task_with_archived(
+        &state.db,
+        &task_id,
+        include_archived,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(err) => {
+            warn!(
+                correlation_id = %correlation_id,
+                error = %err,
+                "查询 checkpoint 总数失败"
+            );
+            return ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::DATABASE_ERROR,
+                "查询 checkpoint 失败",
+            );
         }
+    };
+
+    let current_branch_id =
+        match CheckpointRepo::get_latest_active_branch_id(&state.db, &task_id).await {
+            Ok(value) => value,
+            Err(err) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %err,
+                    "查询 checkpoint 分支失败"
+                );
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询 checkpoint 失败",
+                );
+            }
+        };
+
+    match CheckpointRepo::list_checkpoint_summaries(&state.db, &task_id, include_archived, limit, 0)
+        .await
+    {
+        Ok(checkpoints) => ApiResponse::ok(CheckpointListResponse {
+            total,
+            checkpoints,
+            current_branch_id,
+        }),
         Err(CheckpointRepoError::Database(e)) => {
             warn!(correlation_id = %correlation_id, error = %e, "查询 checkpoint 列表失败");
             ApiResponse::err(

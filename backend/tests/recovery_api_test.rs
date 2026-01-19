@@ -80,6 +80,9 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         session_store_for_middleware,
         auth_middleware,
     ));
+    let protected_task_recovery_routes = recovery::task_router().layer(
+        middleware::from_fn_with_state(state.session_store.clone(), auth_middleware),
+    );
 
     let router = Router::<AppState>::new()
         .nest("/api/v1/auth", auth::public_router())
@@ -87,6 +90,7 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/recovery", protected_recovery_routes)
+        .nest("/api/v1/tasks/{task_id}", protected_task_recovery_routes)
         .nest("/api/v1", recovery::connectivity_router())
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware));
@@ -200,6 +204,9 @@ fn build_checkpoint_with(
         branch_description: req.branch_description,
         checksum,
         created_at,
+        archived_at: None,
+        archive_reason: None,
+        pass_rate_summary: None,
     }
 }
 
@@ -213,6 +220,41 @@ fn sample_case() -> TestCase {
         split: None,
         metadata: None,
     }
+}
+
+async fn create_task_with_test_set(db: &sqlx::SqlitePool, user_id: &str) -> String {
+    let workspace = WorkspaceRepo::create(db, user_id, "ws", None)
+        .await
+        .expect("创建工作区失败");
+    let test_set = TestSetRepo::create(db, &workspace.id, "ts", None, &[sample_case()], None, None)
+        .await
+        .expect("创建测试集失败");
+
+    let created = OptimizationTaskRepo::create_scoped(
+        db,
+        prompt_faster::infra::db::repositories::CreateOptimizationTaskInput {
+            user_id,
+            workspace_id: &workspace.id,
+            name: "task",
+            description: None,
+            goal: "goal",
+            execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
+            task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
+            test_set_ids: std::slice::from_ref(&test_set.id),
+        },
+    )
+    .await
+    .expect("创建任务失败");
+
+    OptimizationTaskRepo::update_status(
+        db,
+        &created.task.id,
+        prompt_faster::domain::models::OptimizationTaskStatus::Running,
+    )
+    .await
+    .expect("更新状态失败");
+
+    created.task.id
 }
 
 #[tokio::test]
@@ -573,6 +615,9 @@ async fn recovery_supports_legacy_checkpoint_payload() {
         branch_description: legacy_req.branch_description,
         checksum,
         created_at: now_millis(),
+        archived_at: None,
+        archive_reason: None,
+        pass_rate_summary: None,
     };
     CheckpointRepo::create_checkpoint(&db, legacy_checkpoint)
         .await
@@ -646,4 +691,193 @@ async fn recovery_works_after_offline_checkpoint_save() {
     );
     let recover_resp = app.clone().oneshot(recover_req).await.unwrap();
     assert_eq!(recover_resp.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn rollback_forbidden_for_non_owner() {
+    let (app, db) = setup_test_app_with_db().await;
+    let (token_owner, owner_id) = register_user(&app, "rollback_owner", "pass123").await;
+    let (token_other, _other_id) = register_user(&app, "rollback_other", "pass123").await;
+
+    let task_id = create_task_with_test_set(&db, &owner_id).await;
+    let checkpoint = build_checkpoint(&task_id, 1);
+    let checkpoint_id = checkpoint.id.clone();
+    CheckpointRepo::create_checkpoint(&db, checkpoint)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/tasks/{}/rollback", task_id),
+            json!({
+                "checkpointId": checkpoint_id,
+                "confirm": true
+            }),
+        ),
+        &token_other,
+    );
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let confirm_owner_req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/tasks/{}/rollback", task_id),
+            json!({
+                "checkpointId": checkpoint_id,
+                "confirm": false
+            }),
+        ),
+        &token_owner,
+    );
+    let confirm_owner_resp = app.clone().oneshot(confirm_owner_req).await.unwrap();
+    assert_eq!(confirm_owner_resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn rollback_rejects_checksum_mismatch() {
+    let (app, db) = setup_test_app_with_db().await;
+    let (token, user_id) = register_user(&app, "rollback_bad_checksum", "pass123").await;
+    let task_id = create_task_with_test_set(&db, &user_id).await;
+
+    let bad_checkpoint =
+        build_checkpoint_with(&task_id, 1, Some("bad_checksum".to_string()), now_millis());
+    let checkpoint_id = bad_checkpoint.id.clone();
+    CheckpointRepo::create_checkpoint(&db, bad_checkpoint)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/tasks/{}/rollback", task_id),
+            json!({
+                "checkpointId": checkpoint_id,
+                "confirm": true
+            }),
+        ),
+        &token,
+    );
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = read_json_body(resp).await;
+    assert_eq!(
+        body["error"]["message"].as_str(),
+        Some("该 Checkpoint 数据已损坏，无法回滚")
+    );
+}
+
+#[tokio::test]
+async fn rollback_archives_following_checkpoints_and_updates_branch() {
+    let (app, db) = setup_test_app_with_db().await;
+    let (token, user_id) = register_user(&app, "rollback_success", "pass123").await;
+    let task_id = create_task_with_test_set(&db, &user_id).await;
+
+    let base_time = now_millis();
+    let target = build_checkpoint_with(&task_id, 1, None, base_time - 1000);
+    let target_id = target.id.clone();
+    let later = build_checkpoint_with(&task_id, 2, None, base_time + 1000);
+    let later_id = later.id.clone();
+
+    CheckpointRepo::create_checkpoint(&db, target)
+        .await
+        .expect("创建 checkpoint 失败");
+    CheckpointRepo::create_checkpoint(&db, later)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/tasks/{}/rollback", task_id),
+            json!({
+                "checkpointId": target_id,
+                "confirm": true
+            }),
+        ),
+        &token,
+    );
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(
+        body["data"]["checkpointId"].as_str(),
+        Some(target_id.as_str())
+    );
+    assert_eq!(body["data"]["archivedCount"].as_u64(), Some(1));
+
+    let new_branch_id = body["data"]["newBranchId"]
+        .as_str()
+        .expect("缺少 newBranchId")
+        .to_string();
+    assert!(!new_branch_id.is_empty());
+
+    let updated_target = CheckpointRepo::get_checkpoint_by_id(&db, &target_id)
+        .await
+        .expect("查询 checkpoint 失败")
+        .expect("checkpoint 不存在");
+    assert_eq!(updated_target.branch_id, new_branch_id);
+
+    let archived_checkpoint = CheckpointRepo::get_checkpoint_by_id(&db, &later_id)
+        .await
+        .expect("查询 checkpoint 失败")
+        .expect("checkpoint 不存在");
+    assert!(archived_checkpoint.archived_at.is_some());
+    let expected_reason = format!("rollback_to_checkpoint_{}", target_id);
+    assert_eq!(
+        archived_checkpoint.archive_reason.as_deref(),
+        Some(expected_reason.as_str())
+    );
+}
+
+#[tokio::test]
+async fn rollback_rejects_archived_checkpoint() {
+    let (app, db) = setup_test_app_with_db().await;
+    let (token, user_id) = register_user(&app, "rollback_archived", "pass123").await;
+    let task_id = create_task_with_test_set(&db, &user_id).await;
+
+    let base_time = now_millis();
+    let target = build_checkpoint_with(&task_id, 1, None, base_time - 2000);
+    let target_id = target.id.clone();
+    let archived_target = build_checkpoint_with(&task_id, 2, None, base_time - 1000);
+    let archived_id = archived_target.id.clone();
+    let later = build_checkpoint_with(&task_id, 3, None, base_time + 1000);
+
+    CheckpointRepo::create_checkpoint(&db, target)
+        .await
+        .expect("创建 checkpoint 失败");
+    CheckpointRepo::create_checkpoint(&db, archived_target)
+        .await
+        .expect("创建 checkpoint 失败");
+    CheckpointRepo::create_checkpoint(&db, later)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    CheckpointRepo::archive_checkpoints_after(&db, &task_id, &target_id, "rolled_back")
+        .await
+        .expect("归档 checkpoint 失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            &format!("/api/v1/tasks/{}/rollback", task_id),
+            json!({
+                "checkpointId": archived_id,
+                "confirm": true
+            }),
+        ),
+        &token,
+    );
+
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let body = read_json_body(resp).await;
+    assert_eq!(
+        body["error"]["message"].as_str(),
+        Some("该 Checkpoint 已归档，无法回滚")
+    );
 }

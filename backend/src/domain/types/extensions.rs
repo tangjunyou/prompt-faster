@@ -45,6 +45,9 @@ pub const EXTRA_ADOPT_BEST_CANDIDATE: &str = "adopt_best_candidate";
 /// 迭代状态切换前的状态快照（用于日志/审计）。
 pub const EXT_PREV_ITERATION_STATE: &str = "iteration.prev_state";
 
+/// 当前 Checkpoint 分支 ID（用于回滚后继续迭代）。
+pub const EXT_BRANCH_ID: &str = "checkpoint.branch_id";
+
 /// 用户引导信息（由编排层在 resume 时注入，Layer 1-4 消费）。
 ///
 /// 形状：`domain::types::UserGuidance`
@@ -87,6 +90,7 @@ mod tests {
             EXTRA_ADOPT_BEST_CANDIDATE,
             EXT_PREV_ITERATION_STATE,
             EXT_USER_GUIDANCE,
+            EXT_BRANCH_ID,
         ];
         let unique: std::collections::HashSet<_> = keys.iter().collect();
         assert_eq!(keys.len(), unique.len(), "Extension keys must be unique");
