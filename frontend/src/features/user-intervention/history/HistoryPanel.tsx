@@ -130,7 +130,10 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
     offset: 0,
     enabled: viewMode === 'timeline',
   })
-  const iterations = historyData?.iterations ?? []
+  const iterations = useMemo(
+    () => historyData?.iterations ?? [],
+    [historyData?.iterations]
+  )
   const checkpointData = historyData?.checkpoints
 
   useEffect(() => {
