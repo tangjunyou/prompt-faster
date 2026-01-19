@@ -120,10 +120,9 @@ impl HistoryEventRepo {
         qb.push_bind(offset as i64);
 
         let rows: Vec<HistoryEventRow> = qb.build_query_as().fetch_all(pool).await?;
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(row_to_event)
-            .collect::<Result<Vec<_>, _>>()?)
+            .collect::<Result<Vec<_>, _>>()
     }
 
     pub async fn count_events(
@@ -347,10 +346,9 @@ fn apply_timeline_filters(
 }
 
 fn row_to_event(row: HistoryEventRow) -> Result<HistoryEvent, HistoryEventRepoError> {
-    let event_type = EventType::from_str(&row.event_type)
-        .map_err(|err| HistoryEventRepoError::InvalidData(err))?;
-    let actor =
-        Actor::from_str(&row.actor).map_err(|err| HistoryEventRepoError::InvalidData(err))?;
+    let event_type =
+        EventType::from_str(&row.event_type).map_err(HistoryEventRepoError::InvalidData)?;
+    let actor = Actor::from_str(&row.actor).map_err(HistoryEventRepoError::InvalidData)?;
     let details = parse_optional_json(row.details.as_deref())?;
 
     Ok(HistoryEvent {
