@@ -38,14 +38,15 @@ use prompt_faster::api::ws::events::{
     TaskControlPayload, TaskTerminatedPayload,
 };
 use prompt_faster::domain::models::{
-    Checkpoint, CheckpointListResponse, CheckpointResponse, ConflictResolutionRecord,
-    ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit, DimensionScore,
-    EvaluationResult, ExecutionResult, ExecutionTargetType, FailurePoint, Iteration,
-    IterationState, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
-    OptimizationTaskStatus, OutputLength, QualityDimension, RecoveryMetrics, RecoveryRequest,
-    RecoveryResponse, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
-    RuleTags, Severity, TaskReference, TestCase, TestSet, TokenUsage, UnfinishedTask,
-    UnfinishedTasksResponse, User, Workspace,
+    Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
+    ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit,
+    DimensionScore, EvaluationResult, ExecutionResult, ExecutionTargetType, FailurePoint,
+    Iteration, IterationState, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
+    OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension, RecoveryMetrics,
+    RecoveryRequest, RecoveryResponse, RollbackRequest, RollbackResponse, Rule, RuleConflict,
+    RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskHistoryResponse,
+    TaskReference, TestCase, TestSet, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User,
+    Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
@@ -146,10 +147,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Checkpoint::export_all_to(&out_dir)?;
     CheckpointResponse::export_all_to(&out_dir)?;
     CheckpointListResponse::export_all_to(&out_dir)?;
+    CheckpointSummary::export_all_to(&out_dir)?;
+    PassRateSummary::export_all_to(&out_dir)?;
+    TaskHistoryResponse::export_all_to(&out_dir)?;
     UnfinishedTask::export_all_to(&out_dir)?;
     UnfinishedTasksResponse::export_all_to(&out_dir)?;
     RecoveryRequest::export_all_to(&out_dir)?;
     RecoveryResponse::export_all_to(&out_dir)?;
+    RollbackRequest::export_all_to(&out_dir)?;
+    RollbackResponse::export_all_to(&out_dir)?;
     RecoveryMetrics::export_all_to(&out_dir)?;
     ConnectivityStatus::export_all_to(&out_dir)?;
     ConnectivityResponse::export_all_to(&out_dir)?;

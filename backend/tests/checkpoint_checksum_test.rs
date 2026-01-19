@@ -54,6 +54,9 @@ fn checksum_computes_and_verifies() {
         branch_description: req.branch_description.clone(),
         checksum: checksum.clone(),
         created_at: 0,
+        archived_at: None,
+        archive_reason: None,
+        pass_rate_summary: None,
     };
 
     assert!(verify_checksum(&entity));

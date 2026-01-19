@@ -16,8 +16,8 @@ use prompt_faster::api::middleware::{
     LoginAttemptStore, SessionStore, auth_middleware, connectivity_middleware,
 };
 use prompt_faster::api::routes::{
-    auth, checkpoints, docs, health, iteration_control, iterations, meta, recovery, user_auth,
-    workspaces,
+    auth, checkpoints, docs, health, history, iteration_control, iterations, meta, recovery,
+    user_auth, workspaces,
 };
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
@@ -156,10 +156,17 @@ async fn main() -> anyhow::Result<()> {
         session_store_for_middleware.clone(),
         auth_middleware,
     ));
+    let protected_history_routes = history::router().layer(middleware::from_fn_with_state(
+        session_store_for_middleware.clone(),
+        auth_middleware,
+    ));
 
-    let protected_iteration_control_routes = iteration_control::router().layer(
-        middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
-    );
+    let protected_task_routes = iteration_control::router()
+        .merge(recovery::task_router())
+        .layer(middleware::from_fn_with_state(
+            session_store_for_middleware.clone(),
+            auth_middleware,
+        ));
     let protected_checkpoints_routes = checkpoints::router().layer(middleware::from_fn_with_state(
         session_store_for_middleware.clone(),
         auth_middleware,
@@ -184,10 +191,8 @@ async fn main() -> anyhow::Result<()> {
             "/api/v1/tasks/{task_id}/iterations",
             protected_iterations_routes,
         )
-        .nest(
-            "/api/v1/tasks/{task_id}",
-            protected_iteration_control_routes,
-        )
+        .nest("/api/v1/tasks/{task_id}/history", protected_history_routes)
+        .nest("/api/v1/tasks/{task_id}", protected_task_routes)
         .nest("/api/v1/checkpoints", protected_checkpoints_routes)
         .nest(
             "/api/v1/tasks/{task_id}/checkpoints",

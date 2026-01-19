@@ -9,12 +9,11 @@ use tower::ServiceExt;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
-use prompt_faster::api::routes::{auth, checkpoints, health, user_auth, workspaces};
+use prompt_faster::api::routes::{auth, history, user_auth, workspaces};
 use prompt_faster::api::state::AppState;
 use prompt_faster::core::iteration_engine::checkpoint::compute_checksum;
 use prompt_faster::domain::models::{
-    CheckpointCreateRequest, CheckpointEntity, IterationState, LineageType, PassRateSummary,
-    RuleSystem,
+    CheckpointCreateRequest, CheckpointEntity, IterationState, LineageType, RuleSystem,
 };
 use prompt_faster::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 use prompt_faster::infra::db::pool::create_pool;
@@ -48,9 +47,7 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         allow_http_base_url: true,
         allow_localhost_base_url: true,
         allow_private_network_base_url: true,
-
         checkpoint_cache_limit: 10,
-
         checkpoint_memory_alert_threshold: 10,
     });
     let api_key_manager = Arc::new(ApiKeyManager::new(Some(TEST_MASTER_PASSWORD.to_string())));
@@ -73,37 +70,25 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         session_store_for_middleware.clone(),
         auth_middleware,
     ));
-
     let protected_user_auth_routes = user_auth::protected_router().layer(
         middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
     );
-
     let protected_workspaces_routes = workspaces::router().layer(middleware::from_fn_with_state(
         session_store_for_middleware.clone(),
         auth_middleware,
     ));
-
-    let protected_checkpoints_routes = checkpoints::router().layer(middleware::from_fn_with_state(
-        session_store_for_middleware.clone(),
+    let protected_history_routes = history::router().layer(middleware::from_fn_with_state(
+        session_store_for_middleware,
         auth_middleware,
     ));
 
-    let protected_task_checkpoints_routes = checkpoints::task_router().layer(
-        middleware::from_fn_with_state(session_store_for_middleware, auth_middleware),
-    );
-
     let router = Router::<AppState>::new()
-        .nest("/api/v1", health::router::<AppState>())
         .nest("/api/v1/auth", auth::public_router())
         .nest("/api/v1/auth", protected_routes)
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/workspaces", protected_workspaces_routes)
-        .nest("/api/v1/checkpoints", protected_checkpoints_routes)
-        .nest(
-            "/api/v1/tasks/{task_id}/checkpoints",
-            protected_task_checkpoints_routes,
-        )
+        .nest("/api/v1/tasks/{task_id}/history", protected_history_routes)
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware));
 
@@ -202,7 +187,7 @@ async fn create_test_set_with_cases(
         build_json_request(
             "POST",
             &format!("/api/v1/workspaces/{}/test-sets", workspace_id),
-            json!({ "name": name, "description": null, "cases": cases }),
+            json!({"name": name, "description": null, "cases": cases}),
         ),
         token,
     );
@@ -259,16 +244,6 @@ async fn insert_checkpoint(
     checkpoint_id: &str,
     iteration: u32,
 ) -> String {
-    insert_checkpoint_with_summary(db, task_id, checkpoint_id, iteration, None).await
-}
-
-async fn insert_checkpoint_with_summary(
-    db: &sqlx::SqlitePool,
-    task_id: &str,
-    checkpoint_id: &str,
-    iteration: u32,
-    pass_rate_summary: Option<PassRateSummary>,
-) -> String {
     let checkpoint = CheckpointEntity {
         id: checkpoint_id.to_string(),
         task_id: task_id.to_string(),
@@ -287,7 +262,7 @@ async fn insert_checkpoint_with_summary(
         created_at: now_millis() + iteration as i64,
         archived_at: None,
         archive_reason: None,
-        pass_rate_summary,
+        pass_rate_summary: None,
     };
 
     let checksum = compute_checksum(&CheckpointCreateRequest {
@@ -316,229 +291,102 @@ async fn insert_checkpoint_with_summary(
     saved.id
 }
 
-#[tokio::test]
-async fn test_list_forbidden_for_other_user() {
-    let (app, db) = setup_test_app_with_db().await;
-    let token_a = register_user(&app, "ck_list_a", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token_a).await;
-    let test_set_id = create_test_set_with_cases(
-        &app,
-        &workspace_id,
-        &token_a,
-        "ts",
-        sample_exact_cases_json(),
+async fn insert_iteration(db: &sqlx::SqlitePool, task_id: &str, round: i32) -> String {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_millis();
+    sqlx::query(
+        r#"
+        INSERT INTO iterations (
+            id, task_id, round, started_at, completed_at, status,
+            artifacts, evaluation_results, reflection_summary,
+            pass_rate, total_cases, passed_cases, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
     )
-    .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token_a, test_set_id).await;
-    let _ = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
-
-    let token_b = register_user(&app, "ck_list_b", "TestPass123!").await;
-
-    let req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/tasks/{}/checkpoints", task_id)),
-        &token_b,
-    );
-
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    .bind(&id)
+    .bind(task_id)
+    .bind(round)
+    .bind(now - 1000)
+    .bind(Some(now))
+    .bind("completed")
+    .bind(None::<String>)
+    .bind(None::<String>)
+    .bind(None::<String>)
+    .bind(0.8_f64)
+    .bind(10_i32)
+    .bind(8_i32)
+    .bind(now)
+    .execute(db)
+    .await
+    .expect("插入 iteration 失败");
+    id
 }
 
 #[tokio::test]
-async fn test_detail_forbidden_for_other_user() {
+async fn test_history_combines_iterations_and_checkpoints() {
     let (app, db) = setup_test_app_with_db().await;
-    let token_a = register_user(&app, "ck_detail_a", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token_a).await;
-    let test_set_id = create_test_set_with_cases(
-        &app,
-        &workspace_id,
-        &token_a,
-        "ts",
-        sample_exact_cases_json(),
-    )
-    .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token_a, test_set_id).await;
+    let token = register_user(&app, "history_user", "TestPass123!").await;
+    let workspace_id = create_workspace(&app, &token).await;
+    let test_set_id =
+        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
+            .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
+
+    let _iteration_id = insert_iteration(&db, &task_id, 1).await;
     let checkpoint_id = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
-
-    let token_b = register_user(&app, "ck_detail_b", "TestPass123!").await;
-
-    let req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/checkpoints/{}", checkpoint_id)),
-        &token_b,
-    );
-
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn test_list_checkpoints_success() {
-    let (app, db) = setup_test_app_with_db().await;
-    let token = register_user(&app, "ck_list_ok", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id =
-        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
-            .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
-    let _ = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
-
-    let req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/tasks/{}/checkpoints", task_id)),
-        &token,
-    );
-
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = read_json_body(resp).await;
-    assert_eq!(body["data"]["total"].as_u64().unwrap_or(0), 1);
-    let items = body["data"]["checkpoints"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["iteration"].as_u64(), Some(1));
-    assert!(items[0]["archivedAt"].is_null());
-    assert!(items[0]["passRateSummary"].is_null());
-    assert_eq!(body["data"]["currentBranchId"].as_str(), Some("branch"));
-}
-
-#[tokio::test]
-async fn test_get_checkpoint_success() {
-    let (app, db) = setup_test_app_with_db().await;
-    let token = register_user(&app, "ck_detail_ok", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id =
-        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
-            .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
-    let checkpoint_id = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
-
-    let req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/checkpoints/{}", checkpoint_id)),
-        &token,
-    );
-
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = read_json_body(resp).await;
-    assert_eq!(body["data"]["id"].as_str(), Some("checkpoint-1"));
-    assert_eq!(body["data"]["integrityOk"].as_bool(), Some(true));
-}
-
-#[tokio::test]
-async fn test_list_checkpoints_respects_limit() {
-    let (app, db) = setup_test_app_with_db().await;
-    let token = register_user(&app, "ck_list_limit", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id =
-        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
-            .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
-    let _ = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
     let _ = insert_checkpoint(&db, &task_id, "checkpoint-2", 2).await;
-    let _ = insert_checkpoint(&db, &task_id, "checkpoint-3", 3).await;
+    CheckpointRepo::archive_checkpoints_after(&db, &task_id, &checkpoint_id, "rolled_back")
+        .await
+        .expect("归档 checkpoint 失败");
 
     let req = with_bearer(
         build_empty_request(
             "GET",
-            &format!("/api/v1/tasks/{}/checkpoints?limit=1", task_id),
+            &format!("/api/v1/tasks/{}/history?include_archived=true", task_id),
         ),
         &token,
     );
-
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = read_json_body(resp).await;
-    assert_eq!(body["data"]["total"].as_u64().unwrap_or(0), 3);
-    let items = body["data"]["checkpoints"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert_eq!(items[0]["iteration"].as_u64(), Some(3));
-    assert_eq!(body["data"]["currentBranchId"].as_str(), Some("branch"));
-}
+    let iterations = body["data"]["iterations"].as_array().unwrap();
+    assert_eq!(iterations.len(), 1);
+    assert_eq!(iterations[0]["round"].as_i64(), Some(1));
 
-#[tokio::test]
-async fn test_list_checkpoints_excludes_archived_by_default() {
-    let (app, db) = setup_test_app_with_db().await;
-    let token = register_user(&app, "ck_list_archived_default", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id =
-        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
-            .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
-    let checkpoint_id = insert_checkpoint(&db, &task_id, "checkpoint-1", 1).await;
-    let _ = insert_checkpoint(&db, &task_id, "checkpoint-2", 2).await;
-
-    let archived =
-        CheckpointRepo::archive_checkpoints_after(&db, &task_id, &checkpoint_id, "rolled_back")
-            .await
-            .expect("归档 checkpoint 失败");
-    assert_eq!(archived, 1);
-
-    let req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/tasks/{}/checkpoints", task_id)),
-        &token,
-    );
-
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = read_json_body(resp).await;
-    assert_eq!(body["data"]["total"].as_u64().unwrap_or(0), 1);
-    let items = body["data"]["checkpoints"].as_array().unwrap();
-    assert_eq!(items.len(), 1);
-    assert!(items[0]["archivedAt"].is_null());
-}
-
-#[tokio::test]
-async fn test_list_checkpoints_include_archived() {
-    let (app, db) = setup_test_app_with_db().await;
-    let token = register_user(&app, "ck_list_archived_all", "TestPass123!").await;
-    let workspace_id = create_workspace(&app, &token).await;
-    let test_set_id =
-        create_test_set_with_cases(&app, &workspace_id, &token, "ts", sample_exact_cases_json())
-            .await;
-    let task_id = create_optimization_task(&app, &workspace_id, &token, test_set_id).await;
-    let summary = PassRateSummary {
-        total_cases: 10,
-        passed_cases: 7,
-        pass_rate: 0.7,
-    };
-    let checkpoint_id =
-        insert_checkpoint_with_summary(&db, &task_id, "checkpoint-1", 1, Some(summary.clone()))
-            .await;
-    let _ = insert_checkpoint(&db, &task_id, "checkpoint-2", 2).await;
-
-    let archived =
-        CheckpointRepo::archive_checkpoints_after(&db, &task_id, &checkpoint_id, "rolled_back")
-            .await
-            .expect("归档 checkpoint 失败");
-    assert_eq!(archived, 1);
-
-    let req = with_bearer(
-        build_empty_request(
-            "GET",
-            &format!(
-                "/api/v1/tasks/{}/checkpoints?include_archived=true",
-                task_id
-            ),
-        ),
-        &token,
-    );
-
-    let resp = app.clone().oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = read_json_body(resp).await;
-    assert_eq!(body["data"]["total"].as_u64().unwrap_or(0), 2);
-    let items = body["data"]["checkpoints"].as_array().unwrap();
+    let checkpoints = &body["data"]["checkpoints"];
+    assert_eq!(checkpoints["total"].as_u64(), Some(2));
+    let items = checkpoints["checkpoints"].as_array().unwrap();
     assert_eq!(items.len(), 2);
-
-    let active = items
-        .iter()
-        .find(|item| item["id"].as_str() == Some(checkpoint_id.as_str()))
-        .expect("缺少未归档 checkpoint");
-    let summary_value = &active["passRateSummary"];
-    assert_eq!(summary_value["totalCases"].as_u64(), Some(10));
-    assert_eq!(summary_value["passedCases"].as_u64(), Some(7));
-    assert_eq!(summary_value["passRate"].as_f64(), Some(0.7));
-
-    let archived_item = items
+    assert_eq!(checkpoints["currentBranchId"].as_str(), Some("branch"));
+    let archived = items
         .iter()
         .find(|item| item["archivedAt"].is_string())
         .expect("缺少归档 checkpoint");
-    assert_eq!(archived_item["archiveReason"].as_str(), Some("rolled_back"));
+    assert_eq!(archived["archiveReason"].as_str(), Some("rolled_back"));
+}
+
+#[tokio::test]
+async fn test_history_forbidden_for_other_user() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token_owner = register_user(&app, "history_owner", "TestPass123!").await;
+    let token_other = register_user(&app, "history_other", "TestPass123!").await;
+
+    let workspace_id = create_workspace(&app, &token_owner).await;
+    let test_set_id = create_test_set_with_cases(
+        &app,
+        &workspace_id,
+        &token_owner,
+        "ts",
+        sample_exact_cases_json(),
+    )
+    .await;
+    let task_id = create_optimization_task(&app, &workspace_id, &token_owner, test_set_id).await;
+    let _ = insert_iteration(&db, &task_id, 1).await;
+
+    let req = with_bearer(
+        build_empty_request("GET", &format!("/api/v1/tasks/{}/history", task_id)),
+        &token_other,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }

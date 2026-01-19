@@ -30,12 +30,18 @@ use crate::shared::time::now_millis;
 pub enum RecoveryError {
     #[error("数据库未初始化")]
     DatabaseNotInitialized,
+    #[error("数据库错误: {0}")]
+    Database(#[from] sqlx::Error),
     #[error("任务不存在或无权访问")]
     TaskNotFound,
     #[error("Checkpoint 未找到")]
     CheckpointNotFound,
     #[error("没有可用的 Checkpoint")]
     NoValidCheckpoint,
+    #[error("Checkpoint checksum 校验失败")]
+    ChecksumMismatch,
+    #[error("Checkpoint 已归档")]
+    CheckpointArchived,
     #[error("暂停快照不存在")]
     PauseStateNotFound,
     #[error("仓库错误: {0}")]
@@ -98,6 +104,17 @@ pub async fn recover_task(
 ) -> Result<(OptimizationContext, CheckpointEntity), RecoveryError> {
     let pool = global_db_pool().ok_or(RecoveryError::DatabaseNotInitialized)?;
     recover_task_with_pool(&pool, task_id, user_id, correlation_id, checkpoint_id).await
+}
+
+/// 回滚到指定 Checkpoint
+pub async fn rollback_to_checkpoint(
+    task_id: &str,
+    checkpoint_id: &str,
+    user_id: &str,
+    correlation_id: &str,
+) -> Result<crate::domain::models::RollbackResponse, RecoveryError> {
+    let pool = global_db_pool().ok_or(RecoveryError::DatabaseNotInitialized)?;
+    rollback_to_checkpoint_with_pool(&pool, task_id, checkpoint_id, user_id, correlation_id).await
 }
 
 /// 放弃恢复，标记任务为中止
@@ -290,6 +307,162 @@ pub(crate) async fn abort_task_with_pool(
     Ok(())
 }
 
+pub(crate) async fn rollback_to_checkpoint_with_pool(
+    pool: &sqlx::SqlitePool,
+    task_id: &str,
+    checkpoint_id: &str,
+    user_id: &str,
+    correlation_id: &str,
+) -> Result<crate::domain::models::RollbackResponse, RecoveryError> {
+    let _task = OptimizationTaskRepo::find_by_id_for_user(pool, user_id, task_id)
+        .await
+        .map_err(|err| match err {
+            OptimizationTaskRepoError::NotFound => RecoveryError::TaskNotFound,
+            other => RecoveryError::Repo(other),
+        })?;
+
+    let checkpoint = CheckpointRepo::get_checkpoint_by_id(pool, checkpoint_id)
+        .await?
+        .ok_or(RecoveryError::CheckpointNotFound)?;
+
+    if checkpoint.task_id != task_id {
+        return Err(RecoveryError::CheckpointNotFound);
+    }
+
+    if checkpoint.archived_at.is_some() {
+        return Err(RecoveryError::CheckpointArchived);
+    }
+
+    if !verify_checksum(&checkpoint) {
+        warn!(
+            correlation_id = %correlation_id,
+            user_id = %user_id,
+            task_id = %task_id,
+            checkpoint_id = %checkpoint_id,
+            action = "checkpoint_rollback_checksum_failed",
+            prev_state = ?checkpoint.state,
+            new_state = ?checkpoint.state,
+            iteration_state = ?checkpoint.state,
+            timestamp = now_millis(),
+            "Checkpoint checksum 校验失败，拒绝回滚"
+        );
+        return Err(RecoveryError::ChecksumMismatch);
+    }
+
+    let target_branch_id = checkpoint.branch_id.clone();
+    let archive_reason = format!("rollback_to_checkpoint_{}", checkpoint_id);
+    let rollback_already_applied =
+        CheckpointRepo::count_archived_by_reason(pool, task_id, &archive_reason).await? > 0;
+    let new_branch_id = if rollback_already_applied {
+        checkpoint.branch_id.clone()
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    };
+    let prev_state = CheckpointRepo::list_checkpoints_by_task(pool, task_id, 1)
+        .await?
+        .first()
+        .map(|c| c.state)
+        .unwrap_or(checkpoint.state);
+
+    let updated_checkpoint = if rollback_already_applied {
+        checkpoint.clone()
+    } else {
+        let updated_req = CheckpointCreateRequest {
+            task_id: checkpoint.task_id.clone(),
+            iteration: checkpoint.iteration,
+            state: checkpoint.state,
+            run_control_state: checkpoint.run_control_state,
+            prompt: checkpoint.prompt.clone(),
+            rule_system: checkpoint.rule_system.clone(),
+            artifacts: checkpoint.artifacts.clone(),
+            user_guidance: checkpoint.user_guidance.clone(),
+            branch_id: new_branch_id.clone(),
+            parent_id: None,
+            lineage_type: checkpoint.lineage_type.clone(),
+            branch_description: checkpoint.branch_description.clone(),
+        };
+        let new_checksum = compute_checksum(&updated_req);
+        CheckpointEntity {
+            branch_id: new_branch_id.clone(),
+            checksum: new_checksum,
+            ..checkpoint.clone()
+        }
+    };
+
+    let mut checkpoints_for_context =
+        CheckpointRepo::list_checkpoints_by_task(pool, task_id, 20).await?;
+    checkpoints_for_context.retain(|item| {
+        if item.id == checkpoint.id {
+            return true;
+        }
+        if item.branch_id != target_branch_id {
+            return true;
+        }
+        !(item.created_at > checkpoint.created_at
+            || (item.created_at == checkpoint.created_at && item.iteration > checkpoint.iteration))
+    });
+    let mut has_target = false;
+    for item in &mut checkpoints_for_context {
+        if item.id == checkpoint.id {
+            *item = updated_checkpoint.clone();
+            has_target = true;
+            break;
+        }
+    }
+    if !has_target {
+        checkpoints_for_context.insert(0, updated_checkpoint.clone());
+    }
+
+    let ctx = rebuild_optimization_context(
+        pool,
+        user_id,
+        &updated_checkpoint,
+        Some(checkpoints_for_context),
+    )
+    .await?;
+
+    let mut tx = pool.begin().await?;
+    let archived_count = CheckpointRepo::archive_checkpoints_after_tx(
+        &mut tx,
+        task_id,
+        checkpoint_id,
+        &archive_reason,
+    )
+    .await?;
+    if !rollback_already_applied {
+        CheckpointRepo::update_branch_info_tx(&mut tx, checkpoint_id, &new_branch_id, None).await?;
+        CheckpointRepo::update_checksum_tx(&mut tx, checkpoint_id, &updated_checkpoint.checksum)
+            .await?;
+    }
+    tx.commit().await?;
+
+    info!(
+        correlation_id = %correlation_id,
+        user_id = %user_id,
+        task_id = %task_id,
+        checkpoint_id = %checkpoint_id,
+        new_branch_id = %new_branch_id,
+        archived_count = archived_count,
+        action = "checkpoint_rollback",
+        prev_state = ?prev_state,
+        new_state = ?ctx.state,
+        iteration_state = ?ctx.state,
+        timestamp = now_millis(),
+        "Checkpoint 回滚成功"
+    );
+
+    Ok(crate::domain::models::RollbackResponse {
+        success: true,
+        task_id: task_id.to_string(),
+        checkpoint_id: checkpoint_id.to_string(),
+        new_branch_id,
+        archived_count,
+        iteration: ctx.iteration,
+        state: iteration_state_label(&ctx.state),
+        message: format!("已回滚到迭代 {} 的 Checkpoint", ctx.iteration),
+    })
+}
+
 async fn recover_with_fallback(
     pool: &sqlx::SqlitePool,
     user_id: &str,
@@ -327,7 +500,7 @@ async fn recover_with_fallback(
             continue;
         }
 
-        let ctx = rebuild_optimization_context(pool, user_id, &checkpoint).await?;
+        let ctx = rebuild_optimization_context(pool, user_id, &checkpoint, None).await?;
         return Ok((ctx, checkpoint));
     }
 
@@ -379,7 +552,7 @@ async fn recover_from_pause_state(
         "未找到 Checkpoint，已生成补偿 Checkpoint"
     );
 
-    let ctx = rebuild_optimization_context(pool, user_id, &checkpoint).await?;
+    let ctx = rebuild_optimization_context(pool, user_id, &checkpoint, None).await?;
     Ok((ctx, checkpoint))
 }
 
@@ -432,6 +605,9 @@ fn build_compensation_checkpoint(
         branch_description: req.branch_description,
         checksum,
         created_at: now_millis(),
+        archived_at: None,
+        archive_reason: None,
+        pass_rate_summary: None,
     })
 }
 
@@ -512,15 +688,22 @@ async fn rebuild_optimization_context(
     pool: &sqlx::SqlitePool,
     user_id: &str,
     checkpoint: &CheckpointEntity,
+    checkpoints_override: Option<Vec<CheckpointEntity>>,
 ) -> Result<OptimizationContext, RecoveryError> {
     let task = OptimizationTaskRepo::find_by_id_for_user(pool, user_id, &checkpoint.task_id)
         .await
-        .map_err(|_| RecoveryError::TaskNotFound)?;
+        .map_err(|err| match err {
+            OptimizationTaskRepoError::NotFound => RecoveryError::TaskNotFound,
+            other => RecoveryError::Repo(other),
+        })?;
 
     let task_with_sets =
         OptimizationTaskRepo::find_by_id_scoped(pool, user_id, &task.workspace_id, &task.id)
             .await
-            .map_err(|_| RecoveryError::TaskNotFound)?;
+            .map_err(|err| match err {
+                OptimizationTaskRepoError::NotFound => RecoveryError::TaskNotFound,
+                other => RecoveryError::Repo(other),
+            })?;
 
     let task_config =
         OptimizationTaskConfig::normalized_from_config_json(task.config_json.as_deref());
@@ -547,13 +730,19 @@ async fn rebuild_optimization_context(
         return Err(RecoveryError::Context("测试集为空，无法恢复".to_string()));
     }
 
-    let checkpoints = CheckpointRepo::list_checkpoints_by_task(pool, &checkpoint.task_id, 20)
-        .await?
-        .into_iter()
-        .map(to_checkpoint_model)
-        .collect::<Vec<_>>();
+    let checkpoints = match checkpoints_override {
+        Some(list) => list,
+        None => CheckpointRepo::list_checkpoints_by_task(pool, &checkpoint.task_id, 20).await?,
+    }
+    .into_iter()
+    .map(to_checkpoint_model)
+    .collect::<Vec<_>>();
 
     let mut extensions: HashMap<String, serde_json::Value> = HashMap::new();
+    extensions.insert(
+        crate::domain::types::EXT_BRANCH_ID.to_string(),
+        serde_json::Value::String(checkpoint.branch_id.clone()),
+    );
     if let Some(guidance) = checkpoint.user_guidance.clone() {
         if let Ok(value) = serde_json::to_value(guidance) {
             extensions.insert(EXT_USER_GUIDANCE.to_string(), value);
@@ -727,7 +916,9 @@ async fn extract_prompt_variable(
 mod tests {
     use super::*;
     use crate::domain::models::{TaskReference, TestCase};
-    use crate::domain::types::{ArtifactSource, CandidatePrompt, IterationArtifacts};
+    use crate::domain::types::{
+        ArtifactSource, CandidatePrompt, EXT_BRANCH_ID, IterationArtifacts,
+    };
     use crate::infra::db::pool::{create_pool, init_global_db_pool};
     use crate::infra::db::repositories::{TestSetRepo, WorkspaceRepo};
     use serde_json::json;
@@ -817,6 +1008,9 @@ mod tests {
             branch_description: req.branch_description,
             checksum,
             created_at: now_millis(),
+            archived_at: None,
+            archive_reason: None,
+            pass_rate_summary: None,
         }
     }
 
@@ -935,6 +1129,270 @@ mod tests {
 
         assert_eq!(ctx.current_prompt, "recover-prompt");
         assert!(!checkpoint.id.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rollback_rejects_checksum_mismatch() {
+        let pool = setup_db().await;
+        insert_user(&pool, "u1", "user1").await;
+        let workspace = WorkspaceRepo::create(&pool, "u1", "ws", None)
+            .await
+            .expect("创建工作区失败");
+        let test_set = TestSetRepo::create(
+            &pool,
+            &workspace.id,
+            "ts",
+            None,
+            &[sample_case()],
+            None,
+            None,
+        )
+        .await
+        .expect("创建测试集失败");
+
+        let created = OptimizationTaskRepo::create_scoped(
+            &pool,
+            crate::infra::db::repositories::CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        let mut bad_checkpoint = build_checkpoint(&created.task.id, 1, Some("bad".to_string()));
+        bad_checkpoint.created_at = 10;
+        CheckpointRepo::create_checkpoint(&pool, bad_checkpoint.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+
+        let result = rollback_to_checkpoint_with_pool(
+            &pool,
+            &created.task.id,
+            &bad_checkpoint.id,
+            "u1",
+            "corr",
+        )
+        .await;
+
+        assert!(matches!(result, Err(RecoveryError::ChecksumMismatch)));
+    }
+
+    #[tokio::test]
+    async fn rollback_archives_and_updates_branch() {
+        let pool = setup_db().await;
+        insert_user(&pool, "u1", "user1").await;
+        let workspace = WorkspaceRepo::create(&pool, "u1", "ws", None)
+            .await
+            .expect("创建工作区失败");
+        let test_set = TestSetRepo::create(
+            &pool,
+            &workspace.id,
+            "ts",
+            None,
+            &[sample_case()],
+            None,
+            None,
+        )
+        .await
+        .expect("创建测试集失败");
+
+        let created = OptimizationTaskRepo::create_scoped(
+            &pool,
+            crate::infra::db::repositories::CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        let mut target = build_checkpoint(&created.task.id, 1, None);
+        target.created_at = 100;
+        let mut after = build_checkpoint(&created.task.id, 2, None);
+        after.created_at = 200;
+        let mut other_branch = build_checkpoint(&created.task.id, 3, None);
+        other_branch.created_at = 300;
+        other_branch.branch_id = "branch-other".to_string();
+
+        CheckpointRepo::create_checkpoint(&pool, target.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+        CheckpointRepo::create_checkpoint(&pool, after.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+        CheckpointRepo::create_checkpoint(&pool, other_branch.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+
+        let result =
+            rollback_to_checkpoint_with_pool(&pool, &created.task.id, &target.id, "u1", "corr")
+                .await
+                .expect("回滚失败");
+
+        assert_eq!(result.archived_count, 1);
+        assert_eq!(result.iteration, target.iteration);
+        assert!(!result.new_branch_id.is_empty());
+
+        let updated_target = CheckpointRepo::get_checkpoint_by_id(&pool, &target.id)
+            .await
+            .expect("查询 checkpoint 失败")
+            .expect("checkpoint 不存在");
+        assert_eq!(updated_target.branch_id, result.new_branch_id);
+        assert!(updated_target.parent_id.is_none());
+
+        let archived = CheckpointRepo::get_checkpoint_by_id(&pool, &after.id)
+            .await
+            .expect("查询 checkpoint 失败")
+            .expect("checkpoint 不存在");
+        let expected_reason = format!("rollback_to_checkpoint_{}", target.id);
+        assert!(archived.archived_at.is_some());
+        assert_eq!(
+            archived.archive_reason.as_deref(),
+            Some(expected_reason.as_str())
+        );
+
+        let other = CheckpointRepo::get_checkpoint_by_id(&pool, &other_branch.id)
+            .await
+            .expect("查询 checkpoint 失败")
+            .expect("checkpoint 不存在");
+        assert!(other.archived_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn rollback_is_idempotent_when_already_applied() {
+        let pool = setup_db().await;
+        insert_user(&pool, "u1", "user1").await;
+        let workspace = WorkspaceRepo::create(&pool, "u1", "ws", None)
+            .await
+            .expect("创建工作区失败");
+        let test_set = TestSetRepo::create(
+            &pool,
+            &workspace.id,
+            "ts",
+            None,
+            &[sample_case()],
+            None,
+            None,
+        )
+        .await
+        .expect("创建测试集失败");
+
+        let created = OptimizationTaskRepo::create_scoped(
+            &pool,
+            crate::infra::db::repositories::CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        let mut target = build_checkpoint(&created.task.id, 1, None);
+        target.created_at = 100;
+        let mut after = build_checkpoint(&created.task.id, 2, None);
+        after.created_at = 200;
+        CheckpointRepo::create_checkpoint(&pool, target.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+        CheckpointRepo::create_checkpoint(&pool, after.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+
+        let first =
+            rollback_to_checkpoint_with_pool(&pool, &created.task.id, &target.id, "u1", "corr")
+                .await
+                .expect("首次回滚失败");
+        assert_eq!(first.archived_count, 1);
+        assert!(!first.new_branch_id.is_empty());
+
+        let second =
+            rollback_to_checkpoint_with_pool(&pool, &created.task.id, &target.id, "u1", "corr")
+                .await
+                .expect("重复回滚失败");
+        assert_eq!(second.archived_count, 0);
+        assert_eq!(second.new_branch_id, first.new_branch_id);
+    }
+
+    #[tokio::test]
+    async fn rollback_updates_context_branch_extension() {
+        let pool = setup_db().await;
+        insert_user(&pool, "u1", "user1").await;
+        let workspace = WorkspaceRepo::create(&pool, "u1", "ws", None)
+            .await
+            .expect("创建工作区失败");
+        let test_set = TestSetRepo::create(
+            &pool,
+            &workspace.id,
+            "ts",
+            None,
+            &[sample_case()],
+            None,
+            None,
+        )
+        .await
+        .expect("创建测试集失败");
+
+        let created = OptimizationTaskRepo::create_scoped(
+            &pool,
+            crate::infra::db::repositories::CreateOptimizationTaskInput {
+                user_id: "u1",
+                workspace_id: &workspace.id,
+                name: "task",
+                description: None,
+                goal: "goal",
+                execution_target_type: ExecutionTargetType::Example,
+                task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
+                test_set_ids: std::slice::from_ref(&test_set.id),
+            },
+        )
+        .await
+        .expect("创建任务失败");
+
+        let mut target = build_checkpoint(&created.task.id, 1, None);
+        target.created_at = 100;
+        let mut after = build_checkpoint(&created.task.id, 2, None);
+        after.created_at = 200;
+        CheckpointRepo::create_checkpoint(&pool, target.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+        CheckpointRepo::create_checkpoint(&pool, after.clone())
+            .await
+            .expect("创建 checkpoint 失败");
+
+        let result =
+            rollback_to_checkpoint_with_pool(&pool, &created.task.id, &target.id, "u1", "corr")
+                .await
+                .expect("回滚失败");
+
+        let ctx = recover_from_checkpoint_with_pool(&pool, &target.id, "u1", "corr")
+            .await
+            .expect("恢复失败");
+        let branch_id = ctx
+            .extensions
+            .get(EXT_BRANCH_ID)
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+
+        assert_eq!(branch_id, result.new_branch_id);
     }
 
     #[tokio::test]

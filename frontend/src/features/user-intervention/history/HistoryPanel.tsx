@@ -3,14 +3,18 @@
  * 显示历史迭代列表，支持展开查看详情
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { History, RefreshCw, PlayCircle } from 'lucide-react'
-import { useIterationHistory } from './hooks/useIterationHistory'
-import { useCheckpoints } from '@/features/checkpoint-recovery/hooks/useCheckpoints'
+import { useTaskHistory } from './hooks/useTaskHistory'
+import { getTaskHistory } from './services/taskHistoryService'
 import { useConnectivity } from '@/features/checkpoint-recovery/hooks/useConnectivity'
 import { IterationHistoryItem } from './IterationHistoryItem'
+import type { CheckpointSummary } from '@/types/generated/models/CheckpointSummary'
+import { CheckpointList } from '@/features/checkpoint-recovery/components/CheckpointList'
+import { RollbackConfirmDialog } from '@/features/checkpoint-recovery/components/RollbackConfirmDialog'
+import { useRollback } from '@/features/checkpoint-recovery/hooks/useRollback'
 
 export interface HistoryPanelProps {
   /** 任务 ID */
@@ -19,19 +23,7 @@ export interface HistoryPanelProps {
   onStartOptimization?: () => void
 }
 
-function formatTime(isoString: string): string {
-  try {
-    const date = new Date(isoString)
-    return date.toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return isoString
-  }
-}
+const CHECKPOINT_PAGE_SIZE = 50
 
 /**
  * 历史迭代面板
@@ -39,20 +31,39 @@ function formatTime(isoString: string): string {
  */
 export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps) {
   const [expandedIterationId, setExpandedIterationId] = useState<string | null>(null)
+  const [selectedCheckpoint, setSelectedCheckpoint] =
+    useState<CheckpointSummary | null>(null)
+  const [checkpointItems, setCheckpointItems] = useState<CheckpointSummary[]>([])
+  const [checkpointTotal, setCheckpointTotal] = useState(0)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
+  const [rollbackFeedback, setRollbackFeedback] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
   const { isOffline } = useConnectivity()
+  const rollbackMutation = useRollback()
 
   const {
-    data: iterations,
+    data: historyData,
     isLoading,
     error,
     refetch,
-  } = useIterationHistory(taskId)
-  const {
-    data: checkpointData,
-    isLoading: isLoadingCheckpoints,
-    error: checkpointError,
-    refetch: refetchCheckpoints,
-  } = useCheckpoints(taskId, { limit: 10 })
+  } = useTaskHistory(taskId, {
+    checkpointsLimit: CHECKPOINT_PAGE_SIZE,
+    includeArchived: true,
+  })
+  const iterations = historyData?.iterations ?? []
+  const checkpointData = historyData?.checkpoints
+
+  useEffect(() => {
+    if (!checkpointData) {
+      return
+    }
+    setCheckpointItems(checkpointData.checkpoints ?? [])
+    setCheckpointTotal(checkpointData.total ?? 0)
+    setLoadMoreError(null)
+  }, [checkpointData])
 
   // 切换展开状态
   const handleToggle = (iterationId: string) => {
@@ -61,10 +72,55 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
 
   const handleRefresh = () => {
     refetch()
-    refetchCheckpoints()
   }
 
-  const checkpointCount = checkpointData?.total ?? 0
+  const checkpointCount = checkpointTotal
+  const handleConfirmRollback = async () => {
+    if (!selectedCheckpoint) {
+      return
+    }
+    try {
+      const response = await rollbackMutation.mutateAsync({
+        taskId,
+        checkpointId: selectedCheckpoint.id,
+      })
+      setRollbackFeedback({ type: 'success', message: response.message })
+      setSelectedCheckpoint(null)
+      refetch()
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : '回滚失败，请稍后再试'
+      setRollbackFeedback({ type: 'error', message })
+    }
+  }
+
+  const handleCancelRollback = () => {
+    setSelectedCheckpoint(null)
+  }
+
+  const handleLoadMore = async () => {
+    if (isLoadingMore || checkpointItems.length >= checkpointTotal) {
+      return
+    }
+    setIsLoadingMore(true)
+    setLoadMoreError(null)
+    try {
+      const nextPage = await getTaskHistory(taskId, {
+        includeArchived: true,
+        checkpointsLimit: CHECKPOINT_PAGE_SIZE,
+        checkpointsOffset: checkpointItems.length,
+      })
+      const nextItems = nextPage.checkpoints.checkpoints ?? []
+      setCheckpointItems((prev) => [...prev, ...nextItems])
+      setCheckpointTotal(nextPage.checkpoints.total ?? checkpointTotal)
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : '加载更多失败，请稍后再试'
+      setLoadMoreError(message)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
 
   const checkpointSection = (
     <div className="pt-4 mt-4 border-t">
@@ -74,41 +130,45 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
           共 {checkpointCount} 个
         </span>
       </div>
-      {isLoadingCheckpoints ? (
-        <div className="flex items-center py-3 text-xs text-muted-foreground">
-          <RefreshCw className="h-3 w-3 animate-spin" />
-          <span className="ml-2">加载中...</span>
-        </div>
-      ) : checkpointError ? (
-        <p className="text-xs text-destructive mt-2">
-          加载失败：{checkpointError.message}
+      <div className="mt-2">
+        <CheckpointList
+          checkpoints={checkpointItems}
+          isLoading={isLoading}
+          error={error}
+          selectedCheckpointId={selectedCheckpoint?.id}
+          onSelect={(checkpoint) => {
+            setRollbackFeedback(null)
+            setSelectedCheckpoint(checkpoint)
+          }}
+        />
+      </div>
+      {rollbackFeedback ? (
+        <p
+          className={`text-xs mt-2 ${
+            rollbackFeedback.type === 'success'
+              ? 'text-emerald-600'
+              : 'text-destructive'
+          }`}
+        >
+          {rollbackFeedback.message}
         </p>
-      ) : checkpointData && checkpointData.checkpoints.length > 0 ? (
-        <div className="mt-2 space-y-2 max-h-[220px] overflow-y-auto">
-          {checkpointData.checkpoints.map((checkpoint) => (
-            <div
-              key={checkpoint.id}
-              className="flex items-start justify-between gap-3 border rounded-md p-2 text-xs"
-            >
-              <div className="flex flex-col gap-1 min-w-0">
-                <span className="font-mono text-[11px] text-muted-foreground">
-                  迭代 #{checkpoint.iteration}
-                </span>
-                <span className="truncate">
-                  {checkpoint.promptPreview || '无 Prompt 摘要'}
-                </span>
-              </div>
-              <span className="text-[11px] text-muted-foreground shrink-0">
-                {formatTime(checkpoint.createdAt)}
-              </span>
-            </div>
-          ))}
+      ) : null}
+      {loadMoreError ? (
+        <p className="text-xs text-destructive mt-2">{loadMoreError}</p>
+      ) : null}
+      {checkpointItems.length < checkpointTotal ? (
+        <div className="mt-3 flex items-center justify-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            className="min-w-[44px] min-h-[44px]"
+          >
+            {isLoadingMore ? '加载中...' : '加载更多'}
+          </Button>
         </div>
-      ) : (
-        <p className="text-xs text-muted-foreground mt-2">
-          暂无 Checkpoint
-        </p>
-      )}
+      ) : null}
     </div>
   )
 
@@ -202,44 +262,53 @@ export function HistoryPanel({ taskId, onStartOptimization }: HistoryPanelProps)
     )
   }
 
-  // 正常状态 - 显示历史列表
+  // 正常状态 - 显示历史列表与回滚对话框
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <History className="h-5 w-5" />
-            历史记录
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            className="min-w-[44px] min-h-[44px]"
-            title="刷新"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-        <p className="text-sm text-muted-foreground mt-1">
-          共 {iterations.length} 轮迭代
-        </p>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2 max-h-[500px] overflow-y-auto">
-          {iterations.map((iteration) => (
-            <IterationHistoryItem
-              key={iteration.id}
-              taskId={taskId}
-              summary={iteration}
-              isExpanded={expandedIterationId === iteration.id}
-              onToggle={() => handleToggle(iteration.id)}
-            />
-          ))}
-        </div>
-        {checkpointSection}
-      </CardContent>
-    </Card>
+    <>
+      <Card className="w-full">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <History className="h-5 w-5" />
+              历史记录
+            </CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefresh}
+              className="min-w-[44px] min-h-[44px]"
+              title="刷新"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            共 {iterations.length} 轮迭代
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2 max-h-[500px] overflow-y-auto">
+            {iterations.map((iteration) => (
+              <IterationHistoryItem
+                key={iteration.id}
+                taskId={taskId}
+                summary={iteration}
+                isExpanded={expandedIterationId === iteration.id}
+                onToggle={() => handleToggle(iteration.id)}
+              />
+            ))}
+          </div>
+          {checkpointSection}
+        </CardContent>
+      </Card>
+      <RollbackConfirmDialog
+        open={Boolean(selectedCheckpoint)}
+        checkpoint={selectedCheckpoint}
+        isSubmitting={rollbackMutation.isPending}
+        onCancel={handleCancelRollback}
+        onConfirm={handleConfirmRollback}
+      />
+    </>
   )
 }
 

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use prompt_faster::domain::models::{CheckpointEntity, IterationState, LineageType, RuleSystem};
+use prompt_faster::domain::models::{
+    CheckpointEntity, IterationState, LineageType, PassRateSummary, RuleSystem,
+};
 use prompt_faster::domain::types::{IterationArtifacts, RunControlState, UserGuidance};
 use prompt_faster::infra::db::pool::create_pool;
 use prompt_faster::infra::db::repositories::CheckpointRepo;
@@ -34,6 +36,9 @@ fn build_checkpoint_entity() -> CheckpointEntity {
         branch_description: None,
         checksum: "checksum".to_string(),
         created_at: 0,
+        archived_at: None,
+        archive_reason: None,
+        pass_rate_summary: None,
     }
 }
 
@@ -120,4 +125,145 @@ async fn checkpoint_repo_create_and_list() {
         .expect("查询 checkpoints 失败");
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].id, checkpoint.id);
+}
+
+#[tokio::test]
+async fn checkpoint_repo_lists_summaries_with_archived_filter() {
+    let pool = create_pool("sqlite::memory:")
+        .await
+        .expect("创建测试数据库失败");
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("运行 migrations 失败");
+
+    let mut checkpoint = build_checkpoint_entity();
+    checkpoint.id = "checkpoint-1".to_string();
+    checkpoint.created_at = 10;
+    checkpoint.pass_rate_summary = Some(PassRateSummary {
+        total_cases: 10,
+        passed_cases: 7,
+        pass_rate: 0.7,
+    });
+    seed_user_workspace_task(&pool, "user-1", "workspace-1", &checkpoint.task_id).await;
+    CheckpointRepo::create_checkpoint(&pool, checkpoint)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let mut archived = build_checkpoint_entity();
+    archived.id = "checkpoint-2".to_string();
+    archived.created_at = 20;
+    archived.archived_at = Some(30);
+    archived.archive_reason = Some("rollback".to_string());
+    archived.pass_rate_summary = Some(PassRateSummary {
+        total_cases: 10,
+        passed_cases: 5,
+        pass_rate: 0.5,
+    });
+    CheckpointRepo::create_checkpoint(&pool, archived)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let active = CheckpointRepo::list_checkpoint_summaries(&pool, "task-1", false, 100, 0)
+        .await
+        .expect("查询 summaries 失败");
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, "checkpoint-1");
+
+    let all = CheckpointRepo::list_checkpoint_summaries(&pool, "task-1", true, 100, 0)
+        .await
+        .expect("查询 summaries 失败");
+    assert_eq!(all.len(), 2);
+    assert!(all.iter().any(|item| item.id == "checkpoint-2"));
+}
+
+#[tokio::test]
+async fn checkpoint_repo_archives_only_after_target_on_same_branch() {
+    let pool = create_pool("sqlite::memory:")
+        .await
+        .expect("创建测试数据库失败");
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("运行 migrations 失败");
+
+    let mut target = build_checkpoint_entity();
+    target.id = "checkpoint-target".to_string();
+    target.created_at = 100;
+    target.branch_id = "branch-a".to_string();
+    seed_user_workspace_task(&pool, "user-1", "workspace-1", &target.task_id).await;
+    CheckpointRepo::create_checkpoint(&pool, target)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let mut after = build_checkpoint_entity();
+    after.id = "checkpoint-after".to_string();
+    after.created_at = 200;
+    after.branch_id = "branch-a".to_string();
+    CheckpointRepo::create_checkpoint(&pool, after)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let mut other_branch = build_checkpoint_entity();
+    other_branch.id = "checkpoint-other-branch".to_string();
+    other_branch.created_at = 300;
+    other_branch.branch_id = "branch-b".to_string();
+    CheckpointRepo::create_checkpoint(&pool, other_branch)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let archived =
+        CheckpointRepo::archive_checkpoints_after(&pool, "task-1", "checkpoint-target", "rollback")
+            .await
+            .expect("归档失败");
+    assert_eq!(archived, 1);
+
+    let summaries = CheckpointRepo::list_checkpoint_summaries(&pool, "task-1", true, 100, 0)
+        .await
+        .expect("查询 summaries 失败");
+    let archived_item = summaries
+        .iter()
+        .find(|item| item.id == "checkpoint-after")
+        .expect("应包含归档项");
+    assert!(archived_item.archived_at.is_some());
+    assert_eq!(archived_item.archive_reason.as_deref(), Some("rollback"));
+
+    let other_item = summaries
+        .iter()
+        .find(|item| item.id == "checkpoint-other-branch")
+        .expect("应包含其他分支项");
+    assert!(other_item.archived_at.is_none());
+}
+
+#[tokio::test]
+async fn checkpoint_repo_get_checkpoint_with_summary() {
+    let pool = create_pool("sqlite::memory:")
+        .await
+        .expect("创建测试数据库失败");
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("运行 migrations 失败");
+
+    let mut checkpoint = build_checkpoint_entity();
+    checkpoint.id = "checkpoint-with-summary".to_string();
+    checkpoint.pass_rate_summary = Some(PassRateSummary {
+        total_cases: 8,
+        passed_cases: 6,
+        pass_rate: 0.75,
+    });
+    seed_user_workspace_task(&pool, "user-1", "workspace-1", &checkpoint.task_id).await;
+    CheckpointRepo::create_checkpoint(&pool, checkpoint)
+        .await
+        .expect("创建 checkpoint 失败");
+
+    let item = CheckpointRepo::get_checkpoint_with_summary(&pool, "checkpoint-with-summary")
+        .await
+        .expect("查询 checkpoint 失败")
+        .expect("checkpoint 应存在");
+    assert_eq!(item.checkpoint.id, "checkpoint-with-summary");
+    assert_eq!(
+        item.pass_rate_summary.as_ref().map(|s| s.pass_rate),
+        Some(0.75)
+    );
 }

@@ -11,11 +11,14 @@ use tokio::time::{Duration, sleep};
 use tracing::{info, warn};
 
 use crate::core::iteration_engine::pause_state::global_pause_registry;
-use crate::domain::models::{CheckpointCreateRequest, CheckpointEntity, LineageType};
+use crate::domain::models::{
+    CheckpointCreateRequest, CheckpointEntity, EvaluationResult, LineageType, PassRateSummary,
+};
 use crate::domain::types::{
-    ArtifactSource, CandidatePrompt, EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT,
-    EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext,
-    PatternHypothesis, RunControlState, UserGuidance,
+    ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
+    EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_BRANCH_ID, EXT_CURRENT_PROMPT_STATS,
+    EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE,
+    IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState, UserGuidance,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{CheckpointRepo, CheckpointRepoError};
@@ -158,6 +161,7 @@ pub async fn save_checkpoint(
     let artifacts =
         pause_artifacts.or_else(|| Some(build_iteration_artifacts(ctx, user_guidance.clone())));
 
+    let branch_id = read_optional_string(ctx, EXT_BRANCH_ID).unwrap_or_else(|| ctx.task_id.clone());
     let req = CheckpointCreateRequest {
         task_id: ctx.task_id.clone(),
         iteration: ctx.iteration,
@@ -167,13 +171,14 @@ pub async fn save_checkpoint(
         rule_system: ctx.rule_system.clone(),
         artifacts,
         user_guidance,
-        branch_id: ctx.task_id.clone(),
+        branch_id,
         parent_id: None,
         lineage_type: LineageType::Automatic,
         branch_description: None,
     };
 
     let checksum = compute_checksum(&req);
+    let pass_rate_summary = build_pass_rate_summary(ctx);
     let entity = CheckpointEntity {
         id: uuid::Uuid::new_v4().to_string(),
         task_id: req.task_id,
@@ -190,6 +195,9 @@ pub async fn save_checkpoint(
         branch_description: req.branch_description,
         checksum,
         created_at: now_millis(),
+        archived_at: None,
+        archive_reason: None,
+        pass_rate_summary,
     };
 
     let checkpoint = CheckpointRepo::create_checkpoint(&pool, entity.clone()).await?;
@@ -356,6 +364,45 @@ fn build_iteration_artifacts(
         user_guidance,
         updated_at: crate::shared::ws::chrono_timestamp(),
     }
+}
+
+fn build_pass_rate_summary(ctx: &OptimizationContext) -> Option<PassRateSummary> {
+    if let Some(value) = ctx.extensions.get(EXT_EVALUATIONS_BY_TEST_CASE_ID) {
+        if let Ok(map) = serde_json::from_value::<std::collections::HashMap<String, EvaluationResult>>(
+            value.clone(),
+        ) {
+            if !map.is_empty() {
+                let total = map.len() as u32;
+                let passed = map.values().filter(|result| result.passed).count() as u32;
+                let pass_rate = (passed as f64 / total as f64).clamp(0.0, 1.0);
+                return Some(PassRateSummary {
+                    total_cases: total,
+                    passed_cases: passed,
+                    pass_rate,
+                });
+            }
+        }
+    }
+
+    let stats = read_candidate_stats(ctx)?;
+    let total_cases = ctx.test_cases.len() as u32;
+    if total_cases == 0 {
+        return None;
+    }
+    let pass_rate = stats.pass_rate.clamp(0.0, 1.0);
+    let passed_cases = ((pass_rate * total_cases as f64).round() as u32).min(total_cases);
+    Some(PassRateSummary {
+        total_cases,
+        passed_cases,
+        pass_rate,
+    })
+}
+
+fn read_candidate_stats(ctx: &OptimizationContext) -> Option<CandidateStats> {
+    ctx.extensions
+        .get(EXT_CURRENT_PROMPT_STATS)
+        .or_else(|| ctx.extensions.get(EXT_BEST_CANDIDATE_STATS))
+        .and_then(|value| serde_json::from_value::<CandidateStats>(value.clone()).ok())
 }
 
 fn iteration_state_label(state: crate::domain::models::IterationState) -> String {
