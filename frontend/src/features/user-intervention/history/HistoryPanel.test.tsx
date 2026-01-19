@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, afterEach, beforeEach, vi } from 'vitest'
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { HistoryPanel } from './HistoryPanel'
@@ -70,6 +70,31 @@ const server = setupServer(
     }
 
     return HttpResponse.json({ data: detail })
+  }),
+  http.get(`${API_BASE}/tasks/:taskId/history/export`, ({ request }) => {
+    const auth = request.headers.get('authorization')
+    if (auth !== 'Bearer test-token') {
+      return HttpResponse.json(
+        { error: { code: 'UNAUTHORIZED', message: '请先登录' } },
+        { status: 401 }
+      )
+    }
+    return HttpResponse.json({
+      data: {
+        task: {
+          id: 'task-1',
+          name: '任务-1',
+          status: 'running',
+          createdAt: '2025-01-01T12:00:00Z',
+          updatedAt: '2025-01-01T12:05:00Z',
+        },
+        iterations: [],
+        checkpoints: [],
+        events: [],
+        branches: [],
+        exportedAt: '2025-01-01T12:10:00Z',
+      },
+    })
   }),
 )
 
@@ -219,5 +244,59 @@ describe('HistoryPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '反思' }))
     expect(await screen.findByText('反思总结')).toBeInTheDocument()
+  })
+
+  it('导出按钮应触发下载', async () => {
+    iterations = [
+      {
+        id: 'iter-1',
+        round: 1,
+        startedAt: '2025-01-01T12:00:00Z',
+        completedAt: '2025-01-01T12:05:00Z',
+        passRate: 0.9,
+        totalCases: 10,
+        passedCases: 9,
+        status: 'completed',
+      },
+    ]
+    checkpoints = []
+
+    if (!('createObjectURL' in URL)) {
+      Object.defineProperty(URL, 'createObjectURL', {
+        value: () => 'blob:stub',
+        writable: true,
+        configurable: true,
+      })
+    }
+    if (!('revokeObjectURL' in URL)) {
+      Object.defineProperty(URL, 'revokeObjectURL', {
+        value: () => {},
+        writable: true,
+        configurable: true,
+      })
+    }
+
+    const createObjectUrlSpy = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:mock')
+    const revokeObjectUrlSpy = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => {})
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+
+    renderWithQueryClient(<HistoryPanel taskId="task-1" />)
+
+    const exportButton = await screen.findByRole('button', { name: '导出' })
+    fireEvent.click(exportButton)
+
+    await waitFor(() => {
+      expect(createObjectUrlSpy).toHaveBeenCalled()
+    })
+
+    createObjectUrlSpy.mockRestore()
+    revokeObjectUrlSpy.mockRestore()
+    clickSpy.mockRestore()
   })
 })

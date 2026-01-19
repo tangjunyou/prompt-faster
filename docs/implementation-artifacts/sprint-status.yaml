@@ -126,11 +126,11 @@ development_status:
   # Epic 7: 可靠性与断点续跑
   # FRs: FR52-FR55
   # ============================================
-  epic-7: in-progress
+  epic-7: done
   7-1-checkpoint-auto-save: done
   7-2-breakpoint-recovery-and-exception-handling: done
   7-3-historical-checkpoint-rollback: done
-  7-4-complete-iteration-history-record: backlog
+  7-4-complete-iteration-history-record: done
   epic-7-retrospective: optional
 
   # ============================================

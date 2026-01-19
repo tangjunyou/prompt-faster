@@ -6,13 +6,14 @@ use thiserror::Error;
 use tracing::{error, info, warn};
 
 use crate::core::iteration_engine::checkpoint::{compute_checksum, verify_checksum};
+use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::models::RecoveryMetrics;
 use crate::domain::models::recovery::UnfinishedTask;
 use crate::domain::models::{
-    Checkpoint, CheckpointCreateRequest, CheckpointEntity, ExecutionTargetType, IterationState,
-    LineageType, OptimizationTaskConfig, OptimizationTaskStatus, OutputLength, Rule, RuleSystem,
-    RuleTags,
+    Actor, Checkpoint, CheckpointCreateRequest, CheckpointEntity, EventType, ExecutionTargetType,
+    IterationState, LineageType, OptimizationTaskConfig, OptimizationTaskStatus, OutputLength,
+    Rule, RuleSystem, RuleTags,
 };
 use crate::domain::types::{
     EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_USER_GUIDANCE, ExecutionTargetConfig,
@@ -449,6 +450,19 @@ pub(crate) async fn rollback_to_checkpoint_with_pool(
         iteration_state = ?ctx.state,
         timestamp = now_millis(),
         "Checkpoint 回滚成功"
+    );
+
+    record_event_async(
+        task_id.to_string(),
+        EventType::Rollback,
+        Actor::User,
+        Some(serde_json::json!({
+            "target_checkpoint_id": checkpoint_id,
+            "archived_count": archived_count,
+            "new_branch_id": new_branch_id,
+        })),
+        Some(ctx.iteration),
+        Some(correlation_id.to_string()),
     );
 
     Ok(crate::domain::models::RollbackResponse {

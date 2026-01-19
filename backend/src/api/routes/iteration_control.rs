@@ -18,7 +18,9 @@ use crate::api::middleware::CurrentUser;
 use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
+use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
+use crate::domain::models::{Actor, EventType};
 use crate::domain::types::{
     AddRoundsRequest, AddRoundsResponse, CandidatePromptListResponse, CandidatePromptSummary,
     TerminateTaskRequest, TerminateTaskResponse, unix_ms_to_iso8601,
@@ -234,6 +236,19 @@ pub(crate) async fn add_rounds(
                 iteration_state = current_round,
                 timestamp = current_unix_ms(),
                 "增加轮数成功"
+            );
+
+            record_event_async(
+                task_id.clone(),
+                EventType::ConfigChanged,
+                Actor::User,
+                Some(serde_json::json!({
+                    "field": "max_iterations",
+                    "old_value": prev_max_iterations.to_string(),
+                    "new_value": new_max_iterations.to_string(),
+                })),
+                Some(current_round as u32),
+                Some(correlation_id.clone()),
             );
 
             ApiResponse::ok(AddRoundsResponse {
@@ -614,6 +629,18 @@ pub(crate) async fn terminate_task(
                 iteration_state = ?selected_round,
                 timestamp = current_unix_ms(),
                 "任务终止成功"
+            );
+
+            record_event_async(
+                task_id.clone(),
+                EventType::TaskTerminated,
+                Actor::User,
+                Some(serde_json::json!({
+                    "selected_iteration_id": req.selected_iteration_id.clone(),
+                    "final_prompt_present": final_prompt.is_some(),
+                })),
+                selected_round.map(|value| value as u32),
+                Some(correlation_id.clone()),
             );
 
             ApiResponse::ok(TerminateTaskResponse {

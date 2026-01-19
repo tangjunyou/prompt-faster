@@ -11,7 +11,9 @@ use serde::Deserialize;
 use tracing::{info, warn};
 
 use crate::api::state::AppState;
+use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
+use crate::domain::models::{Actor, EventType};
 use crate::domain::types::RunControlState;
 use crate::infra::db::repositories::{OptimizationTaskRepo, OptimizationTaskRepoError};
 use crate::shared::ws::{
@@ -176,12 +178,13 @@ async fn handle_command(
     } else {
         RunControlState::Running
     };
-    let iteration_state = controller
-        .get_snapshot()
-        .await
-        .map(|s| s.stage)
+    let snapshot = controller.get_snapshot().await;
+    let iteration_state = snapshot
+        .as_ref()
+        .map(|s| s.stage.clone())
         .unwrap_or_else(|| "unknown".to_string());
-    let context_snapshot = controller.get_snapshot().await.map(|s| s.context_snapshot);
+    let context_snapshot = snapshot.as_ref().map(|s| s.context_snapshot.clone());
+    let snapshot_iteration = snapshot.as_ref().map(|s| s.iteration);
 
     match cmd.event_type.as_str() {
         CMD_TASK_PAUSE => {
@@ -207,6 +210,16 @@ async fn handle_command(
                 accepted = accepted,
                 "WS pause request"
             );
+            if accepted {
+                record_event_async(
+                    task_id.clone(),
+                    EventType::UserPause,
+                    Actor::User,
+                    Some(serde_json::json!({ "source": "ws" })),
+                    snapshot_iteration,
+                    Some(cmd.correlation_id.clone()),
+                );
+            }
             if let Some(event_type) = ack_event_type(cmd.event_type.as_str()) {
                 let reason = if accepted {
                     None
@@ -255,6 +268,16 @@ async fn handle_command(
                 accepted = accepted,
                 "WS resume request"
             );
+            if accepted {
+                record_event_async(
+                    task_id.clone(),
+                    EventType::UserResume,
+                    Actor::User,
+                    Some(serde_json::json!({ "source": "ws" })),
+                    snapshot_iteration,
+                    Some(cmd.correlation_id.clone()),
+                );
+            }
             if let Some(event_type) = ack_event_type(cmd.event_type.as_str()) {
                 let reason = if accepted {
                     None
@@ -447,6 +470,7 @@ async fn handle_artifact_update(
 
     let registry = global_pause_registry();
     let controller = registry.get_or_create(&task_id).await;
+    let snapshot_iteration = controller.get_snapshot().await.map(|s| s.iteration);
 
     // 状态二次校验：必须处于 Paused 状态
     if !controller.is_paused() {
@@ -481,6 +505,17 @@ async fn handle_artifact_update(
                 user_id = %user_id,
                 task_id = %task_id,
                 "artifact:update success"
+            );
+            record_event_async(
+                task_id.clone(),
+                EventType::UserEdit,
+                Actor::User,
+                Some(serde_json::json!({
+                    "field": "artifacts",
+                    "edit_type": "manual",
+                })),
+                snapshot_iteration,
+                Some(cmd.correlation_id.clone()),
             );
 
             // 发送 ACK
@@ -618,11 +653,12 @@ async fn handle_guidance_send(
         return;
     }
 
-    let iteration_state = controller
-        .get_snapshot()
-        .await
-        .map(|s| s.stage)
+    let snapshot = controller.get_snapshot().await;
+    let iteration_state = snapshot
+        .as_ref()
+        .map(|s| s.stage.clone())
         .unwrap_or_else(|| "unknown".to_string());
+    let snapshot_iteration = snapshot.as_ref().map(|s| s.iteration);
     let timestamp = crate::shared::ws::chrono_timestamp();
 
     // 执行引导更新
@@ -643,6 +679,18 @@ async fn handle_guidance_send(
                 guidance_id = %guidance.id,
                 guidance_preview = %guidance.content_preview(),
                 "guidance:send success"
+            );
+            record_event_async(
+                task_id.clone(),
+                EventType::UserGuidance,
+                Actor::User,
+                Some(serde_json::json!({
+                    "field": "user_guidance",
+                    "edit_type": "manual",
+                    "guidance_id": guidance.id,
+                })),
+                snapshot_iteration,
+                Some(cmd.correlation_id.clone()),
             );
 
             // 发送 ACK

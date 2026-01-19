@@ -49,6 +49,7 @@ utoipa-swagger-ui = { version = "9", features = ["axum", "vendored"] }
 
 # 时间处理
 time = { version = "0.3", features = ["serde", "formatting"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 # 类型生成
 ts-rs = { version = "10", features = ["serde-json-impl", "no-serde-warnings"] }
