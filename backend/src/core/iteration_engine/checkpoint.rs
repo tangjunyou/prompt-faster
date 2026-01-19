@@ -562,7 +562,7 @@ mod tests {
     use super::*;
     use crate::domain::models::{IterationState, RuleSystem};
     use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig};
-    use crate::infra::db::pool::{create_pool, init_global_db_pool};
+    use crate::infra::db::pool::{create_pool, global_db_pool, init_global_db_pool};
     use crate::infra::db::repositories::CheckpointRepo;
     use sqlx::SqlitePool;
     use std::collections::HashMap;
@@ -572,6 +572,9 @@ mod tests {
     static TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
     async fn setup_test_pool() -> SqlitePool {
+        if let Some(pool) = global_db_pool() {
+            return pool;
+        }
         if let Some(pool) = TEST_POOL.get() {
             return pool.clone();
         }
