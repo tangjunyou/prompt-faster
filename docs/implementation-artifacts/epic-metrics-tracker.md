@@ -31,6 +31,7 @@
 | 4 | 2026-01-15 | 未追踪 | 未追踪 | 未追踪 | 未追踪 | 3 | 确定性/可复现门禁 + 双路径验证要求（未记录覆盖率） | 未追踪 | 未追踪 | 未追踪 | 未追踪 | `docs/implementation-artifacts/epic-4-retro-2026-01-15.md` |
 | 5 | 2026-01-16 | 未追踪 | 未追踪 | 未追踪 | 未追踪 | 1 | NFR2/NFR3 回归入口与证据链强调（未记录覆盖率） | 未追踪 | 未追踪 | 未追踪 | 未追踪 | `docs/implementation-artifacts/epic-5-retro-2026-01-16.md` |
 | 6 | 2026-01-18 | 未追踪 | 未追踪 | 未追踪 | 未追踪 | 2 | 回归与集成测试已执行；覆盖率未记录 | 未追踪 | 未追踪 | 未追踪 | 未追踪 | `docs/implementation-artifacts/epic-6-retro-2026-01-18.md` |
+| 7 | 2026-01-19 | 未追踪 | 未追踪 | 未追踪 | 未追踪 | 3 | 后端 cargo test 全量通过；前端 vitest 全量通过；eslint 无告警；覆盖率未记录 | 未追踪 | 4/4 | 达成 | 自验为主；Docker smoke check 已完成（无外部验收记录） | `docs/implementation-artifacts/epic-7-retro-2026-01-19.md` |
 
 ## 项目级指标（GitHub/CI）
 

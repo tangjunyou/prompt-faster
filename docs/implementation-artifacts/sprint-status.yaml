@@ -131,7 +131,7 @@ development_status:
   7-2-breakpoint-recovery-and-exception-handling: done
   7-3-historical-checkpoint-rollback: done
   7-4-complete-iteration-history-record: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
 
   # ============================================
   # Epic 8: 结果输出与元优化
