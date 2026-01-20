@@ -189,6 +189,83 @@ impl IterationRepo {
             .collect())
     }
 
+    /// 统计任务迭代总数
+    pub async fn count_by_task_id(
+        pool: &SqlitePool,
+        user_id: &str,
+        task_id: &str,
+    ) -> Result<i32, IterationRepoError> {
+        // 首先验证任务归属权
+        let task_exists: Option<(String,)> = sqlx::query_as(
+            r#"
+            SELECT ot.id
+            FROM optimization_tasks ot
+            JOIN workspaces w ON ot.workspace_id = w.id
+            WHERE ot.id = ? AND w.user_id = ?
+            "#,
+        )
+        .bind(task_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if task_exists.is_none() {
+            return Err(IterationRepoError::TaskNotFoundOrForbidden);
+        }
+
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM iterations WHERE task_id = ?")
+            .bind(task_id)
+            .fetch_one(pool)
+            .await?;
+
+        Ok(count as i32)
+    }
+
+    /// 获取通过率最高的已完成迭代（含产物）
+    pub async fn find_best_completed_with_artifacts_by_task_id(
+        pool: &SqlitePool,
+        user_id: &str,
+        task_id: &str,
+    ) -> Result<Option<IterationSummaryWithArtifacts>, IterationRepoError> {
+        // 首先验证任务归属权
+        let task_exists: Option<(String,)> = sqlx::query_as(
+            r#"
+            SELECT ot.id
+            FROM optimization_tasks ot
+            JOIN workspaces w ON ot.workspace_id = w.id
+            WHERE ot.id = ? AND w.user_id = ?
+            "#,
+        )
+        .bind(task_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if task_exists.is_none() {
+            return Err(IterationRepoError::TaskNotFoundOrForbidden);
+        }
+
+        let row: Option<IterationRow> = sqlx::query_as(
+            r#"
+            SELECT id, task_id, round, started_at, completed_at, status,
+                   artifacts, evaluation_results, reflection_summary,
+                   pass_rate, total_cases, passed_cases, created_at
+            FROM iterations
+            WHERE task_id = ? AND status = 'completed'
+            ORDER BY pass_rate DESC, round DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(task_id)
+        .fetch_optional(pool)
+        .await?;
+
+        Ok(row.map(|row| IterationSummaryWithArtifacts {
+            summary: Self::row_to_summary_ref(&row),
+            artifacts: Self::parse_artifacts(&row.artifacts),
+        }))
+    }
+
     /// 按 ID 查询单个迭代详情
     ///
     /// # 参数

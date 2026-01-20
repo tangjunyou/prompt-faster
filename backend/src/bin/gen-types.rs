@@ -41,14 +41,14 @@ use prompt_faster::domain::models::{
     Actor, BranchInfo, Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
     ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit,
     DimensionScore, EvaluationResult, EventType, ExecutionResult, ExecutionTargetType,
-    FailurePoint, HistoryEvent, HistoryEventResponse, HistoryExportData, Iteration,
-    IterationExportEntry, IterationState, LineageType, OptimizationTaskEntity,
-    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension,
-    RecoveryMetrics, RecoveryRequest, RecoveryResponse, RollbackRequest, RollbackResponse, Rule,
-    RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
-    TaskExportMeta, TaskHistoryResponse, TaskReference, TestCase, TestSet, TimelineEntry,
-    TimelineEntryType, TimelineResponse, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User,
-    Workspace,
+    ExportResultResponse, FailurePoint, HistoryEvent, HistoryEventResponse, HistoryExportData,
+    Iteration, IterationExportEntry, IterationState, IterationSummaryEntry, LineageType,
+    OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus, OutputLength,
+    PassRateSummary, QualityDimension, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
+    ResultExportFormat, RollbackRequest, RollbackResponse, Rule, RuleConflict, RuleConflictType,
+    RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskExportMeta, TaskHistoryResponse,
+    TaskReference, TaskResultView, TestCase, TestSet, TimelineEntry, TimelineEntryType,
+    TimelineResponse, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
@@ -152,6 +152,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     CheckpointSummary::export_all_to(&out_dir)?;
     PassRateSummary::export_all_to(&out_dir)?;
     TaskHistoryResponse::export_all_to(&out_dir)?;
+    TaskResultView::export_all_to(&out_dir)?;
+    IterationSummaryEntry::export_all_to(&out_dir)?;
+    ExportResultResponse::export_all_to(&out_dir)?;
     HistoryEvent::export_all_to(&out_dir)?;
     HistoryEventResponse::export_all_to(&out_dir)?;
     TimelineEntry::export_all_to(&out_dir)?;
@@ -199,6 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     IterationState::export_all_to(&out_dir)?;
     LineageType::export_all_to(&out_dir)?;
     RunControlState::export_all_to(&out_dir)?;
+    ResultExportFormat::export_all_to(&out_dir)?;
 
     // WS 事件负载
     TaskControlPayload::export_all_to(&out_dir)?;

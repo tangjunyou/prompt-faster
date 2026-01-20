@@ -51,6 +51,10 @@ use utoipa_swagger_ui::SwaggerUi;
             description = "历史聚合 API（迭代历史 + 回滚候选）"
         ),
         (
+            name = "results",
+            description = "结果查看与导出 API"
+        ),
+        (
             name = "recovery",
             description = "断点恢复与连接状态 API"
         )
@@ -90,6 +94,8 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::history::list_history_events,
         crate::api::routes::history::get_history_timeline,
         crate::api::routes::history::export_history,
+        crate::api::routes::results::get_result,
+        crate::api::routes::results::export_result,
         crate::api::routes::checkpoints::list_checkpoints,
         crate::api::routes::checkpoints::get_checkpoint,
         crate::api::routes::recovery::list_unfinished_tasks,
@@ -174,6 +180,10 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::PassRateSummary,
             // History
             crate::domain::models::TaskHistoryResponse,
+            crate::domain::models::TaskResultView,
+            crate::domain::models::IterationSummaryEntry,
+            crate::domain::models::ExportResultResponse,
+            crate::domain::models::ResultExportFormat,
             crate::domain::types::IterationHistorySummary,
             crate::domain::models::HistoryEvent,
             crate::domain::models::HistoryEventResponse,

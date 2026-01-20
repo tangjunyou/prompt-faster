@@ -2,6 +2,7 @@
 
 pub mod algorithm;
 pub mod checkpoint;
+pub mod evaluation_result;
 pub mod history;
 pub mod history_event;
 pub mod iteration_stage;
@@ -22,6 +23,9 @@ pub use algorithm::{
 pub use checkpoint::{
     Checkpoint, CheckpointCreateRequest, CheckpointEntity, CheckpointFull, CheckpointListResponse,
     CheckpointResponse,
+};
+pub use evaluation_result::{
+    ExportResultResponse, IterationSummaryEntry, ResultExportFormat, TaskResultView,
 };
 pub use history::{
     BranchInfo, HistoryEventResponse, HistoryExportData, IterationExportEntry, TaskExportMeta,

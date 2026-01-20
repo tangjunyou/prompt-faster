@@ -8,6 +8,7 @@ import { usePrefersReducedMotion, useWebSocket } from '@/hooks'
 import { ArtifactEditor, GuidanceInput, PauseResumeControl, HistoryPanel } from '@/features/user-intervention'
 import { IterationControlPanel } from '@/features/user-intervention/control'
 import { useOptimizationTask } from '@/features/task-config/hooks/useOptimizationTasks'
+import { ResultView } from '@/features/result-viewer'
 import { createDeterministicDemoWsMessages } from '@/features/ws-demo/demoWsMessages'
 import {
   createInitialIterationGraphEdgeFlowStates,
@@ -33,6 +34,7 @@ import type { IterationPausedPayload, IterationResumedPayload, TaskTerminatedPay
 import type { ArtifactGetAckPayload, ArtifactUpdateAckPayload, ArtifactUpdatedPayload } from '@/types/generated/ws'
 import type { GuidanceSendAckPayload, GuidanceSentPayload, GuidanceAppliedPayload } from '@/types/generated/ws'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
 
 export function RunView() {
   const navigate = useNavigate()
@@ -110,6 +112,7 @@ export function RunView() {
   const [artifactSaveResetVersion, setArtifactSaveResetVersion] = useState(0)
   const artifactSaveTimerRef = useRef<number | null>(null)
   const [rightPanelTab, setRightPanelTab] = useState<'current' | 'history'>('current')
+  const [showResultView, setShowResultView] = useState(false)
 
   const handlePausedEvent = useCallback(
     (payload: IterationPausedPayload) => {
@@ -331,6 +334,10 @@ export function RunView() {
     }
   }, [])
 
+  const isTaskCompleted =
+    optimizationTask?.status === 'completed' || optimizationTask?.status === 'terminated'
+  const isResultVisible = showResultView || isTaskCompleted
+
   function scheduleThinkingFlush() {
     if (thinkingFlushRafRef.current !== null) return
     thinkingFlushRafRef.current = requestAnimationFrame(() => {
@@ -503,6 +510,34 @@ export function RunView() {
           isSending={isSendingGuidance}
           sendError={guidanceError}
         />
+      </div>
+
+      <div className="mt-6">
+        {isResultVisible ? (
+          <ResultView
+            taskId={taskId}
+            enabled={isResultVisible}
+            staleTime={
+              isTaskCompleted ? 5 * 60 * 1000 : 10 * 1000
+            }
+          />
+        ) : (
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-white p-4">
+            <div>
+              <div className="text-sm font-medium">结果查看与导出</div>
+              <div className="text-xs text-muted-foreground">
+                任务完成后可查看最终 Prompt 与导出结果。
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowResultView(true)}
+            >
+              查看结果
+            </Button>
+          </div>
+        )}
       </div>
 
     </section>
