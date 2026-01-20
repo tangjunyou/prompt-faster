@@ -9,6 +9,7 @@ pub mod history;
 pub mod iteration_control;
 pub mod iterations;
 pub mod meta;
+pub mod meta_optimization;
 pub mod optimization_tasks;
 pub mod recovery;
 pub mod results;

@@ -426,6 +426,7 @@ mod tests {
             execution_target_type: ExecutionTargetType::Example,
             task_mode: OptimizationTaskMode::Fixed,
             test_set_ids: &[test_set.id.clone()],
+            teacher_prompt_version_id: None,
         };
         let created = OptimizationTaskRepo::create_scoped(pool, input)
             .await

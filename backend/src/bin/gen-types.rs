@@ -15,8 +15,8 @@ use prompt_faster::api::routes::generic::{
 };
 use prompt_faster::api::routes::health::HealthResponse;
 use prompt_faster::api::routes::optimization_tasks::{
-    CreateOptimizationTaskRequest, OptimizationTaskListItemResponse, OptimizationTaskResponse,
-    UpdateOptimizationTaskConfigRequest,
+    CreateOptimizationTaskRequest, MetaOptimizationTaskHint, OptimizationTaskListItemResponse,
+    OptimizationTaskResponse, UpdateOptimizationTaskConfigRequest,
 };
 use prompt_faster::api::routes::test_set_templates::{
     SaveAsTemplateRequest, TestSetTemplateListItemResponse, TestSetTemplateResponse,
@@ -39,17 +39,19 @@ use prompt_faster::api::ws::events::{
 };
 use prompt_faster::domain::models::{
     Actor, BranchInfo, Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
-    ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit,
-    DiagnosticReport, DiagnosticSummary, DiffSegment, DiffSegmentType, DimensionScore,
-    EvaluationResult, EventType, ExecutionResult, ExecutionTargetType, ExportResultResponse,
-    FailedCaseDetail, FailedCaseSummary, FailurePoint, FailureReasonEntry, HistoryEvent,
-    HistoryEventResponse, HistoryExportData, Iteration, IterationExportEntry, IterationState,
-    IterationSummaryEntry, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
-    OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension, RecoveryMetrics,
-    RecoveryRequest, RecoveryResponse, ResultExportFormat, RollbackRequest, RollbackResponse, Rule,
-    RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
-    TaskExportMeta, TaskHistoryResponse, TaskReference, TaskResultView, TestCase, TestSet,
-    TimelineEntry, TimelineEntryType, TimelineResponse, TokenUsage, TurningPoint, TurningPointType,
+    ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint,
+    CreateTeacherPromptInput, DataSplit, DiagnosticReport, DiagnosticSummary, DiffSegment,
+    DiffSegmentType, DimensionScore, EvaluationResult, EventType, ExecutionResult,
+    ExecutionTargetType, ExportResultResponse, FailedCaseDetail, FailedCaseSummary, FailurePoint,
+    FailureReasonEntry, HistoryEvent, HistoryEventResponse, HistoryExportData, Iteration,
+    IterationExportEntry, IterationState, IterationSummaryEntry, LineageType,
+    MetaOptimizationOverview, MetaOptimizationTaskSummary, OptimizationTaskEntity,
+    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension,
+    RecoveryMetrics, RecoveryRequest, RecoveryResponse, ResultExportFormat, RollbackRequest,
+    RollbackResponse, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
+    RuleTags, Severity, TaskExportMeta, TaskHistoryResponse, TaskReference, TaskResultView,
+    TeacherPrompt, TeacherPromptStats, TeacherPromptVersion, TestCase, TestSet, TimelineEntry,
+    TimelineEntryType, TimelineResponse, TokenUsage, TurningPoint, TurningPointType,
     UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
 };
 use prompt_faster::domain::types::{
@@ -136,6 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 优化任务
     CreateOptimizationTaskRequest::export_all_to(&out_dir)?;
+    MetaOptimizationTaskHint::export_all_to(&out_dir)?;
     OptimizationTaskResponse::export_all_to(&out_dir)?;
     OptimizationTaskListItemResponse::export_all_to(&out_dir)?;
     UpdateOptimizationTaskConfigRequest::export_all_to(&out_dir)?;
@@ -166,6 +169,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     FailedCaseDetail::export_all_to(&out_dir)?;
     DiffSegment::export_all_to(&out_dir)?;
     DiffSegmentType::export_all_to(&out_dir)?;
+    CreateTeacherPromptInput::export_all_to(&out_dir)?;
+    TeacherPrompt::export_all_to(&out_dir)?;
+    TeacherPromptVersion::export_all_to(&out_dir)?;
+    TeacherPromptStats::export_all_to(&out_dir)?;
+    MetaOptimizationOverview::export_all_to(&out_dir)?;
+    MetaOptimizationTaskSummary::export_all_to(&out_dir)?;
     HistoryEvent::export_all_to(&out_dir)?;
     HistoryEventResponse::export_all_to(&out_dir)?;
     TimelineEntry::export_all_to(&out_dir)?;

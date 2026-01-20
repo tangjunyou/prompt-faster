@@ -241,6 +241,7 @@ async fn create_task_with_test_set(db: &sqlx::SqlitePool, user_id: &str) -> Stri
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -281,6 +282,7 @@ async fn recovery_unfinished_tasks_and_recover_flow() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -346,6 +348,7 @@ async fn recovery_permission_denied_for_non_owner() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -394,6 +397,7 @@ async fn recovery_falls_back_to_previous_checkpoint() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -448,6 +452,7 @@ async fn unfinished_tasks_use_first_valid_checkpoint() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -506,6 +511,7 @@ async fn recovery_metrics_endpoint_returns_counts() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -573,6 +579,7 @@ async fn recovery_supports_legacy_checkpoint_payload() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await
@@ -665,6 +672,7 @@ async fn recovery_works_after_offline_checkpoint_save() {
             execution_target_type: prompt_faster::domain::models::ExecutionTargetType::Example,
             task_mode: prompt_faster::domain::models::OptimizationTaskMode::Fixed,
             test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
         },
     )
     .await

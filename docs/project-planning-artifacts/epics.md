@@ -1997,7 +1997,7 @@ This document provides the complete epic and story breakdown for Prompt Faster, 
 **Given** 用户进入元优化模式
 **When** 选择"优化老师模型 Prompt"
 **Then** 系统将老师模型 Prompt 作为优化目标（FR56）
-**And** 使用用户历史任务作为测试集
+**And** 展示用户历史任务作为测试集（MVP：仅数据展示/选择入口，不执行真实元优化流程）
 
 **Given** 老师模型 Prompt 发生变更
 **When** 保存变更

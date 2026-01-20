@@ -6,6 +6,7 @@ const VIEW_DEFINITIONS = [
   { key: 'run', label: 'Run', path: '/run', shortcut: '1' },
   { key: 'focus', label: 'Focus', path: '/focus', shortcut: '2' },
   { key: 'workspace', label: 'Workspace', path: '/workspace', shortcut: '3' },
+  { key: 'meta', label: 'Meta', path: '/meta-optimization', shortcut: '4' },
 ] as const
 
 const isEditableTarget = (target: EventTarget | null): boolean => {

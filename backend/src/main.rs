@@ -17,7 +17,7 @@ use prompt_faster::api::middleware::{
 };
 use prompt_faster::api::routes::{
     auth, checkpoints, diagnostic, docs, health, history, iteration_control, iterations, meta,
-    recovery, results, user_auth, workspaces,
+    meta_optimization, recovery, results, user_auth, workspaces,
 };
 use prompt_faster::api::state::AppState;
 use prompt_faster::api::ws;
@@ -168,6 +168,9 @@ async fn main() -> anyhow::Result<()> {
         session_store_for_middleware.clone(),
         auth_middleware,
     ));
+    let protected_meta_optimization_routes = meta_optimization::router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
+    );
 
     let protected_task_routes = iteration_control::router()
         .merge(recovery::task_router())
@@ -204,6 +207,10 @@ async fn main() -> anyhow::Result<()> {
         .nest(
             "/api/v1/tasks/{task_id}/diagnostic",
             protected_diagnostic_routes,
+        )
+        .nest(
+            "/api/v1/meta-optimization",
+            protected_meta_optimization_routes,
         )
         .nest("/api/v1/tasks/{task_id}", protected_task_routes)
         .nest("/api/v1/checkpoints", protected_checkpoints_routes)

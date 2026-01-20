@@ -8,6 +8,7 @@ pub mod iteration_repo;
 pub mod migration_repo;
 pub mod optimization_task_repo;
 pub mod recovery_metrics_repo;
+pub mod teacher_prompt_repo;
 pub mod teacher_settings_repo;
 pub mod test_set_repo;
 pub mod user_repo;
@@ -27,6 +28,10 @@ pub use optimization_task_repo::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,
 };
 pub use recovery_metrics_repo::{RecoveryMetricsRepo, RecoveryMetricsRepoError};
+pub use teacher_prompt_repo::{
+    CreateTeacherPromptRecordInput, TeacherPromptRecord, TeacherPromptRepo, TeacherPromptRepoError,
+    TeacherPromptVersionRecord, TeacherPromptVersionWithStatsRecord,
+};
 pub use teacher_settings_repo::{
     TeacherSettingsRecord, TeacherSettingsRepo, TeacherSettingsRepoError,
     UpsertTeacherSettingsInput,

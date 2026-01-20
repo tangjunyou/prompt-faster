@@ -50,6 +50,7 @@ pub struct CreateOptimizationTaskInput<'a> {
     pub execution_target_type: ExecutionTargetType,
     pub task_mode: OptimizationTaskMode,
     pub test_set_ids: &'a [String],
+    pub teacher_prompt_version_id: Option<&'a str>,
 }
 
 fn parse_execution_target_type(raw: &str) -> Option<ExecutionTargetType> {
@@ -205,9 +206,9 @@ impl OptimizationTaskRepo {
         sqlx::query(
             r#"
             INSERT INTO optimization_tasks
-              (id, workspace_id, name, description, goal, execution_target_type, task_mode, status, config_json, created_at, updated_at)
+              (id, workspace_id, name, description, goal, execution_target_type, task_mode, status, config_json, teacher_prompt_version_id, created_at, updated_at)
             VALUES
-              (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10)
+              (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11)
             "#,
         )
         .bind(&task_id)
@@ -218,6 +219,7 @@ impl OptimizationTaskRepo {
         .bind(serialize_execution_target_type(input.execution_target_type))
         .bind(serialize_task_mode(input.task_mode))
         .bind(serialize_task_status(OptimizationTaskStatus::Draft))
+        .bind(input.teacher_prompt_version_id)
         .bind(now)
         .bind(now)
         .execute(&mut *tx)
@@ -660,6 +662,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Dify,
                 task_mode: OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -720,6 +723,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Dify,
                 task_mode: OptimizationTaskMode::Fixed,
                 test_set_ids: &[test_set_ws2.id],
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -760,6 +764,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -776,6 +781,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -792,6 +798,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await

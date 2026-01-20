@@ -406,6 +406,10 @@ type LoadingState = 'idle' | 'loading' | 'success' | 'error';
 
 > **注**：`features/user-intervention/`、`features/workspace-manager/`、`features/checkpoint-recovery/`、`features/meta-optimization/` 为 MVP 后期或 Phase 2 功能模块，目录结构中以占位形式预留。
 
+**Meta-Optimization 数据关联（必须遵守）**
+- 任务与 Prompt 版本必须显式关联：`optimization_tasks.teacher_prompt_version_id` → `teacher_prompts.id`
+- 成功率统计仅基于该关联字段聚合，不允许用时间范围推断
+
 ### 技术规格 7 Trait → 后端 core/ 子模块
 
 | Trait | 模块位置 | 说明 |
@@ -1003,4 +1007,3 @@ SQLite / 外部 LLM API
 **下一阶段：** 使用本文档中记录的架构决策和模式开始实现。
 
 **文档维护：** 实现过程中如有重大技术决策变更，请同步更新本架构文档。
-
