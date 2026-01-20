@@ -316,7 +316,7 @@ fn generate_natural_language_explanation(
 
     let top = &failure_patterns[0];
     let suggestion = classify_failure_reason(&top.reason)
-        .and_then(|category| suggestions_for_category(category).get(0).copied())
+        .and_then(|category| suggestions_for_category(category).first().copied())
         .unwrap_or("补充任务说明与正反例约束");
     let mut explanation = format!(
         "主要失败原因是 {}，占比 {:.1}%。建议关注 {}。",
