@@ -11,3 +11,4 @@ export { OptimizationTasksView } from './OptimizationTasksView';
 export { OptimizationTaskConfigView } from './OptimizationTaskConfigView';
 export { PerfNfr2View } from './PerfNfr2View';
 export { PerfNfr3View } from './PerfNfr3View';
+export { MetaOptimizationPage } from './MetaOptimizationPage';

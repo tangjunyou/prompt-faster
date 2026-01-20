@@ -11,6 +11,7 @@ pub mod optimization_task;
 pub mod optimization_task_config;
 pub mod recovery;
 pub mod reflection;
+pub mod teacher_prompt;
 pub mod test_set;
 pub mod user;
 pub mod workspace;
@@ -59,6 +60,10 @@ pub use reflection::{
     ArbitrationMethod, ArbitrationResult, CandidateSource, ConflictType, FailureType,
     OptimizationResult, PromptCandidate, RecommendedAction, ReflectionResult, Suggestion,
     SuggestionConflict, SuggestionType, TerminationReason, UnifiedReflection, UnifiedSuggestion,
+};
+pub use teacher_prompt::{
+    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary, TeacherPrompt,
+    TeacherPromptStats, TeacherPromptVersion,
 };
 pub use test_set::TestSet;
 pub use user::User;

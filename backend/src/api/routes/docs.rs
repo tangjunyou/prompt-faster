@@ -59,6 +59,10 @@ use utoipa_swagger_ui::SwaggerUi;
             description = "诊断报告 API"
         ),
         (
+            name = "meta_optimization",
+            description = "元优化 Prompt 版本管理 API"
+        ),
+        (
             name = "recovery",
             description = "断点恢复与连接状态 API"
         )
@@ -102,6 +106,12 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::results::export_result,
         crate::api::routes::diagnostic::get_diagnostic_report,
         crate::api::routes::diagnostic::get_case_detail,
+        crate::api::routes::meta_optimization::create_prompt,
+        crate::api::routes::meta_optimization::list_prompts,
+        crate::api::routes::meta_optimization::get_prompt,
+        crate::api::routes::meta_optimization::activate_prompt,
+        crate::api::routes::meta_optimization::get_stats,
+        crate::api::routes::meta_optimization::list_historical_tasks,
         crate::api::routes::checkpoints::list_checkpoints,
         crate::api::routes::checkpoints::get_checkpoint,
         crate::api::routes::recovery::list_unfinished_tasks,
@@ -199,6 +209,13 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::FailedCaseDetail,
             crate::domain::models::DiffSegment,
             crate::domain::models::DiffSegmentType,
+            // Meta Optimization
+            crate::domain::models::CreateTeacherPromptInput,
+            crate::domain::models::TeacherPrompt,
+            crate::domain::models::TeacherPromptVersion,
+            crate::domain::models::TeacherPromptStats,
+            crate::domain::models::MetaOptimizationOverview,
+            crate::domain::models::MetaOptimizationTaskSummary,
             crate::domain::types::IterationHistorySummary,
             crate::domain::models::HistoryEvent,
             crate::domain::models::HistoryEventResponse,

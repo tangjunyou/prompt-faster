@@ -63,6 +63,7 @@ export function OptimizationTasksView() {
   const [executionTargetType, setExecutionTargetType] = useState<ExecutionTargetType>('dify')
   const [taskMode, setTaskMode] = useState<'fixed' | 'creative'>('fixed')
   const [selectedTestSetIds, setSelectedTestSetIds] = useState<string[]>([])
+  const [useActiveTeacherPrompt, setUseActiveTeacherPrompt] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
 
   const createErrorMessage = createError instanceof Error ? createError.message : null
@@ -117,6 +118,9 @@ export function OptimizationTasksView() {
       execution_target_type: executionTargetType,
       task_mode: taskMode,
       test_set_ids: selectedTestSetIds,
+      meta_optimization: useActiveTeacherPrompt
+        ? { use_active_teacher_prompt: true }
+        : null,
     }
 
     try {
@@ -127,6 +131,7 @@ export function OptimizationTasksView() {
       setExecutionTargetType('dify')
       setTaskMode('fixed')
       setSelectedTestSetIds([])
+      setUseActiveTeacherPrompt(false)
     } catch {
       // 错误由 mutation error 状态渲染（仅展示 message）
     }
@@ -253,6 +258,15 @@ export function OptimizationTasksView() {
                 </ul>
               )}
             </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={useActiveTeacherPrompt}
+                onChange={(event) => setUseActiveTeacherPrompt(event.target.checked)}
+              />
+              元优化任务：使用当前活跃的老师模型 Prompt
+            </label>
 
             {localError && <div className="text-sm text-red-500">{localError}</div>}
             {createErrorMessage && (

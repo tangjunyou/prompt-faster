@@ -1058,6 +1058,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -1109,6 +1110,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -1176,6 +1178,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -1229,6 +1232,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -1316,6 +1320,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -1377,6 +1382,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await
@@ -1440,6 +1446,7 @@ mod tests {
                 execution_target_type: ExecutionTargetType::Example,
                 task_mode: crate::domain::models::OptimizationTaskMode::Fixed,
                 test_set_ids: std::slice::from_ref(&test_set.id),
+                teacher_prompt_version_id: None,
             },
         )
         .await

@@ -20,10 +20,18 @@ use crate::domain::models::{
     OptimizationTaskMode, OptimizationTaskStatus, OutputConfig, TaskReference, TeacherLlmConfig,
 };
 use crate::infra::db::repositories::{
-    CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TestSetRepo,
-    TestSetRepoError, WorkspaceRepo, WorkspaceRepoError,
+    CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TeacherPromptRepo,
+    TeacherPromptRepoError, TestSetRepo, TestSetRepoError, WorkspaceRepo, WorkspaceRepoError,
 };
 use crate::shared::error_codes;
+
+#[derive(Debug, Deserialize, ToSchema, TS)]
+#[ts(export_to = "api/")]
+pub struct MetaOptimizationTaskHint {
+    /// 是否使用当前活跃的老师模型 Prompt 版本
+    #[serde(default)]
+    pub use_active_teacher_prompt: bool,
+}
 
 #[derive(Debug, Deserialize, ToSchema, TS)]
 #[ts(export_to = "api/")]
@@ -34,6 +42,8 @@ pub struct CreateOptimizationTaskRequest {
     pub execution_target_type: String,
     pub task_mode: String,
     pub test_set_ids: Vec<String>,
+    #[serde(default)]
+    pub meta_optimization: Option<MetaOptimizationTaskHint>,
 }
 
 #[derive(Debug, Serialize, ToSchema, TS)]
@@ -411,6 +421,40 @@ pub(crate) async fn create_optimization_task(
         return resp;
     }
 
+    let teacher_prompt_version_id = match req
+        .meta_optimization
+        .as_ref()
+        .map(|meta| meta.use_active_teacher_prompt)
+        .unwrap_or(false)
+    {
+        true => match TeacherPromptRepo::find_active(&state.db, user_id).await {
+            Ok(Some(prompt)) => Some(prompt.id),
+            Ok(None) => {
+                return ApiResponse::err(
+                    StatusCode::BAD_REQUEST,
+                    error_codes::VALIDATION_ERROR,
+                    "未找到可用的老师模型 Prompt 版本",
+                );
+            }
+            Err(TeacherPromptRepoError::DatabaseError(err)) => {
+                warn!(error = %err, "查询老师模型 Prompt 版本失败");
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询老师模型 Prompt 版本失败",
+                );
+            }
+            Err(_) => {
+                return ApiResponse::err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询老师模型 Prompt 版本失败",
+                );
+            }
+        },
+        false => None,
+    };
+
     match OptimizationTaskRepo::create_scoped(
         &state.db,
         CreateOptimizationTaskInput {
@@ -426,6 +470,7 @@ pub(crate) async fn create_optimization_task(
             execution_target_type,
             task_mode,
             test_set_ids: &test_set_ids,
+            teacher_prompt_version_id: teacher_prompt_version_id.as_deref(),
         },
     )
     .await
