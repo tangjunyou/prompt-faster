@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod checkpoints;
+pub mod diagnostic;
 pub mod dify;
 pub mod docs;
 pub mod generic;

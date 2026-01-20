@@ -983,6 +983,7 @@ mod tests {
                 is_best: false,
             }],
             user_guidance: None,
+            failure_archive: None,
             updated_at: chrono_timestamp(),
         };
 
@@ -1012,6 +1013,7 @@ mod tests {
                 is_best: false,
             }],
             user_guidance: None,
+            failure_archive: None,
             updated_at: chrono_timestamp(),
         };
 

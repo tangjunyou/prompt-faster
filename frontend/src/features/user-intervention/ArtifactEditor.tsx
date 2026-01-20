@@ -111,10 +111,11 @@ export function ArtifactEditor({
       patterns: editingPatterns,
       candidatePrompts: editingPrompts,
       userGuidance: artifacts?.userGuidance ?? null,
+      failureArchive: artifacts?.failureArchive ?? null,
       updatedAt: new Date().toISOString(),
     }
     onSave(updatedArtifacts, correlationId)
-  }, [editingPatterns, editingPrompts, onSave, artifacts?.userGuidance])
+  }, [editingPatterns, editingPrompts, onSave, artifacts?.userGuidance, artifacts?.failureArchive])
 
   // 更新规律假设内容
   const handlePatternChange = useCallback((value: string | undefined) => {

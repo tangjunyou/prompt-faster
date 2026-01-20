@@ -333,6 +333,25 @@ impl OptimizationTaskRepo {
         row_to_entity(&row)
     }
 
+    pub async fn list_test_set_ids_by_task_id(
+        pool: &SqlitePool,
+        task_id: &str,
+    ) -> Result<Vec<String>, OptimizationTaskRepoError> {
+        let rels = sqlx::query_as::<_, (String,)>(
+            r#"
+            SELECT test_set_id
+            FROM optimization_task_test_sets
+            WHERE optimization_task_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(task_id)
+        .fetch_all(pool)
+        .await?;
+
+        Ok(rels.into_iter().map(|(id,)| id).collect())
+    }
+
     pub async fn find_by_id_scoped(
         pool: &SqlitePool,
         user_id: &str,

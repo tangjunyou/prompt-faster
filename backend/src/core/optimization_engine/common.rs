@@ -9,14 +9,16 @@ use crate::core::iteration_engine::orchestrator::{IterationEngine, record_evalua
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
-    Actor, CandidateSource, Checkpoint, EvaluationResult, EventType, IterationState,
-    OptimizationResult, OptimizationTaskConfig, PromptCandidate, TerminationReason, TestCase,
+    Actor, CandidateSource, Checkpoint, EvaluationResult, EventType, FailureArchiveEntry,
+    IterationState, OptimizationResult, OptimizationTaskConfig, PromptCandidate, TerminationReason,
+    TestCase,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
-    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_PREV_ITERATION_STATE,
-    EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
+    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_FAILURE_ARCHIVE,
+    EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext,
+    PatternHypothesis, RunControlState,
 };
 use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
@@ -139,10 +141,17 @@ fn build_iteration_artifacts(ctx: &OptimizationContext) -> IterationArtifacts {
         current.is_best = true;
     }
 
+    let failure_archive = ctx
+        .extensions
+        .get(EXT_FAILURE_ARCHIVE)
+        .and_then(|value| serde_json::from_value::<Vec<FailureArchiveEntry>>(value.clone()).ok())
+        .filter(|entries| !entries.is_empty());
+
     IterationArtifacts {
         patterns,
         candidate_prompts,
         user_guidance: None,
+        failure_archive,
         updated_at: chrono_timestamp(),
     }
 }

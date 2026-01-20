@@ -18,7 +18,10 @@ pub use credential_repo::{
     CredentialRecord, CredentialRepo, CredentialRepoError, CredentialType, UpsertCredentialInput,
 };
 pub use history_event_repo::{HistoryEventRepo, HistoryEventRepoError};
-pub use iteration_repo::{IterationRepo, IterationRepoError, IterationSummaryWithArtifacts};
+pub use iteration_repo::{
+    IterationRepo, IterationRepoError, IterationSummaryWithArtifacts,
+    IterationSummaryWithArtifactsAndEvaluations,
+};
 pub use migration_repo::{MigrationRepo, MigrationRepoError, MigrationResult};
 pub use optimization_task_repo::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,

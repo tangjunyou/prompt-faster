@@ -14,14 +14,15 @@ use tracing::{info, warn};
 use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::domain::models::{
-    Actor, CheckpointCreateRequest, CheckpointEntity, EvaluationResult, EventType, LineageType,
-    PassRateSummary,
+    Actor, CheckpointCreateRequest, CheckpointEntity, EvaluationResult, EventType,
+    FailureArchiveEntry, LineageType, PassRateSummary,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_BRANCH_ID, EXT_CURRENT_PROMPT_STATS,
-    EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE,
-    IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState, UserGuidance,
+    EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_FAILURE_ARCHIVE, EXT_PREV_ITERATION_STATE,
+    EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
+    UserGuidance,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{CheckpointRepo, CheckpointRepoError};
@@ -375,10 +376,17 @@ fn build_iteration_artifacts(
         current.is_best = true;
     }
 
+    let failure_archive = ctx
+        .extensions
+        .get(EXT_FAILURE_ARCHIVE)
+        .and_then(|value| serde_json::from_value::<Vec<FailureArchiveEntry>>(value.clone()).ok())
+        .filter(|entries| !entries.is_empty());
+
     IterationArtifacts {
         patterns,
         candidate_prompts,
         user_guidance,
+        failure_archive,
         updated_at: crate::shared::ws::chrono_timestamp(),
     }
 }

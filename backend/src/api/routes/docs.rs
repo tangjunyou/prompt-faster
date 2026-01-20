@@ -55,6 +55,10 @@ use utoipa_swagger_ui::SwaggerUi;
             description = "结果查看与导出 API"
         ),
         (
+            name = "diagnostic",
+            description = "诊断报告 API"
+        ),
+        (
             name = "recovery",
             description = "断点恢复与连接状态 API"
         )
@@ -96,6 +100,8 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::history::export_history,
         crate::api::routes::results::get_result,
         crate::api::routes::results::export_result,
+        crate::api::routes::diagnostic::get_diagnostic_report,
+        crate::api::routes::diagnostic::get_case_detail,
         crate::api::routes::checkpoints::list_checkpoints,
         crate::api::routes::checkpoints::get_checkpoint,
         crate::api::routes::recovery::list_unfinished_tasks,
@@ -184,6 +190,15 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::IterationSummaryEntry,
             crate::domain::models::ExportResultResponse,
             crate::domain::models::ResultExportFormat,
+            crate::domain::models::DiagnosticReport,
+            crate::domain::models::DiagnosticSummary,
+            crate::domain::models::FailureReasonEntry,
+            crate::domain::models::TurningPoint,
+            crate::domain::models::TurningPointType,
+            crate::domain::models::FailedCaseSummary,
+            crate::domain::models::FailedCaseDetail,
+            crate::domain::models::DiffSegment,
+            crate::domain::models::DiffSegmentType,
             crate::domain::types::IterationHistorySummary,
             crate::domain::models::HistoryEvent,
             crate::domain::models::HistoryEventResponse,
