@@ -12,8 +12,8 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::core::diagnostic_service::{
-    generate_diagnostic_report, get_failed_case_detail, DiagnosticServiceError,
-    FAILED_CASES_DEFAULT_LIMIT, FAILED_CASES_MAX_LIMIT,
+    DiagnosticServiceError, FAILED_CASES_DEFAULT_LIMIT, FAILED_CASES_MAX_LIMIT,
+    generate_diagnostic_report, get_failed_case_detail,
 };
 use crate::domain::models::{DiagnosticReport, FailedCaseDetail};
 use crate::infra::db::repositories::{OptimizationTaskRepo, OptimizationTaskRepoError};
@@ -35,11 +35,10 @@ fn extract_correlation_id(headers: &HeaderMap) -> String {
 }
 
 async fn task_exists(pool: &sqlx::SqlitePool, task_id: &str) -> Result<bool, sqlx::Error> {
-    let exists: Option<(i64,)> =
-        sqlx::query_as("SELECT 1 FROM optimization_tasks WHERE id = ?1")
-            .bind(task_id)
-            .fetch_optional(pool)
-            .await?;
+    let exists: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM optimization_tasks WHERE id = ?1")
+        .bind(task_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(exists.is_some())
 }
 
@@ -272,11 +271,9 @@ fn map_service_error<T: serde::Serialize>(
             error_codes::FORBIDDEN,
             "任务不存在或无权访问",
         ),
-        DiagnosticServiceError::TaskNotStarted => ApiResponse::err(
-            StatusCode::NOT_FOUND,
-            error_codes::NOT_FOUND,
-            "任务未开始",
-        ),
+        DiagnosticServiceError::TaskNotStarted => {
+            ApiResponse::err(StatusCode::NOT_FOUND, error_codes::NOT_FOUND, "任务未开始")
+        }
         DiagnosticServiceError::TaskNotCompleted => ApiResponse::err(
             StatusCode::CONFLICT,
             error_codes::VALIDATION_ERROR,
@@ -332,7 +329,9 @@ pub fn router() -> Router<AppState> {
 mod tests {
     use super::*;
     use crate::api::middleware::{LoginAttemptStore, SessionStore};
-    use crate::domain::models::{ExecutionTargetType, OptimizationTaskMode, TestCase, TaskReference};
+    use crate::domain::models::{
+        ExecutionTargetType, OptimizationTaskMode, TaskReference, TestCase,
+    };
     use crate::infra::db::pool::create_pool;
     use crate::infra::db::repositories::{OptimizationTaskRepo, TestSetRepo, WorkspaceRepo};
     use crate::shared::config::AppConfig;
@@ -394,10 +393,7 @@ mod tests {
         .expect("插入测试用户失败");
     }
 
-    async fn seed_task_with_case(
-        pool: &SqlitePool,
-        user_id: &str,
-    ) -> (String, String) {
+    async fn seed_task_with_case(pool: &SqlitePool, user_id: &str) -> (String, String) {
         insert_user(pool, user_id, "user").await;
         let workspace = WorkspaceRepo::create(pool, user_id, "ws", None)
             .await
@@ -503,7 +499,9 @@ mod tests {
             State(state),
             HeaderMap::new(),
             Path(task_id),
-            Query(DiagnosticReportQuery { failed_cases_limit: Some(10) }),
+            Query(DiagnosticReportQuery {
+                failed_cases_limit: Some(10),
+            }),
             CurrentUser {
                 user_id: "u1".to_string(),
                 unlock_context: None,
@@ -528,7 +526,9 @@ mod tests {
             State(state),
             HeaderMap::new(),
             Path("missing".to_string()),
-            Query(DiagnosticReportQuery { failed_cases_limit: None }),
+            Query(DiagnosticReportQuery {
+                failed_cases_limit: None,
+            }),
             CurrentUser {
                 user_id: "u1".to_string(),
                 unlock_context: None,
@@ -551,7 +551,9 @@ mod tests {
             State(state),
             HeaderMap::new(),
             Path(task_id),
-            Query(DiagnosticReportQuery { failed_cases_limit: None }),
+            Query(DiagnosticReportQuery {
+                failed_cases_limit: None,
+            }),
             CurrentUser {
                 user_id: "u2".to_string(),
                 unlock_context: None,

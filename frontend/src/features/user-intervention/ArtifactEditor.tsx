@@ -111,6 +111,7 @@ export function ArtifactEditor({
       patterns: editingPatterns,
       candidatePrompts: editingPrompts,
       userGuidance: artifacts?.userGuidance ?? null,
+      failureArchive: artifacts?.failureArchive ?? null,
       updatedAt: new Date().toISOString(),
     }
     onSave(updatedArtifacts, correlationId)

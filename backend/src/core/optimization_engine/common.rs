@@ -10,8 +10,8 @@ use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
     Actor, CandidateSource, Checkpoint, EvaluationResult, EventType, FailureArchiveEntry,
-    IterationState,
-    OptimizationResult, OptimizationTaskConfig, PromptCandidate, TerminationReason, TestCase,
+    IterationState, OptimizationResult, OptimizationTaskConfig, PromptCandidate, TerminationReason,
+    TestCase,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,

@@ -36,6 +36,7 @@ describe('ArtifactEditor', () => {
       },
     ],
     userGuidance: null,
+    failureArchive: null,
     updatedAt: '2026-01-17T00:00:00Z',
   }
 

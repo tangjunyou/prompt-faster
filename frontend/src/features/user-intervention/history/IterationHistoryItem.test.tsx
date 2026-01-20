@@ -78,6 +78,7 @@ describe('IterationHistoryItem', () => {
           { id: 'c1', content: 'prompt-1', source: 'system', isBest: true, score: 0.9 },
         ],
         userGuidance: null,
+        failureArchive: null,
         updatedAt: '2025-01-01T12:00:00Z',
       },
       evaluationResults: [

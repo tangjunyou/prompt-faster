@@ -212,9 +212,8 @@ impl TestSetRepo {
             return Ok(Vec::new());
         }
 
-        let mut builder = QueryBuilder::new(
-            "SELECT cases_json FROM test_sets WHERE workspace_id = ",
-        );
+        let mut builder =
+            QueryBuilder::new("SELECT cases_json FROM test_sets WHERE workspace_id = ");
         builder.push_bind(workspace_id);
         builder.push(" AND is_template = 0 AND id IN (");
         let mut separated = builder.separated(", ");

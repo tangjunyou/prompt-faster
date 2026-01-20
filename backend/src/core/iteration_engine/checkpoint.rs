@@ -21,8 +21,8 @@ use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_BRANCH_ID, EXT_CURRENT_PROMPT_STATS,
     EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_FAILURE_ARCHIVE, EXT_PREV_ITERATION_STATE,
-    EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext, PatternHypothesis,
-    RunControlState, UserGuidance,
+    EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
+    UserGuidance,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{CheckpointRepo, CheckpointRepoError};

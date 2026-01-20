@@ -2,8 +2,9 @@ import { render, screen } from '@testing-library/react'
 import { describe, it, expect } from 'vitest'
 
 import { TurningPointTimeline } from './TurningPointTimeline'
+import type { TurningPoint } from '@/types/generated/models/TurningPoint'
 
-const turningPoints = [
+const turningPoints: TurningPoint[] = [
   {
     round: 2,
     eventType: 'improvement',

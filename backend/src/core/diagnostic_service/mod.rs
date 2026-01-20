@@ -11,7 +11,9 @@ use crate::domain::models::{
     FailedCaseSummary, FailureArchiveEntry, FailureReasonEntry, OptimizationTaskStatus,
     TurningPoint, TurningPointType,
 };
-use crate::domain::types::{EvaluationResultSummary, IterationArtifacts, IterationStatus, unix_ms_to_iso8601};
+use crate::domain::types::{
+    EvaluationResultSummary, IterationArtifacts, IterationStatus, unix_ms_to_iso8601,
+};
 use crate::infra::db::repositories::{
     IterationRepo, IterationRepoError, IterationSummaryWithArtifactsAndEvaluations,
     OptimizationTaskRepo, OptimizationTaskRepoError, TestSetRepo, TestSetRepoError,
@@ -72,20 +74,15 @@ pub async fn generate_diagnostic_report(
         return Err(DiagnosticServiceError::TaskNotCompleted);
     }
 
-    let iterations = IterationRepo::list_with_artifacts_and_results_by_task_id(
-        pool,
-        user_id,
-        task_id,
-        None,
-    )
-    .await
-    .map_err(map_iteration_repo_error)?;
+    let iterations =
+        IterationRepo::list_with_artifacts_and_results_by_task_id(pool, user_id, task_id, None)
+            .await
+            .map_err(map_iteration_repo_error)?;
 
     let iterations = to_diagnostic_iterations(iterations);
-    let total_iterations =
-        IterationRepo::count_by_task_id(pool, user_id, task_id).await.map_err(
-            map_iteration_repo_error,
-        )? as u32;
+    let total_iterations = IterationRepo::count_by_task_id(pool, user_id, task_id)
+        .await
+        .map_err(map_iteration_repo_error)? as u32;
 
     let (failed_iterations, success_iterations) = count_iteration_status(&iterations);
     let common_failure_reasons = analyze_failure_patterns(&iterations);
@@ -95,8 +92,7 @@ pub async fn generate_diagnostic_report(
         generate_natural_language_explanation(&common_failure_reasons, &turning_points);
 
     let test_cases = load_test_cases(pool, &task.workspace_id, task_id).await?;
-    let limit = failed_cases_limit
-        .clamp(1, FAILED_CASES_MAX_LIMIT);
+    let limit = failed_cases_limit.clamp(1, FAILED_CASES_MAX_LIMIT);
     let failed_cases = build_failed_case_summaries(&iterations, &test_cases, limit);
 
     Ok(DiagnosticReport {
@@ -151,8 +147,7 @@ pub async fn get_failed_case_detail(
         return Err(DiagnosticServiceError::FailedCaseNotFound);
     }
 
-    let test_case =
-        load_test_case(pool, &task.workspace_id, task_id, &test_case_id).await?;
+    let test_case = load_test_case(pool, &task.workspace_id, task_id, &test_case_id).await?;
 
     let input = test_case
         .as_ref()
@@ -190,10 +185,7 @@ fn analyze_failure_patterns(iterations: &[DiagnosticIteration]) -> Vec<FailureRe
             if result.passed {
                 continue;
             }
-            let raw = result
-                .failure_reason
-                .as_deref()
-                .unwrap_or("unknown");
+            let raw = result.failure_reason.as_deref().unwrap_or("unknown");
             let normalized = normalize_failure_reason(raw);
             let key = if normalized.is_empty() {
                 "unknown".to_string()
@@ -296,9 +288,7 @@ fn detect_turning_points(iterations: &[DiagnosticIteration]) -> Vec<TurningPoint
     out
 }
 
-fn generate_improvement_suggestions(
-    failure_patterns: &[FailureReasonEntry],
-) -> Vec<String> {
+fn generate_improvement_suggestions(failure_patterns: &[FailureReasonEntry]) -> Vec<String> {
     let mut suggestions = Vec::new();
     let mut seen = HashSet::new();
     for entry in failure_patterns {
@@ -412,10 +402,9 @@ async fn load_test_cases(
     workspace_id: &str,
     task_id: &str,
 ) -> Result<HashMap<String, crate::domain::models::TestCase>, DiagnosticServiceError> {
-    let test_set_ids =
-        OptimizationTaskRepo::list_test_set_ids_by_task_id(pool, task_id)
-            .await
-            .map_err(map_task_repo_error)?;
+    let test_set_ids = OptimizationTaskRepo::list_test_set_ids_by_task_id(pool, task_id)
+        .await
+        .map_err(map_task_repo_error)?;
     let cases = TestSetRepo::list_cases_by_ids(pool, workspace_id, &test_set_ids)
         .await
         .map_err(map_test_set_repo_error)?;
@@ -432,10 +421,9 @@ async fn load_test_case(
     task_id: &str,
     test_case_id: &str,
 ) -> Result<Option<crate::domain::models::TestCase>, DiagnosticServiceError> {
-    let test_set_ids =
-        OptimizationTaskRepo::list_test_set_ids_by_task_id(pool, task_id)
-            .await
-            .map_err(map_task_repo_error)?;
+    let test_set_ids = OptimizationTaskRepo::list_test_set_ids_by_task_id(pool, task_id)
+        .await
+        .map_err(map_task_repo_error)?;
     let case = TestSetRepo::find_case_by_id(pool, workspace_id, &test_set_ids, test_case_id)
         .await
         .map_err(map_test_set_repo_error)?;
@@ -453,11 +441,7 @@ fn to_diagnostic_iterations(
             status: item.summary.status,
             pass_rate: item.summary.pass_rate,
             evaluation_results: item.evaluation_results,
-            failure_archive: item
-                .artifacts
-                .failure_archive
-                .clone()
-                .unwrap_or_default(),
+            failure_archive: item.artifacts.failure_archive.clone().unwrap_or_default(),
             completed_at: item.completed_at,
             created_at: item.created_at,
         })
@@ -513,26 +497,11 @@ fn classify_failure_reason(reason: &str) -> Option<&'static str> {
 
 fn suggestions_for_category(category: &str) -> &'static [&'static str] {
     match category {
-        "format" => &[
-            "补充输出格式示例",
-            "在 Prompt 中明确格式约束",
-        ],
-        "length" => &[
-            "强调字数/长度要求",
-            "提供截断/扩写规则",
-        ],
-        "missing_field" => &[
-            "列出必需字段清单",
-            "给出字段顺序",
-        ],
-        "semantic_drift" => &[
-            "增加任务目标强调",
-            "提供正反例",
-        ],
-        "structure" => &[
-            "定义结构模板",
-            "要求严格遵循结构",
-        ],
+        "format" => &["补充输出格式示例", "在 Prompt 中明确格式约束"],
+        "length" => &["强调字数/长度要求", "提供截断/扩写规则"],
+        "missing_field" => &["列出必需字段清单", "给出字段顺序"],
+        "semantic_drift" => &["增加任务目标强调", "提供正反例"],
+        "structure" => &["定义结构模板", "要求严格遵循结构"],
         _ => &[],
     }
 }
@@ -568,9 +537,7 @@ fn stringify_input(input: &HashMap<String, serde_json::Value>) -> String {
     serde_json::to_string(input).unwrap_or_else(|_| "{}".to_string())
 }
 
-fn extract_expected_output(
-    case: &crate::domain::models::TestCase,
-) -> Option<String> {
+fn extract_expected_output(case: &crate::domain::models::TestCase) -> Option<String> {
     use crate::domain::models::TaskReference;
     match &case.reference {
         TaskReference::Exact { expected } => Some(expected.clone()),
@@ -762,7 +729,10 @@ mod tests {
         let points = detect_turning_points(&iterations);
         assert_eq!(points[0].event_type, TurningPointType::Breakthrough);
         assert_eq!(points[0].round, 2);
-        assert_eq!(points.last().unwrap().event_type, TurningPointType::Breakthrough);
+        assert_eq!(
+            points.last().unwrap().event_type,
+            TurningPointType::Breakthrough
+        );
     }
 
     #[test]
@@ -773,7 +743,11 @@ mod tests {
             base_iteration(3, 0.4),
         ];
         let points = detect_turning_points(&iterations);
-        assert!(points.iter().any(|p| p.event_type == TurningPointType::Regression));
+        assert!(
+            points
+                .iter()
+                .any(|p| p.event_type == TurningPointType::Regression)
+        );
     }
 
     #[test]
