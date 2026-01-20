@@ -128,13 +128,15 @@ impl TeacherPromptRepo {
 
         Ok(rows
             .into_iter()
-            .map(|(id, version, description, is_active, created_at)| TeacherPromptVersionRecord {
-                id,
-                version,
-                description,
-                is_active: is_active != 0,
-                created_at,
-            })
+            .map(
+                |(id, version, description, is_active, created_at)| TeacherPromptVersionRecord {
+                    id,
+                    version,
+                    description,
+                    is_active: is_active != 0,
+                    created_at,
+                },
+            )
             .collect())
     }
 
@@ -237,39 +239,44 @@ impl TeacherPromptRepo {
         id: &str,
         user_id: &str,
     ) -> Result<TeacherPromptRecord, TeacherPromptRepoError> {
-        let row = sqlx::query_as::<_, (String, String, i32, String, Option<String>, i64, i64, i64)>(
-            r#"
+        let row =
+            sqlx::query_as::<_, (String, String, i32, String, Option<String>, i64, i64, i64)>(
+                r#"
             SELECT id, user_id, version, content, description, is_active, created_at, updated_at
             FROM teacher_prompts
             WHERE id = ?1 AND user_id = ?2
             "#,
-        )
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+            )
+            .bind(id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
 
         match row {
-            Some((id, user_id, version, content, description, is_active, created_at, updated_at)) => {
-                Ok(TeacherPromptRecord {
-                    id,
-                    user_id,
-                    version,
-                    content,
-                    description,
-                    is_active: is_active != 0,
-                    created_at,
-                    updated_at,
-                })
-            }
+            Some((
+                id,
+                user_id,
+                version,
+                content,
+                description,
+                is_active,
+                created_at,
+                updated_at,
+            )) => Ok(TeacherPromptRecord {
+                id,
+                user_id,
+                version,
+                content,
+                description,
+                is_active: is_active != 0,
+                created_at,
+                updated_at,
+            }),
             None => Err(TeacherPromptRepoError::NotFound),
         }
     }
 
-    pub async fn exists_by_id(
-        pool: &SqlitePool,
-        id: &str,
-    ) -> Result<bool, TeacherPromptRepoError> {
+    pub async fn exists_by_id(pool: &SqlitePool, id: &str) -> Result<bool, TeacherPromptRepoError> {
         let exists: Option<(i64,)> = sqlx::query_as(
             r#"
             SELECT 1 FROM teacher_prompts WHERE id = ?1
@@ -286,30 +293,33 @@ impl TeacherPromptRepo {
         pool: &SqlitePool,
         user_id: &str,
     ) -> Result<Option<TeacherPromptRecord>, TeacherPromptRepoError> {
-        let row = sqlx::query_as::<_, (String, String, i32, String, Option<String>, i64, i64, i64)>(
-            r#"
+        let row =
+            sqlx::query_as::<_, (String, String, i32, String, Option<String>, i64, i64, i64)>(
+                r#"
             SELECT id, user_id, version, content, description, is_active, created_at, updated_at
             FROM teacher_prompts
             WHERE user_id = ?1 AND is_active = 1
             LIMIT 1
             "#,
-        )
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+            )
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
 
-        Ok(row.map(|(id, user_id, version, content, description, is_active, created_at, updated_at)| {
-            TeacherPromptRecord {
-                id,
-                user_id,
-                version,
-                content,
-                description,
-                is_active: is_active != 0,
-                created_at,
-                updated_at,
-            }
-        }))
+        Ok(row.map(
+            |(id, user_id, version, content, description, is_active, created_at, updated_at)| {
+                TeacherPromptRecord {
+                    id,
+                    user_id,
+                    version,
+                    content,
+                    description,
+                    is_active: is_active != 0,
+                    created_at,
+                    updated_at,
+                }
+            },
+        ))
     }
 
     pub async fn set_active(

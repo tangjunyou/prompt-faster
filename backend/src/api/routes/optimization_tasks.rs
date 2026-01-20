@@ -20,8 +20,9 @@ use crate::domain::models::{
     OptimizationTaskMode, OptimizationTaskStatus, OutputConfig, TaskReference, TeacherLlmConfig,
 };
 use crate::infra::db::repositories::{
-    CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError, TeacherPromptRepo,
-    TeacherPromptRepoError, TestSetRepo, TestSetRepoError, WorkspaceRepo, WorkspaceRepoError,
+    CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,
+    TeacherPromptRepo, TeacherPromptRepoError, TestSetRepo, TestSetRepoError, WorkspaceRepo,
+    WorkspaceRepoError,
 };
 use crate::shared::error_codes;
 

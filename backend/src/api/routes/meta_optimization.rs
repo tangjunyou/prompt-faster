@@ -2,7 +2,10 @@
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::{Json, Router, routing::{get, post, put}};
+use axum::{
+    Json, Router,
+    routing::{get, post, put},
+};
 use serde::Deserialize;
 use tracing::{info, warn};
 use utoipa::IntoParams;
@@ -12,8 +15,9 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::core::meta_optimization_service::{
-    MetaOptimizationServiceError, create_prompt_version, get_overview, get_prompt_by_id,
-    get_historical_tasks_for_meta_optimization, list_prompt_versions, set_active_prompt,
+    MetaOptimizationServiceError, create_prompt_version,
+    get_historical_tasks_for_meta_optimization, get_overview, get_prompt_by_id,
+    list_prompt_versions, set_active_prompt,
 };
 use crate::domain::models::{
     CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary, TeacherPrompt,
@@ -364,10 +368,11 @@ pub(crate) async fn list_historical_tasks(
     let correlation_id = extract_correlation_id(&headers);
     let user_id = &current_user.user_id;
 
-    let (limit, offset) = match normalize_task_limit_offset::<Vec<MetaOptimizationTaskSummary>>(&query) {
-        Ok(v) => v,
-        Err(resp) => return resp,
-    };
+    let (limit, offset) =
+        match normalize_task_limit_offset::<Vec<MetaOptimizationTaskSummary>>(&query) {
+            Ok(v) => v,
+            Err(resp) => return resp,
+        };
 
     log_action(
         &correlation_id,

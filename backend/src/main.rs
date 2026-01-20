@@ -168,11 +168,9 @@ async fn main() -> anyhow::Result<()> {
         session_store_for_middleware.clone(),
         auth_middleware,
     ));
-    let protected_meta_optimization_routes =
-        meta_optimization::router().layer(middleware::from_fn_with_state(
-            session_store_for_middleware.clone(),
-            auth_middleware,
-        ));
+    let protected_meta_optimization_routes = meta_optimization::router().layer(
+        middleware::from_fn_with_state(session_store_for_middleware.clone(), auth_middleware),
+    );
 
     let protected_task_routes = iteration_control::router()
         .merge(recovery::task_router())

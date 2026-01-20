@@ -179,8 +179,8 @@ pub async fn get_overview(
 
     let records =
         TeacherPromptRepo::list_with_stats_by_user(pool, user_id, total_versions as i64, 0)
-        .await
-        .map_err(map_repo_error)?;
+            .await
+            .map_err(map_repo_error)?;
 
     let mut stats_list = Vec::with_capacity(records.len());
     let mut versions = Vec::with_capacity(records.len());
@@ -500,16 +500,7 @@ mod tests {
         )
         .await;
 
-        insert_task_with_iteration(
-            &pool,
-            "task-2",
-            &workspace.id,
-            &version.id,
-            None,
-            0.5,
-            2,
-        )
-        .await;
+        insert_task_with_iteration(&pool, "task-2", &workspace.id, &version.id, None, 0.5, 2).await;
 
         let stats = TeacherPromptRepo::calculate_stats(&pool, &version.id, "u1")
             .await

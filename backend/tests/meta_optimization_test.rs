@@ -163,14 +163,20 @@ async fn test_create_list_and_get_prompt() {
     let create_json = read_json_body(create_resp).await;
     let prompt_id = create_json["data"]["id"].as_str().unwrap().to_string();
 
-    let list_req = with_bearer(build_empty_request("GET", "/api/v1/meta-optimization/prompts"), &token);
+    let list_req = with_bearer(
+        build_empty_request("GET", "/api/v1/meta-optimization/prompts"),
+        &token,
+    );
     let list_resp = app.clone().oneshot(list_req).await.unwrap();
     assert_eq!(list_resp.status(), StatusCode::OK);
     let list_json = read_json_body(list_resp).await;
     assert_eq!(list_json["data"].as_array().unwrap().len(), 1);
 
     let get_req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/meta-optimization/prompts/{}", prompt_id)),
+        build_empty_request(
+            "GET",
+            &format!("/api/v1/meta-optimization/prompts/{}", prompt_id),
+        ),
         &token,
     );
     let get_resp = app.clone().oneshot(get_req).await.unwrap();
@@ -217,7 +223,10 @@ async fn test_activate_prompt_and_stats() {
     let activate_resp = app.clone().oneshot(activate_req).await.unwrap();
     assert_eq!(activate_resp.status(), StatusCode::OK);
 
-    let stats_req = with_bearer(build_empty_request("GET", "/api/v1/meta-optimization/stats"), &token);
+    let stats_req = with_bearer(
+        build_empty_request("GET", "/api/v1/meta-optimization/stats"),
+        &token,
+    );
     let stats_resp = app.clone().oneshot(stats_req).await.unwrap();
     assert_eq!(stats_resp.status(), StatusCode::OK);
     let stats_json = read_json_body(stats_resp).await;
@@ -246,7 +255,10 @@ async fn test_prompt_forbidden_for_other_user() {
     let prompt_id = create_json["data"]["id"].as_str().unwrap().to_string();
 
     let get_req = with_bearer(
-        build_empty_request("GET", &format!("/api/v1/meta-optimization/prompts/{}", prompt_id)),
+        build_empty_request(
+            "GET",
+            &format!("/api/v1/meta-optimization/prompts/{}", prompt_id),
+        ),
         &token2,
     );
     let get_resp = app.clone().oneshot(get_req).await.unwrap();
