@@ -1,4 +1,4 @@
-use sqlx::SqlitePool;
+use sqlx::{QueryBuilder, SqlitePool};
 use thiserror::Error;
 
 use crate::domain::models::{TestCase, TestSet};
@@ -201,6 +201,71 @@ impl TestSetRepo {
             created_at,
             updated_at,
         })
+    }
+
+    pub async fn list_cases_by_ids(
+        pool: &SqlitePool,
+        workspace_id: &str,
+        test_set_ids: &[String],
+    ) -> Result<Vec<TestCase>, TestSetRepoError> {
+        if test_set_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut builder = QueryBuilder::new(
+            "SELECT cases_json FROM test_sets WHERE workspace_id = ",
+        );
+        builder.push_bind(workspace_id);
+        builder.push(" AND is_template = 0 AND id IN (");
+        let mut separated = builder.separated(", ");
+        for id in test_set_ids {
+            separated.push_bind(id);
+        }
+        builder.push(")");
+
+        let rows: Vec<(String,)> = builder.build_query_as().fetch_all(pool).await?;
+
+        let mut out = Vec::new();
+        for (cases_json,) in rows {
+            let cases: Vec<TestCase> = serde_json::from_str(&cases_json)?;
+            out.extend(cases);
+        }
+        Ok(out)
+    }
+
+    pub async fn find_case_by_id(
+        pool: &SqlitePool,
+        workspace_id: &str,
+        test_set_ids: &[String],
+        test_case_id: &str,
+    ) -> Result<Option<TestCase>, TestSetRepoError> {
+        if test_set_ids.is_empty() {
+            return Ok(None);
+        }
+
+        for test_set_id in test_set_ids {
+            let row: Option<(String,)> = sqlx::query_as(
+                r#"
+                SELECT cases_json
+                FROM test_sets
+                WHERE workspace_id = ?1 AND id = ?2 AND is_template = 0
+                "#,
+            )
+            .bind(workspace_id)
+            .bind(test_set_id)
+            .fetch_optional(pool)
+            .await?;
+
+            let Some((cases_json,)) = row else {
+                continue;
+            };
+            let cases: Vec<TestCase> = serde_json::from_str(&cases_json)?;
+            if let Some(found) = cases.into_iter().find(|case| case.id == test_case_id) {
+                return Ok(Some(found));
+            }
+        }
+
+        Ok(None)
     }
 
     pub async fn find_by_id_scoped(

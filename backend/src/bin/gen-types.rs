@@ -40,15 +40,17 @@ use prompt_faster::api::ws::events::{
 use prompt_faster::domain::models::{
     Actor, BranchInfo, Checkpoint, CheckpointListResponse, CheckpointResponse, CheckpointSummary,
     ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint, DataSplit,
-    DimensionScore, EvaluationResult, EventType, ExecutionResult, ExecutionTargetType,
-    ExportResultResponse, FailurePoint, HistoryEvent, HistoryEventResponse, HistoryExportData,
-    Iteration, IterationExportEntry, IterationState, IterationSummaryEntry, LineageType,
-    OptimizationTaskEntity, OptimizationTaskMode, OptimizationTaskStatus, OutputLength,
-    PassRateSummary, QualityDimension, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
-    ResultExportFormat, RollbackRequest, RollbackResponse, Rule, RuleConflict, RuleConflictType,
-    RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskExportMeta, TaskHistoryResponse,
-    TaskReference, TaskResultView, TestCase, TestSet, TimelineEntry, TimelineEntryType,
-    TimelineResponse, TokenUsage, UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
+    DiagnosticReport, DiagnosticSummary, DiffSegment, DiffSegmentType, DimensionScore,
+    EvaluationResult, EventType, ExecutionResult, ExecutionTargetType, ExportResultResponse,
+    FailedCaseDetail, FailedCaseSummary, FailurePoint, FailureReasonEntry, HistoryEvent,
+    HistoryEventResponse, HistoryExportData, Iteration, IterationExportEntry, IterationState,
+    IterationSummaryEntry, LineageType, OptimizationTaskEntity, OptimizationTaskMode,
+    OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension, RecoveryMetrics,
+    RecoveryRequest, RecoveryResponse, ResultExportFormat, RollbackRequest, RollbackResponse,
+    Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity,
+    TaskExportMeta, TaskHistoryResponse, TaskReference, TaskResultView, TestCase, TestSet,
+    TimelineEntry, TimelineEntryType, TimelineResponse, TokenUsage, TurningPoint, TurningPointType,
+    UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
@@ -155,6 +157,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TaskResultView::export_all_to(&out_dir)?;
     IterationSummaryEntry::export_all_to(&out_dir)?;
     ExportResultResponse::export_all_to(&out_dir)?;
+    DiagnosticReport::export_all_to(&out_dir)?;
+    DiagnosticSummary::export_all_to(&out_dir)?;
+    FailureReasonEntry::export_all_to(&out_dir)?;
+    TurningPoint::export_all_to(&out_dir)?;
+    TurningPointType::export_all_to(&out_dir)?;
+    FailedCaseSummary::export_all_to(&out_dir)?;
+    FailedCaseDetail::export_all_to(&out_dir)?;
+    DiffSegment::export_all_to(&out_dir)?;
+    DiffSegmentType::export_all_to(&out_dir)?;
     HistoryEvent::export_all_to(&out_dir)?;
     HistoryEventResponse::export_all_to(&out_dir)?;
     TimelineEntry::export_all_to(&out_dir)?;

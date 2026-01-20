@@ -1128,6 +1128,7 @@ mod tests {
                 is_best: true,
             }],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "now".to_string(),
         };
         let snapshot = json!({ "artifacts": artifacts });

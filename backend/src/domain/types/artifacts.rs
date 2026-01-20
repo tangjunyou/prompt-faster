@@ -4,6 +4,7 @@
 //! 注意：这些类型是面向编辑视图的轻量结构，与 `RuleSystem` 有映射关系。
 
 use crate::domain::models::optimization_task_config::OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
+use crate::domain::models::FailureArchiveEntry;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;
@@ -159,6 +160,9 @@ pub struct IterationArtifacts {
     /// 用户引导（可选，单轮生效）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_guidance: Option<UserGuidance>,
+    /// 失败档案（可选，来自 OptimizationContext.extensions）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_archive: Option<Vec<FailureArchiveEntry>>,
     /// 最后更新时间戳（ISO 8601 格式）
     #[serde(default)]
     pub updated_at: String,
@@ -307,6 +311,7 @@ impl IterationArtifacts {
             patterns: new_patterns,
             candidate_prompts: new_prompts,
             user_guidance: updated.user_guidance.clone(),
+            failure_archive: self.failure_archive.clone(),
             updated_at: updated.updated_at.clone(),
         }
     }
@@ -340,6 +345,7 @@ mod tests {
             }],
             candidate_prompts: vec![],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
@@ -364,6 +370,7 @@ mod tests {
                 is_best: false,
             }],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "".to_string(),
         };
 
@@ -377,6 +384,7 @@ mod tests {
             }],
             candidate_prompts: vec![],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "".to_string(),
         };
         assert!(original.validate_update(&valid_update).is_ok());
@@ -391,6 +399,7 @@ mod tests {
             }],
             candidate_prompts: vec![],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "".to_string(),
         };
         assert!(original.validate_update(&invalid_update).is_err());
@@ -413,6 +422,7 @@ mod tests {
                 is_best: false,
             }],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "".to_string(),
         };
 
@@ -431,6 +441,7 @@ mod tests {
                 is_best: false,
             }],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
@@ -461,6 +472,7 @@ mod tests {
             ],
             candidate_prompts: vec![],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "".to_string(),
         };
 
@@ -474,6 +486,7 @@ mod tests {
             }],
             candidate_prompts: vec![],
             user_guidance: None,
+            failure_archive: None,
             updated_at: "".to_string(),
         };
 
@@ -552,6 +565,7 @@ mod tests {
             patterns: vec![],
             candidate_prompts: vec![],
             user_guidance: Some(guidance),
+            failure_archive: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
