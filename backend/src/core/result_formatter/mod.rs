@@ -77,10 +77,7 @@ pub fn format_as_markdown(result: &TaskResultView) -> String {
     out.push_str(&format!("- 任务名称: {}\n", result.task_name));
     out.push_str(&format!("- 状态: {}\n", result.status));
     out.push_str(&format!("- 通过率: {}\n", pass_rate));
-    out.push_str(&format!(
-        "- 总迭代轮次: {}\n",
-        result.total_iterations
-    ));
+    out.push_str(&format!("- 总迭代轮次: {}\n", result.total_iterations));
     out.push_str(&format!("- 完成时间: {}\n", completed_at));
     out.push_str(&format!("- 导出时间: {}\n\n", exported_at));
     out.push_str("## 最佳 Prompt\n\n");
@@ -119,10 +116,7 @@ pub fn format_as_xml(result: &TaskResultView) -> String {
         "<taskName>{}</taskName>",
         xml_escape(&result.task_name)
     ));
-    out.push_str(&format!(
-        "<status>{}</status>",
-        xml_escape(&result.status)
-    ));
+    out.push_str(&format!("<status>{}</status>", xml_escape(&result.status)));
     out.push_str(&format!(
         "<passRate>{}</passRate>",
         result
@@ -160,10 +154,7 @@ pub fn format_as_xml(result: &TaskResultView) -> String {
                 .map(|value| value.to_string())
                 .unwrap_or_default()
         ));
-        out.push_str(&format!(
-            "<status>{}</status>",
-            xml_escape(&entry.status)
-        ));
+        out.push_str(&format!("<status>{}</status>", xml_escape(&entry.status)));
         out.push_str("</entry>");
     }
     out.push_str("</iterationSummary>");
@@ -174,8 +165,8 @@ pub fn format_as_xml(result: &TaskResultView) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use quick_xml::events::Event;
     use quick_xml::Reader;
+    use quick_xml::events::Event;
 
     fn sample_result() -> TaskResultView {
         TaskResultView {

@@ -130,36 +130,34 @@ async fn build_task_result_view(
 ) -> Result<TaskResultView, ResultError> {
     let task = match OptimizationTaskRepo::find_by_id_for_user(&state.db, user_id, task_id).await {
         Ok(task) => task,
-        Err(OptimizationTaskRepoError::NotFound) => {
-            match task_exists(&state.db, task_id).await {
-                Ok(true) => {
-                    return Err(ResultError::new(
-                        StatusCode::FORBIDDEN,
-                        error_codes::FORBIDDEN,
-                        "无权访问该任务",
-                    ));
-                }
-                Ok(false) => {
-                    return Err(ResultError::new(
-                        StatusCode::NOT_FOUND,
-                        error_codes::OPTIMIZATION_TASK_NOT_FOUND,
-                        "任务不存在",
-                    ));
-                }
-                Err(err) => {
-                    warn!(
-                        correlation_id = %correlation_id,
-                        error = %err,
-                        "检查任务存在性失败"
-                    );
-                    return Err(ResultError::new(
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        error_codes::DATABASE_ERROR,
-                        "查询任务失败",
-                    ));
-                }
+        Err(OptimizationTaskRepoError::NotFound) => match task_exists(&state.db, task_id).await {
+            Ok(true) => {
+                return Err(ResultError::new(
+                    StatusCode::FORBIDDEN,
+                    error_codes::FORBIDDEN,
+                    "无权访问该任务",
+                ));
             }
-        }
+            Ok(false) => {
+                return Err(ResultError::new(
+                    StatusCode::NOT_FOUND,
+                    error_codes::OPTIMIZATION_TASK_NOT_FOUND,
+                    "任务不存在",
+                ));
+            }
+            Err(err) => {
+                warn!(
+                    correlation_id = %correlation_id,
+                    error = %err,
+                    "检查任务存在性失败"
+                );
+                return Err(ResultError::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    error_codes::DATABASE_ERROR,
+                    "查询任务失败",
+                ));
+            }
+        },
         Err(err) => {
             warn!(
                 correlation_id = %correlation_id,
@@ -296,15 +294,13 @@ async fn build_task_result_view(
     }
 
     let completed_best = match IterationRepo::find_best_completed_with_artifacts_by_task_id(
-        &state.db,
-        user_id,
-        task_id,
+        &state.db, user_id, task_id,
     )
     .await
     {
-        Ok(Some(best)) => select_best_prompt(&best.artifacts).map(|prompt| {
-            (prompt, best.summary.pass_rate)
-        }),
+        Ok(Some(best)) => {
+            select_best_prompt(&best.artifacts).map(|prompt| (prompt, best.summary.pass_rate))
+        }
         Ok(None) => None,
         Err(IterationRepoError::TaskNotFoundOrForbidden) => {
             return Err(ResultError::new(
@@ -689,8 +685,24 @@ mod tests {
         let artifacts_selected = build_artifacts("selected");
         let artifacts_fallback = build_artifacts("fallback");
 
-        insert_iteration(&state.db, &task_id, 1, "completed", 0.6, Some(artifacts_fallback)).await;
-        insert_iteration(&state.db, &task_id, 2, "completed", 0.9, Some(artifacts_selected)).await;
+        insert_iteration(
+            &state.db,
+            &task_id,
+            1,
+            "completed",
+            0.6,
+            Some(artifacts_fallback),
+        )
+        .await;
+        insert_iteration(
+            &state.db,
+            &task_id,
+            2,
+            "completed",
+            0.9,
+            Some(artifacts_selected),
+        )
+        .await;
         update_task_selected(&state.db, &task_id, Some("iter-2"), Some("final")).await;
 
         let view = build_task_result_view(&state, "u1", &task_id, "c1")
@@ -755,9 +767,33 @@ mod tests {
         let state = setup_state().await;
         let task_id = seed_task(&state.db, "u1", "completed").await;
 
-        insert_iteration(&state.db, &task_id, 1, "completed", 0.4, Some(build_artifacts("p1"))).await;
-        insert_iteration(&state.db, &task_id, 3, "completed", 0.5, Some(build_artifacts("p3"))).await;
-        insert_iteration(&state.db, &task_id, 5, "completed", 0.6, Some(build_artifacts("p5"))).await;
+        insert_iteration(
+            &state.db,
+            &task_id,
+            1,
+            "completed",
+            0.4,
+            Some(build_artifacts("p1")),
+        )
+        .await;
+        insert_iteration(
+            &state.db,
+            &task_id,
+            3,
+            "completed",
+            0.5,
+            Some(build_artifacts("p3")),
+        )
+        .await;
+        insert_iteration(
+            &state.db,
+            &task_id,
+            5,
+            "completed",
+            0.6,
+            Some(build_artifacts("p5")),
+        )
+        .await;
 
         let view = build_task_result_view(&state, "u1", &task_id, "c1")
             .await
@@ -800,7 +836,10 @@ mod tests {
 
     #[test]
     fn test_parse_export_format() {
-        assert_eq!(parse_export_format("markdown"), Some(ResultExportFormat::Markdown));
+        assert_eq!(
+            parse_export_format("markdown"),
+            Some(ResultExportFormat::Markdown)
+        );
         assert_eq!(parse_export_format("JSON"), Some(ResultExportFormat::Json));
         assert_eq!(parse_export_format("xml"), Some(ResultExportFormat::Xml));
         assert_eq!(parse_export_format("yaml"), None);
