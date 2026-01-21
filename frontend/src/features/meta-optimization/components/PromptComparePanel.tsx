@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -42,15 +42,11 @@ export function PromptComparePanel() {
 
   const workspaceError = selectedTasks.length > 0 && !workspaceId ? '请只选择同一工作区内的历史任务' : null
 
-  const resetCompare = useCallback(() => {
+  useEffect(() => {
     if (compareMutation.data || compareMutation.error) {
       compareMutation.reset()
     }
-  }, [compareMutation.data, compareMutation.error, compareMutation.reset])
-
-  useEffect(() => {
-    resetCompare()
-  }, [versionIdA, versionIdB, selectedTaskIds, resetCompare])
+  }, [compareMutation, versionIdA, versionIdB, selectedTaskIds])
 
   const availableVersionsA = useMemo(
     () => versions.filter((version) => version.id !== versionIdB),

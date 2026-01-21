@@ -694,10 +694,12 @@ async fn test_compare_prompt_both_failed() {
     assert_eq!(body["data"]["summary"]["regressedCases"], 0);
     assert_eq!(body["data"]["summary"]["outputDiffCases"], 0);
     assert_eq!(body["data"]["summary"]["unchangedCases"], 2);
-    assert!(body["data"]["caseComparisons"][0]["differenceNote"]
-        .as_str()
-        .unwrap_or("")
-        .contains("两版本均失败"));
+    assert!(
+        body["data"]["caseComparisons"][0]["differenceNote"]
+            .as_str()
+            .unwrap_or("")
+            .contains("两版本均失败")
+    );
 }
 
 #[tokio::test]

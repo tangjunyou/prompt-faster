@@ -19,9 +19,9 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::core::meta_optimization_service::{
-    MetaOptimizationServiceError, create_prompt_version,
+    MetaOptimizationServiceError, compare_prompts, create_prompt_version,
     get_historical_tasks_for_meta_optimization, get_overview, get_prompt_by_id,
-    list_prompt_versions, preview_prompt, compare_prompts, set_active_prompt, validate_prompt,
+    list_prompt_versions, preview_prompt, set_active_prompt, validate_prompt,
 };
 use crate::domain::models::{
     CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary,

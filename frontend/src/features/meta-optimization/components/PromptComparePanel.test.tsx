@@ -84,7 +84,7 @@ describe('PromptComparePanel', () => {
 
     const taskLabel = screen.getByText('任务 1').closest('label')
     expect(taskLabel).toBeTruthy()
-    const checkbox = taskLabel?.querySelector('input[type=\"checkbox\"]') as HTMLInputElement
+    const checkbox = taskLabel?.querySelector('input[type="checkbox"]') as HTMLInputElement
     fireEvent.click(checkbox)
     fireEvent.click(screen.getByRole('button', { name: '开始对比' }))
 

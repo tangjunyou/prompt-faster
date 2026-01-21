@@ -14,8 +14,8 @@ use crate::domain::models::{
     CaseComparisonResult, CompareSummary, CreateTeacherPromptInput, ExecutionTargetType,
     IterationState, MetaOptimizationOverview, MetaOptimizationTaskSummary, OptimizationTaskConfig,
     PromptCompareRequest, PromptCompareResponse, PromptPreviewRequest, PromptPreviewResponse,
-    PromptPreviewResult, PromptValidationRequest, PromptValidationResult, RuleSystem, TeacherPrompt,
-    TeacherPromptStats, TeacherPromptVersion, TestCase, VersionCompareResult,
+    PromptPreviewResult, PromptValidationRequest, PromptValidationResult, RuleSystem,
+    TeacherPrompt, TeacherPromptStats, TeacherPromptVersion, TestCase, VersionCompareResult,
 };
 use crate::domain::types::{
     ExecutionTargetConfig, OptimizationConfig, OptimizationContext, unix_ms_to_iso8601,
@@ -590,6 +590,7 @@ async fn resolve_preview_context(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn execute_prompt_preview(
     pool: &SqlitePool,
     api_key_manager: &ApiKeyManager,
@@ -697,11 +698,8 @@ async fn execute_prompt_preview(
             let exec_time = exec_result.latency_ms as i64;
             total_time_ms += exec_time;
 
-            let error_message = build_preview_error_message(
-                eval.passed,
-                &eval.failure_points,
-                &eval.dimensions,
-            );
+            let error_message =
+                build_preview_error_message(eval.passed, &eval.failure_points, &eval.dimensions);
 
             results.push(PromptPreviewResult {
                 test_case_id: test_case.id.clone(),
@@ -743,9 +741,8 @@ pub async fn preview_prompt(
         return Err(MetaOptimizationServiceError::InvalidRequest(msg));
     }
 
-    let ctx =
-        resolve_preview_context(pool, user_id, &request.task_ids, &request.test_case_ids, 3)
-            .await?;
+    let ctx = resolve_preview_context(pool, user_id, &request.task_ids, &request.test_case_ids, 3)
+        .await?;
 
     execute_prompt_preview(
         pool,
@@ -767,9 +764,9 @@ async fn load_prompt_for_compare(
 ) -> Result<TeacherPromptRecord, MetaOptimizationServiceError> {
     match TeacherPromptRepo::find_by_id(pool, version_id, user_id).await {
         Ok(record) => Ok(record),
-        Err(TeacherPromptRepoError::NotFound) => Err(MetaOptimizationServiceError::NotFoundOrForbidden(
-            Some(version_id.to_string()),
-        )),
+        Err(TeacherPromptRepoError::NotFound) => Err(
+            MetaOptimizationServiceError::NotFoundOrForbidden(Some(version_id.to_string())),
+        ),
         Err(TeacherPromptRepoError::DatabaseError(err)) => {
             Err(MetaOptimizationServiceError::Database(err))
         }
@@ -831,9 +828,8 @@ pub async fn compare_prompts(
     let version_a = load_prompt_for_compare(pool, user_id, &request.version_id_a).await?;
     let version_b = load_prompt_for_compare(pool, user_id, &request.version_id_b).await?;
 
-    let ctx =
-        resolve_preview_context(pool, user_id, &request.task_ids, &request.test_case_ids, 10)
-            .await?;
+    let ctx = resolve_preview_context(pool, user_id, &request.task_ids, &request.test_case_ids, 10)
+        .await?;
 
     let compare_timeout = Duration::from_secs(compare_timeout_secs());
     let per_prompt_timeout = Duration::from_secs(preview_timeout_secs());
@@ -916,20 +912,12 @@ pub async fn compare_prompts(
     let mut unchanged_cases = 0;
 
     for case in &ctx.selected_cases {
-        let result_a = preview_a_map
-            .get(&case.id)
-            .ok_or_else(|| {
-                MetaOptimizationServiceError::ExecutionFailed(
-                    "版本 A 预览结果不完整".to_string(),
-                )
-            })?;
-        let result_b = preview_b_map
-            .get(&case.id)
-            .ok_or_else(|| {
-                MetaOptimizationServiceError::ExecutionFailed(
-                    "版本 B 预览结果不完整".to_string(),
-                )
-            })?;
+        let result_a = preview_a_map.get(&case.id).ok_or_else(|| {
+            MetaOptimizationServiceError::ExecutionFailed("版本 A 预览结果不完整".to_string())
+        })?;
+        let result_b = preview_b_map.get(&case.id).ok_or_else(|| {
+            MetaOptimizationServiceError::ExecutionFailed("版本 B 预览结果不完整".to_string())
+        })?;
 
         let output_diff = result_a.actual_output != result_b.actual_output;
         let is_different = result_a.passed != result_b.passed || output_diff;
@@ -1148,10 +1136,7 @@ mod tests {
             &Some("err-a".to_string()),
             &Some("err-b".to_string()),
         );
-        assert_eq!(
-            note.as_deref(),
-            Some("两版本均失败：A=err-a；B=err-b")
-        );
+        assert_eq!(note.as_deref(), Some("两版本均失败：A=err-a；B=err-b"));
     }
 
     async fn insert_task_with_iteration(
