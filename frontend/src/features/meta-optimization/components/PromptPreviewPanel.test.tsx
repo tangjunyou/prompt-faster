@@ -52,7 +52,7 @@ vi.mock('../hooks/usePromptPreview', () => ({
   }),
 }))
 
-const mockTaskDetail: OptimizationTaskResponse = {
+const mockTaskDetail = vi.hoisted<OptimizationTaskResponse>(() => ({
   id: 'task-1',
   workspace_id: 'ws-1',
   name: '历史任务 1',
@@ -68,7 +68,7 @@ const mockTaskDetail: OptimizationTaskResponse = {
   selected_iteration_id: null,
   created_at: 0,
   updated_at: 0,
-}
+}))
 
 vi.mock('@/features/task-config/services/optimizationTaskService', () => ({
   getOptimizationTask: vi.fn().mockResolvedValue(mockTaskDetail),

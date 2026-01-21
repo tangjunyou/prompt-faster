@@ -104,7 +104,7 @@ fn validate_prompt_content(content: &str) -> PromptValidationResult {
     if trimmed.is_empty() {
         errors.push("Prompt 内容不能为空".to_string());
     }
-    if content.as_bytes().len() > MAX_PROMPT_BYTES {
+    if content.len() > MAX_PROMPT_BYTES {
         errors.push("Prompt 内容不能超过 100KB".to_string());
     }
 
@@ -528,12 +528,15 @@ pub async fn preview_prompt(
     let task_config = task_config.unwrap_or_default();
     let execution_target_type = execution_target_type.unwrap_or(ExecutionTargetType::Example);
 
-    let execution_target_config = build_execution_target_config(
+    let execution_target_context = ExecutionTargetContext {
         pool,
         api_key_manager,
         user_id,
         user_password,
-        &workspace_id,
+        workspace_id: &workspace_id,
+    };
+    let execution_target_config = build_execution_target_config(
+        execution_target_context,
         execution_target_type,
         &task_config,
         &test_set_ids,
@@ -647,12 +650,16 @@ pub async fn preview_prompt(
     }
 }
 
+struct ExecutionTargetContext<'a> {
+    pool: &'a SqlitePool,
+    api_key_manager: &'a ApiKeyManager,
+    user_id: &'a str,
+    user_password: &'a [u8],
+    workspace_id: &'a str,
+}
+
 async fn build_execution_target_config(
-    pool: &SqlitePool,
-    api_key_manager: &ApiKeyManager,
-    user_id: &str,
-    user_password: &[u8],
-    workspace_id: &str,
+    ctx: ExecutionTargetContext<'_>,
     execution_target_type: ExecutionTargetType,
     task_config: &OptimizationTaskConfig,
     test_set_ids: &[String],
@@ -660,13 +667,14 @@ async fn build_execution_target_config(
     match execution_target_type {
         ExecutionTargetType::Dify => {
             let prompt_variable =
-                extract_prompt_variable(pool, user_id, workspace_id, test_set_ids).await?;
+                extract_prompt_variable(ctx.pool, ctx.user_id, ctx.workspace_id, test_set_ids)
+                    .await?;
             let credential =
-                CredentialRepo::find_by_user_and_type(pool, user_id, CredentialType::Dify)
+                CredentialRepo::find_by_user_and_type(ctx.pool, ctx.user_id, CredentialType::Dify)
                     .await
                     .map_err(map_credential_repo_error)?;
-            let api_key = decrypt_api_key(api_key_manager, user_password, &credential)
-                .map_err(|e| MetaOptimizationServiceError::Encryption(e))?;
+            let api_key = decrypt_api_key(ctx.api_key_manager, ctx.user_password, &credential)
+                .map_err(MetaOptimizationServiceError::Encryption)?;
             Ok(ExecutionTargetConfig::Dify {
                 api_url: credential.base_url,
                 workflow_id: String::new(),
@@ -675,17 +683,20 @@ async fn build_execution_target_config(
             })
         }
         ExecutionTargetType::Generic => {
-            let credential =
-                CredentialRepo::find_by_user_and_type(pool, user_id, CredentialType::GenericLlm)
-                    .await
-                    .map_err(map_credential_repo_error)?;
+            let credential = CredentialRepo::find_by_user_and_type(
+                ctx.pool,
+                ctx.user_id,
+                CredentialType::GenericLlm,
+            )
+            .await
+            .map_err(map_credential_repo_error)?;
             let model_name = task_config
                 .teacher_llm
                 .model_id
                 .clone()
                 .unwrap_or_else(|| "unknown".to_string());
-            let api_key = decrypt_api_key(api_key_manager, user_password, &credential)
-                .map_err(|e| MetaOptimizationServiceError::Encryption(e))?;
+            let api_key = decrypt_api_key(ctx.api_key_manager, ctx.user_password, &credential)
+                .map_err(MetaOptimizationServiceError::Encryption)?;
             Ok(ExecutionTargetConfig::DirectModel {
                 base_url: credential.base_url,
                 model_name,
