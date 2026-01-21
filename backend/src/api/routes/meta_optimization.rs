@@ -17,11 +17,12 @@ use crate::api::state::AppState;
 use crate::core::meta_optimization_service::{
     MetaOptimizationServiceError, create_prompt_version,
     get_historical_tasks_for_meta_optimization, get_overview, get_prompt_by_id,
-    list_prompt_versions, set_active_prompt,
+    list_prompt_versions, preview_prompt, set_active_prompt, validate_prompt,
 };
 use crate::domain::models::{
-    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary, TeacherPrompt,
-    TeacherPromptVersion,
+    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary,
+    PromptPreviewRequest, PromptPreviewResponse, PromptValidationRequest, PromptValidationResult,
+    TeacherPrompt, TeacherPromptVersion,
 };
 use crate::infra::db::repositories::TeacherPromptRepo;
 use crate::shared::error_codes;
@@ -389,6 +390,99 @@ pub(crate) async fn list_historical_tasks(
     }
 }
 
+/// 预览执行 Prompt
+#[utoipa::path(
+    post,
+    path = "/api/v1/meta-optimization/prompts/preview",
+    request_body = PromptPreviewRequest,
+    responses(
+        (status = 200, description = "预览成功", body = ApiSuccess<PromptPreviewResponse>),
+        (status = 400, description = "参数错误"),
+        (status = 401, description = "未授权"),
+        (status = 500, description = "服务器错误")
+    ),
+    tag = "meta_optimization"
+)]
+pub(crate) async fn preview_prompt_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    current_user: CurrentUser,
+    Json(request): Json<PromptPreviewRequest>,
+) -> ApiResponse<PromptPreviewResponse> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = &current_user.user_id;
+    let user_password = match current_user.unlock_context.as_ref() {
+        Some(ctx) => ctx.password_bytes(),
+        None => {
+            return ApiResponse::err(
+                StatusCode::UNAUTHORIZED,
+                error_codes::UNAUTHORIZED,
+                "会话已过期，请重新登录",
+            );
+        }
+    };
+
+    log_action(
+        &correlation_id,
+        user_id,
+        "N/A",
+        "meta_optimization:preview_prompt",
+        "N/A",
+        "preview",
+    );
+
+    match preview_prompt(
+        &state.db,
+        state.api_key_manager.as_ref(),
+        user_id,
+        user_password,
+        request,
+        Some(correlation_id.clone()),
+    )
+    .await
+    {
+        Ok(resp) => ApiResponse::ok(resp),
+        Err(err) => map_service_error(&correlation_id, err, None, &state.db).await,
+    }
+}
+
+/// 验证 Prompt 格式
+#[utoipa::path(
+    post,
+    path = "/api/v1/meta-optimization/prompts/validate",
+    request_body = PromptValidationRequest,
+    responses(
+        (status = 200, description = "验证完成", body = ApiSuccess<PromptValidationResult>),
+        (status = 400, description = "参数错误"),
+        (status = 401, description = "未授权"),
+        (status = 500, description = "服务器错误")
+    ),
+    tag = "meta_optimization"
+)]
+pub(crate) async fn validate_prompt_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    current_user: CurrentUser,
+    Json(request): Json<PromptValidationRequest>,
+) -> ApiResponse<PromptValidationResult> {
+    let correlation_id = extract_correlation_id(&headers);
+    let user_id = &current_user.user_id;
+
+    log_action(
+        &correlation_id,
+        user_id,
+        "N/A",
+        "meta_optimization:validate_prompt",
+        "N/A",
+        "validated",
+    );
+
+    match validate_prompt(request) {
+        Ok(result) => ApiResponse::ok(result),
+        Err(err) => map_service_error(&correlation_id, err, None, &state.db).await,
+    }
+}
+
 async fn map_service_error<T: serde::Serialize>(
     correlation_id: &str,
     err: MetaOptimizationServiceError,
@@ -404,6 +498,30 @@ async fn map_service_error<T: serde::Serialize>(
                 StatusCode::NOT_FOUND,
                 error_codes::RESOURCE_NOT_FOUND,
                 "版本不存在",
+            )
+        }
+        MetaOptimizationServiceError::InvalidRequest(msg) => {
+            ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg)
+        }
+        MetaOptimizationServiceError::ExecutionFailed(msg) => {
+            warn!(correlation_id = %correlation_id, error = %msg, "元优化预览执行失败");
+            ApiResponse::err(
+                StatusCode::BAD_GATEWAY,
+                error_codes::UPSTREAM_ERROR,
+                "预览执行失败",
+            )
+        }
+        MetaOptimizationServiceError::Timeout => ApiResponse::err(
+            StatusCode::GATEWAY_TIMEOUT,
+            error_codes::UPSTREAM_ERROR,
+            "预览执行超时",
+        ),
+        MetaOptimizationServiceError::Encryption(msg) => {
+            warn!(correlation_id = %correlation_id, error = %msg, "元优化服务解密失败");
+            ApiResponse::err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                error_codes::ENCRYPTION_ERROR,
+                "解密 API Key 失败",
             )
         }
         MetaOptimizationServiceError::Database(err) => {
@@ -428,6 +546,8 @@ async fn map_service_error<T: serde::Serialize>(
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/prompts", post(create_prompt).get(list_prompts))
+        .route("/prompts/preview", post(preview_prompt_handler))
+        .route("/prompts/validate", post(validate_prompt_handler))
         .route("/prompts/{id}", get(get_prompt))
         .route("/prompts/{id}/activate", put(activate_prompt))
         .route("/stats", get(get_stats))

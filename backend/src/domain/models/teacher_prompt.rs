@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use ts_rs::TS;
 use utoipa::ToSchema;
+
+use crate::domain::models::TaskReference;
 
 /// 老师模型 Prompt（数据库完整记录）
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
@@ -81,4 +84,65 @@ pub struct MetaOptimizationTaskSummary {
     pub status: String,
     pub pass_rate: Option<f64>,
     pub created_at: String,
+}
+
+/// Prompt 预览执行请求
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "models/")]
+pub struct PromptPreviewRequest {
+    /// 待预览的 Prompt 内容
+    pub content: String,
+    /// 必填：历史任务 ID（用于解析 test_set_ids）
+    #[serde(default)]
+    pub task_ids: Vec<String>,
+    /// 可选：指定测试用例 ID，为空时自动选择最多 3 条
+    #[serde(default)]
+    pub test_case_ids: Vec<String>,
+}
+
+/// 单条测试用例的预览结果
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "models/")]
+pub struct PromptPreviewResult {
+    pub test_case_id: String,
+    pub input: HashMap<String, serde_json::Value>,
+    pub reference: TaskReference,
+    pub actual_output: String,
+    pub passed: bool,
+    #[ts(type = "number")]
+    pub execution_time_ms: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// 预览执行响应
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "models/")]
+pub struct PromptPreviewResponse {
+    pub results: Vec<PromptPreviewResult>,
+    pub total_passed: i32,
+    pub total_failed: i32,
+    #[ts(type = "number")]
+    pub total_execution_time_ms: i64,
+}
+
+/// Prompt 验证请求
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "models/")]
+pub struct PromptValidationRequest {
+    pub content: String,
+}
+
+/// Prompt 验证结果
+#[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[ts(export_to = "models/")]
+pub struct PromptValidationResult {
+    pub is_valid: bool,
+    pub errors: Vec<String>,
+    pub warnings: Vec<String>,
 }

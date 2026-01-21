@@ -178,8 +178,10 @@ export function MetaOptimizationPage() {
           <PromptVersionDetail
             prompt={promptQuery.data ?? null}
             stats={selectedStats}
+            versions={versions}
             isLoading={promptQuery.isLoading || versionsLoading}
             error={promptQuery.error as Error | null}
+            onSelectVersion={setSelectedVersionId}
           />
         </div>
 

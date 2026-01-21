@@ -62,8 +62,9 @@ pub use reflection::{
     SuggestionConflict, SuggestionType, TerminationReason, UnifiedReflection, UnifiedSuggestion,
 };
 pub use teacher_prompt::{
-    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary, TeacherPrompt,
-    TeacherPromptStats, TeacherPromptVersion,
+    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary,
+    PromptPreviewRequest, PromptPreviewResponse, PromptPreviewResult, PromptValidationRequest,
+    PromptValidationResult, TeacherPrompt, TeacherPromptStats, TeacherPromptVersion,
 };
 pub use test_set::TestSet;
 pub use user::User;

@@ -2,6 +2,10 @@ import { UnauthorizedError, apiRequestWithAuth, isApiError } from '@/lib/api'
 import type { CreateTeacherPromptInput } from '@/types/generated/models/CreateTeacherPromptInput'
 import type { MetaOptimizationOverview } from '@/types/generated/models/MetaOptimizationOverview'
 import type { MetaOptimizationTaskSummary } from '@/types/generated/models/MetaOptimizationTaskSummary'
+import type { PromptPreviewRequest } from '@/types/generated/models/PromptPreviewRequest'
+import type { PromptPreviewResponse } from '@/types/generated/models/PromptPreviewResponse'
+import type { PromptValidationRequest } from '@/types/generated/models/PromptValidationRequest'
+import type { PromptValidationResult } from '@/types/generated/models/PromptValidationResult'
 import type { TeacherPrompt } from '@/types/generated/models/TeacherPrompt'
 import type { TeacherPromptVersion } from '@/types/generated/models/TeacherPromptVersion'
 
@@ -118,6 +122,52 @@ export async function getMetaOptimizationTasks(
   const response = await apiRequestWithAuth<MetaOptimizationTaskSummary[]>(
     `${BASE_PATH}/tasks${suffix}`,
     { method: 'GET' },
+    token
+  )
+
+  if (isApiError(response)) {
+    if (response.error.code === 'UNAUTHORIZED') {
+      throw new UnauthorizedError(response.error.message)
+    }
+    throw new Error(response.error.message)
+  }
+
+  return response.data
+}
+
+export async function previewPrompt(
+  request: PromptPreviewRequest,
+  token: string
+): Promise<PromptPreviewResponse> {
+  const response = await apiRequestWithAuth<PromptPreviewResponse>(
+    `${BASE_PATH}/prompts/preview`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+    },
+    token
+  )
+
+  if (isApiError(response)) {
+    if (response.error.code === 'UNAUTHORIZED') {
+      throw new UnauthorizedError(response.error.message)
+    }
+    throw new Error(response.error.message)
+  }
+
+  return response.data
+}
+
+export async function validatePrompt(
+  request: PromptValidationRequest,
+  token: string
+): Promise<PromptValidationResult> {
+  const response = await apiRequestWithAuth<PromptValidationResult>(
+    `${BASE_PATH}/prompts/validate`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+    },
     token
   )
 
