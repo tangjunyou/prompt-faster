@@ -2,6 +2,8 @@ import { UnauthorizedError, apiRequestWithAuth, isApiError } from '@/lib/api'
 import type { CreateTeacherPromptInput } from '@/types/generated/models/CreateTeacherPromptInput'
 import type { MetaOptimizationOverview } from '@/types/generated/models/MetaOptimizationOverview'
 import type { MetaOptimizationTaskSummary } from '@/types/generated/models/MetaOptimizationTaskSummary'
+import type { PromptCompareRequest } from '@/types/generated/models/PromptCompareRequest'
+import type { PromptCompareResponse } from '@/types/generated/models/PromptCompareResponse'
 import type { PromptPreviewRequest } from '@/types/generated/models/PromptPreviewRequest'
 import type { PromptPreviewResponse } from '@/types/generated/models/PromptPreviewResponse'
 import type { PromptValidationRequest } from '@/types/generated/models/PromptValidationRequest'
@@ -144,6 +146,31 @@ export async function previewPrompt(
     {
       method: 'POST',
       body: JSON.stringify(request),
+    },
+    token
+  )
+
+  if (isApiError(response)) {
+    if (response.error.code === 'UNAUTHORIZED') {
+      throw new UnauthorizedError(response.error.message)
+    }
+    throw new Error(response.error.message)
+  }
+
+  return response.data
+}
+
+export async function comparePrompts(
+  request: PromptCompareRequest,
+  token: string,
+  signal?: AbortSignal
+): Promise<PromptCompareResponse> {
+  const response = await apiRequestWithAuth<PromptCompareResponse>(
+    `${BASE_PATH}/prompts/compare`,
+    {
+      method: 'POST',
+      body: JSON.stringify(request),
+      signal,
     },
     token
   )

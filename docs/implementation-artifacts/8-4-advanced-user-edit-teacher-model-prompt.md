@@ -1,6 +1,6 @@
 # Story 8.4: 高级用户直接编辑老师模型 Prompt
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

@@ -22,8 +22,21 @@ use prompt_faster::infra::db::repositories::{
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
+use std::sync::{Mutex, OnceLock};
 
 const TEST_MASTER_PASSWORD: &str = "test_master_password_for_integration";
+
+fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    ENV_LOCK.get_or_init(|| Mutex::new(())).lock().unwrap()
+}
+
+fn set_test_env_var(key: &str, value: &str) {
+    // Safety: env vars are process-global; we serialize access via env_lock in tests.
+    unsafe {
+        std::env::set_var(key, value);
+    }
+}
 
 async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
     let db = create_pool("sqlite::memory:")
@@ -190,6 +203,21 @@ async fn create_task_with_test_set(
     (workspace.id, created.task.id)
 }
 
+async fn create_prompt_version(app: &Router, token: &str, content: &str) -> String {
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts",
+            json!({"content": content}),
+        ),
+        token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    body["data"]["id"].as_str().unwrap().to_string()
+}
+
 fn sample_exact_cases(prompt_len: usize) -> Vec<TestCase> {
     let mut input = std::collections::HashMap::new();
     input.insert("x".to_string(), serde_json::Value::String("1".to_string()));
@@ -217,6 +245,28 @@ fn sample_exact_cases(prompt_len: usize) -> Vec<TestCase> {
             metadata: None,
         },
     ]
+}
+
+fn sample_exact_cases_with_count(prompt_len: usize, count: usize) -> Vec<TestCase> {
+    let mut cases = Vec::with_capacity(count);
+    for idx in 0..count {
+        let mut input = std::collections::HashMap::new();
+        input.insert("x".to_string(), serde_json::Value::String("1".to_string()));
+        let id = format!("tc-{}", idx + 1);
+        cases.push(TestCase {
+            id: id.clone(),
+            input,
+            reference: TaskReference::Exact {
+                expected: format!(
+                    "example_execution_target: test_case_id={} prompt_len={} input_keys_count=1",
+                    id, prompt_len
+                ),
+            },
+            split: None,
+            metadata: None,
+        });
+    }
+    cases
 }
 
 #[tokio::test]
@@ -458,10 +508,9 @@ async fn test_preview_prompt_timeout() {
     }
 
     let _guard = EnvGuard;
-    unsafe {
-        std::env::set_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS", "2000");
-        std::env::set_var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS", "1");
-    }
+    let _lock = env_lock();
+    set_test_env_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS", "2000");
+    set_test_env_var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS", "1");
 
     let (app, db) = setup_test_app_with_db().await;
     let token = register_user(&app, "user8", "password").await;
@@ -483,6 +532,384 @@ async fn test_preview_prompt_timeout() {
             "POST",
             "/api/v1/meta-optimization/prompts/preview",
             json!({"content": prompt, "taskIds": [task_id], "testCaseIds": []}),
+        ),
+        &token,
+    );
+
+    let app_clone = app.clone();
+    let handle = tokio::spawn(async move { app_clone.oneshot(req).await.unwrap() });
+
+    let resp = handle.await.unwrap();
+    assert_eq!(resp.status(), StatusCode::GATEWAY_TIMEOUT);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_requires_auth() {
+    let app = setup_test_app().await;
+    let req = build_json_request(
+        "POST",
+        "/api/v1/meta-optimization/prompts/compare",
+        json!({
+            "versionIdA": "va",
+            "versionIdB": "vb",
+            "taskIds": ["task-1"],
+            "testCaseIds": []
+        }),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_success() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user9", "password").await;
+    let user_id = find_user_id(&db, "user9").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::Example;
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
+
+    let version_a = create_prompt_version(&app, &token, prompt).await;
+    let version_b = create_prompt_version(&app, &token, prompt).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["versionAContent"], prompt);
+    assert_eq!(body["data"]["versionBContent"], prompt);
+    assert_eq!(body["data"]["caseComparisons"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"]["summary"]["passRateDiff"], 0.0);
+    assert_eq!(body["data"]["summary"]["outputDiffCases"], 0);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_output_diff_cases() {
+    let (app, db) = setup_test_app_with_db().await;
+    let _lock = env_lock();
+    let token = register_user(&app, "user17", "password").await;
+    let user_id = find_user_id(&db, "user17").await;
+
+    let prompt_a = "hi";
+    let prompt_b = "hello world";
+    let cases = sample_exact_cases(prompt_a.chars().count());
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::TeacherModel;
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
+
+    let version_a = create_prompt_version(&app, &token, prompt_a).await;
+    let version_b = create_prompt_version(&app, &token, prompt_b).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["summary"]["outputDiffCases"], 2);
+    assert_eq!(body["data"]["summary"]["improvedCases"], 0);
+    assert_eq!(body["data"]["summary"]["regressedCases"], 0);
+    assert_eq!(body["data"]["summary"]["unchangedCases"], 0);
+    assert_eq!(body["data"]["caseComparisons"][0]["isDifferent"], true);
+    assert_eq!(
+        body["data"]["caseComparisons"][0]["differenceNote"],
+        "两版本均通过，但输出内容存在差异"
+    );
+}
+
+#[tokio::test]
+async fn test_compare_prompt_both_failed() {
+    let (app, db) = setup_test_app_with_db().await;
+    let _lock = env_lock();
+    let token = register_user(&app, "user18", "password").await;
+    let user_id = find_user_id(&db, "user18").await;
+
+    let prompt_a = "hello";
+    let prompt_b = "world";
+    let cases = sample_exact_cases(1);
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::Example;
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
+
+    let version_a = create_prompt_version(&app, &token, prompt_a).await;
+    let version_b = create_prompt_version(&app, &token, prompt_b).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["summary"]["improvedCases"], 0);
+    assert_eq!(body["data"]["summary"]["regressedCases"], 0);
+    assert_eq!(body["data"]["summary"]["outputDiffCases"], 0);
+    assert_eq!(body["data"]["summary"]["unchangedCases"], 2);
+    assert!(body["data"]["caseComparisons"][0]["differenceNote"]
+        .as_str()
+        .unwrap_or("")
+        .contains("两版本均失败"));
+}
+
+#[tokio::test]
+async fn test_compare_prompt_rejects_same_version() {
+    let (app, _db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user10", "password").await;
+
+    let version_id = create_prompt_version(&app, &token, "hi").await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_id,
+                "versionIdB": version_id,
+                "taskIds": ["task-1"],
+                "testCaseIds": []
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_version_not_found() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user11", "password").await;
+    let user_id = find_user_id(&db, "user11").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (_workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let version_a = create_prompt_version(&app, &token, prompt).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": "missing",
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_forbidden() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token1 = register_user(&app, "user12", "password").await;
+    let token2 = register_user(&app, "user13", "password").await;
+    let user_id2 = find_user_id(&db, "user13").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (_workspace_id, task_id) = create_task_with_test_set(&db, &user_id2, cases).await;
+
+    let version_a = create_prompt_version(&app, &token1, prompt).await;
+    let version_b = create_prompt_version(&app, &token2, prompt).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
+        ),
+        &token2,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_rejects_over_limit() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user14", "password").await;
+    let user_id = find_user_id(&db, "user14").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (_workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let version_a = create_prompt_version(&app, &token, prompt).await;
+    let version_b = create_prompt_version(&app, &token, prompt).await;
+
+    let test_case_ids: Vec<String> = (1..=11).map(|i| format!("tc-{}", i)).collect();
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": test_case_ids
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_compare_prompt_sampling_order() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user15", "password").await;
+    let user_id = find_user_id(&db, "user15").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases_with_count(prompt.chars().count(), 12);
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::Example;
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
+
+    let version_a = create_prompt_version(&app, &token, prompt).await;
+    let version_b = create_prompt_version(&app, &token, prompt).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    let ids: Vec<String> = body["data"]["caseComparisons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["testCaseId"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(ids.len(), 10);
+    assert_eq!(ids[0], "tc-1");
+    assert_eq!(ids[9], "tc-10");
+}
+
+#[tokio::test]
+async fn test_compare_prompt_timeout() {
+    struct EnvGuard;
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS");
+                std::env::remove_var("PROMPT_FASTER_COMPARE_TIMEOUT_SECS");
+                std::env::remove_var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS");
+            }
+        }
+    }
+
+    let _guard = EnvGuard;
+    let _lock = env_lock();
+    set_test_env_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS", "2000");
+    set_test_env_var("PROMPT_FASTER_COMPARE_TIMEOUT_SECS", "1");
+    set_test_env_var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS", "5");
+
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user16", "password").await;
+    let user_id = find_user_id(&db, "user16").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::TeacherModel;
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
+
+    let version_a = create_prompt_version(&app, &token, prompt).await;
+    let version_b = create_prompt_version(&app, &token, prompt).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/compare",
+            json!({
+                "versionIdA": version_a,
+                "versionIdB": version_b,
+                "taskIds": [task_id],
+                "testCaseIds": []
+            }),
         ),
         &token,
     );

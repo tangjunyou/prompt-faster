@@ -11,10 +11,11 @@ use crate::core::execution_target::{ExecutionError, create_execution_target};
 use crate::core::iteration_engine::orchestrator::IterationEngine;
 use crate::core::teacher_model::{TeacherModelType, create_teacher_model};
 use crate::domain::models::{
-    CreateTeacherPromptInput, ExecutionTargetType, IterationState, MetaOptimizationOverview,
-    MetaOptimizationTaskSummary, OptimizationTaskConfig, PromptPreviewRequest,
-    PromptPreviewResponse, PromptPreviewResult, PromptValidationRequest, PromptValidationResult,
-    RuleSystem, TeacherPrompt, TeacherPromptStats, TeacherPromptVersion, TestCase,
+    CaseComparisonResult, CompareSummary, CreateTeacherPromptInput, ExecutionTargetType,
+    IterationState, MetaOptimizationOverview, MetaOptimizationTaskSummary, OptimizationTaskConfig,
+    PromptCompareRequest, PromptCompareResponse, PromptPreviewRequest, PromptPreviewResponse,
+    PromptPreviewResult, PromptValidationRequest, PromptValidationResult, RuleSystem, TeacherPrompt,
+    TeacherPromptStats, TeacherPromptVersion, TestCase, VersionCompareResult,
 };
 use crate::domain::types::{
     ExecutionTargetConfig, OptimizationConfig, OptimizationContext, unix_ms_to_iso8601,
@@ -29,7 +30,7 @@ use crate::infra::external::api_key_manager::{ApiKeyManager, EncryptedApiKey};
 #[derive(Debug, Error)]
 pub enum MetaOptimizationServiceError {
     #[error("Prompt 版本不存在或无权访问")]
-    NotFoundOrForbidden,
+    NotFoundOrForbidden(Option<String>),
     #[error("请求参数错误: {0}")]
     InvalidRequest(String),
     #[error("预览执行失败: {0}")]
@@ -90,13 +91,14 @@ fn version_with_stats_record_to_version(
 
 fn map_repo_error(err: TeacherPromptRepoError) -> MetaOptimizationServiceError {
     match err {
-        TeacherPromptRepoError::NotFound => MetaOptimizationServiceError::NotFoundOrForbidden,
+        TeacherPromptRepoError::NotFound => MetaOptimizationServiceError::NotFoundOrForbidden(None),
         TeacherPromptRepoError::DatabaseError(e) => MetaOptimizationServiceError::Database(e),
     }
 }
 
 const MAX_PROMPT_BYTES: usize = 100 * 1024;
 const PREVIEW_TIMEOUT_SECS: u64 = 30;
+const COMPARE_TIMEOUT_SECS: u64 = 60;
 
 fn preview_timeout_secs() -> u64 {
     std::env::var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS")
@@ -104,6 +106,14 @@ fn preview_timeout_secs() -> u64 {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value > 0)
         .unwrap_or(PREVIEW_TIMEOUT_SECS)
+}
+
+fn compare_timeout_secs() -> u64 {
+    std::env::var("PROMPT_FASTER_COMPARE_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(COMPARE_TIMEOUT_SECS)
 }
 
 fn validate_prompt_content(content: &str) -> PromptValidationResult {
@@ -179,6 +189,40 @@ fn map_credential_repo_error(err: CredentialRepoError) -> MetaOptimizationServic
         }
         CredentialRepoError::DatabaseError(err) => MetaOptimizationServiceError::Database(err),
     }
+}
+
+fn build_preview_error_message(
+    passed: bool,
+    failure_points: &[crate::domain::models::FailurePoint],
+    dimensions: &HashMap<String, crate::domain::models::DimensionScore>,
+) -> Option<String> {
+    if passed {
+        return None;
+    }
+
+    if !failure_points.is_empty() {
+        let details: Vec<String> = failure_points
+            .iter()
+            .take(2)
+            .map(|point| format!("{}: {}", point.dimension, point.description))
+            .collect();
+        return Some(details.join("；"));
+    }
+
+    let mut detail_parts = Vec::new();
+    for (dimension, score) in dimensions {
+        if !score.passed {
+            if let Some(details) = &score.details {
+                detail_parts.push(format!("{}: {}", dimension, details));
+            }
+        }
+    }
+
+    if !detail_parts.is_empty() {
+        return Some(detail_parts.join("；"));
+    }
+
+    Some("评估未通过".to_string())
 }
 
 pub async fn create_prompt_version(
@@ -401,21 +445,23 @@ pub fn validate_prompt(
     Ok(validate_prompt_content(&request.content))
 }
 
-pub async fn preview_prompt(
-    pool: &SqlitePool,
-    api_key_manager: &ApiKeyManager,
-    user_id: &str,
-    user_password: &[u8],
-    request: PromptPreviewRequest,
-    correlation_id: Option<String>,
-) -> Result<PromptPreviewResponse, MetaOptimizationServiceError> {
-    let validation = validate_prompt_content(&request.content);
-    if !validation.is_valid {
-        let msg = validation.errors.join("; ");
-        return Err(MetaOptimizationServiceError::InvalidRequest(msg));
-    }
+struct PreviewContext {
+    workspace_id: String,
+    execution_target_type: ExecutionTargetType,
+    task_config: OptimizationTaskConfig,
+    test_set_ids: Vec<String>,
+    selected_cases: Vec<TestCase>,
+    task_id: String,
+}
 
-    if request.task_ids.is_empty() {
+async fn resolve_preview_context(
+    pool: &SqlitePool,
+    user_id: &str,
+    task_ids: &[String],
+    test_case_ids: &[String],
+    max_cases: usize,
+) -> Result<PreviewContext, MetaOptimizationServiceError> {
+    if task_ids.is_empty() {
         return Err(MetaOptimizationServiceError::InvalidRequest(
             "请先选择历史任务".to_string(),
         ));
@@ -428,7 +474,7 @@ pub async fn preview_prompt(
     let mut first_task_id: Option<String> = None;
     let mut seen_test_sets = HashSet::new();
 
-    for task_id in &request.task_ids {
+    for task_id in task_ids {
         let task = OptimizationTaskRepo::find_by_id_for_user(pool, user_id, task_id)
             .await
             .map_err(map_task_repo_error)?;
@@ -487,14 +533,15 @@ pub async fn preview_prompt(
     }
 
     let mut selected_cases: Vec<TestCase> = Vec::new();
-    if !request.test_case_ids.is_empty() {
-        if request.test_case_ids.len() > 3 {
-            return Err(MetaOptimizationServiceError::InvalidRequest(
-                "最多只能选择 3 条测试用例".to_string(),
-            ));
+    if !test_case_ids.is_empty() {
+        if test_case_ids.len() > max_cases {
+            return Err(MetaOptimizationServiceError::InvalidRequest(format!(
+                "最多只能选择 {} 条测试用例",
+                max_cases
+            )));
         }
 
-        for test_case_id in &request.test_case_ids {
+        for test_case_id in test_case_ids {
             let case =
                 TestSetRepo::find_case_by_id(pool, &workspace_id, &test_set_ids, test_case_id)
                     .await
@@ -517,11 +564,11 @@ pub async fn preview_prompt(
 
             for case in test_set.cases {
                 selected_cases.push(case);
-                if selected_cases.len() >= 3 {
+                if selected_cases.len() >= max_cases {
                     break;
                 }
             }
-            if selected_cases.len() >= 3 {
+            if selected_cases.len() >= max_cases {
                 break;
             }
         }
@@ -533,28 +580,45 @@ pub async fn preview_prompt(
         ));
     }
 
-    let task_config = task_config.unwrap_or_default();
-    let execution_target_type = execution_target_type.unwrap_or(ExecutionTargetType::Example);
+    Ok(PreviewContext {
+        workspace_id,
+        execution_target_type: execution_target_type.unwrap_or(ExecutionTargetType::Example),
+        task_config: task_config.unwrap_or_default(),
+        test_set_ids,
+        selected_cases,
+        task_id: first_task_id.unwrap_or_else(|| "preview".to_string()),
+    })
+}
 
+async fn execute_prompt_preview(
+    pool: &SqlitePool,
+    api_key_manager: &ApiKeyManager,
+    user_id: &str,
+    user_password: &[u8],
+    ctx: &PreviewContext,
+    prompt: &str,
+    correlation_id: Option<String>,
+    timeout: Duration,
+) -> Result<PromptPreviewResponse, MetaOptimizationServiceError> {
     let execution_target_context = ExecutionTargetContext {
         pool,
         api_key_manager,
         user_id,
         user_password,
-        workspace_id: &workspace_id,
+        workspace_id: &ctx.workspace_id,
     };
     let execution_target_config = build_execution_target_config(
         execution_target_context,
-        execution_target_type,
-        &task_config,
-        &test_set_ids,
+        ctx.execution_target_type,
+        &ctx.task_config,
+        &ctx.test_set_ids,
     )
     .await?;
 
-    let mut ctx = OptimizationContext {
-        task_id: first_task_id.unwrap_or_else(|| "preview".to_string()),
+    let mut context = OptimizationContext {
+        task_id: ctx.task_id.clone(),
         execution_target_config,
-        current_prompt: request.content.clone(),
+        current_prompt: prompt.to_string(),
         rule_system: RuleSystem {
             rules: vec![],
             conflict_resolution_log: vec![],
@@ -565,34 +629,35 @@ pub async fn preview_prompt(
         iteration: 0,
         state: IterationState::RunningTests,
         run_control_state: Default::default(),
-        test_cases: selected_cases.clone(),
+        test_cases: ctx.selected_cases.clone(),
         config: OptimizationConfig::default(),
         checkpoints: vec![],
         extensions: HashMap::new(),
     };
 
     if let Some(cid) = correlation_id {
-        ctx.extensions
+        context
+            .extensions
             .insert("correlation_id".to_string(), serde_json::Value::String(cid));
     }
 
     let evaluator_cfg_value =
-        serde_json::to_value(&task_config.evaluator_config).map_err(|_| {
+        serde_json::to_value(&ctx.task_config.evaluator_config).map_err(|_| {
             MetaOptimizationServiceError::ExecutionFailed("evaluator_config 序列化失败".to_string())
         })?;
-    ctx.extensions
+    context
+        .extensions
         .insert(EXT_TASK_EVALUATOR_CONFIG.to_string(), evaluator_cfg_value);
 
     let teacher_model = create_teacher_model(TeacherModelType::Example);
-    let evaluator = create_evaluator_for_task_config(&task_config, Some(teacher_model));
-    let execution_target = create_execution_target(execution_target_type);
+    let evaluator = create_evaluator_for_task_config(&ctx.task_config, Some(teacher_model));
+    let execution_target = create_execution_target(ctx.execution_target_type);
     let engine = IterationEngine::new(execution_target);
-    let batch = ctx.test_cases.clone();
-    let prompt = request.content.clone();
+    let batch = context.test_cases.clone();
 
-    let output = tokio::time::timeout(Duration::from_secs(preview_timeout_secs()), async {
+    let output = tokio::time::timeout(timeout, async {
         let exec_results = engine
-            .run_tests(&mut ctx, &prompt, &batch, &task_config)
+            .run_tests(&mut context, prompt, &batch, &ctx.task_config)
             .await
             .map_err(map_execution_error)?;
 
@@ -600,7 +665,7 @@ pub async fn preview_prompt(
             .map_err(map_execution_error)?;
 
         let evals = evaluator
-            .evaluate_batch(&ctx, &pairs)
+            .evaluate_batch(&context, &pairs)
             .await
             .map_err(|err| match err {
                 crate::core::evaluator::EvaluatorError::InvalidInput(msg) => {
@@ -632,6 +697,12 @@ pub async fn preview_prompt(
             let exec_time = exec_result.latency_ms as i64;
             total_time_ms += exec_time;
 
+            let error_message = build_preview_error_message(
+                eval.passed,
+                &eval.failure_points,
+                &eval.dimensions,
+            );
+
             results.push(PromptPreviewResult {
                 test_case_id: test_case.id.clone(),
                 input: test_case.input.clone(),
@@ -639,7 +710,7 @@ pub async fn preview_prompt(
                 actual_output: exec_result.output.clone(),
                 passed: eval.passed,
                 execution_time_ms: exec_time,
-                error_message: None,
+                error_message,
             });
         }
 
@@ -656,6 +727,263 @@ pub async fn preview_prompt(
         Ok(result) => result,
         Err(_) => Err(MetaOptimizationServiceError::Timeout),
     }
+}
+
+pub async fn preview_prompt(
+    pool: &SqlitePool,
+    api_key_manager: &ApiKeyManager,
+    user_id: &str,
+    user_password: &[u8],
+    request: PromptPreviewRequest,
+    correlation_id: Option<String>,
+) -> Result<PromptPreviewResponse, MetaOptimizationServiceError> {
+    let validation = validate_prompt_content(&request.content);
+    if !validation.is_valid {
+        let msg = validation.errors.join("; ");
+        return Err(MetaOptimizationServiceError::InvalidRequest(msg));
+    }
+
+    let ctx =
+        resolve_preview_context(pool, user_id, &request.task_ids, &request.test_case_ids, 3)
+            .await?;
+
+    execute_prompt_preview(
+        pool,
+        api_key_manager,
+        user_id,
+        user_password,
+        &ctx,
+        &request.content,
+        correlation_id,
+        Duration::from_secs(preview_timeout_secs()),
+    )
+    .await
+}
+
+async fn load_prompt_for_compare(
+    pool: &SqlitePool,
+    user_id: &str,
+    version_id: &str,
+) -> Result<TeacherPromptRecord, MetaOptimizationServiceError> {
+    match TeacherPromptRepo::find_by_id(pool, version_id, user_id).await {
+        Ok(record) => Ok(record),
+        Err(TeacherPromptRepoError::NotFound) => Err(MetaOptimizationServiceError::NotFoundOrForbidden(
+            Some(version_id.to_string()),
+        )),
+        Err(TeacherPromptRepoError::DatabaseError(err)) => {
+            Err(MetaOptimizationServiceError::Database(err))
+        }
+    }
+}
+
+fn generate_difference_note(
+    a_passed: bool,
+    b_passed: bool,
+    a_output: &str,
+    b_output: &str,
+    a_error: &Option<String>,
+    b_error: &Option<String>,
+) -> Option<String> {
+    match (a_passed, b_passed) {
+        (true, false) => Some(format!(
+            "版本 B 在此用例退化：{}",
+            b_error.as_deref().unwrap_or("失败原因未知")
+        )),
+        (false, true) => Some(format!(
+            "版本 B 在此用例改进（A 失败：{}）",
+            a_error.as_deref().unwrap_or("失败原因未知")
+        )),
+        (true, true) => {
+            if a_output != b_output {
+                Some("两版本均通过，但输出内容存在差异".to_string())
+            } else {
+                None
+            }
+        }
+        (false, false) => {
+            if a_error.is_some() || b_error.is_some() {
+                Some(format!(
+                    "两版本均失败：A={}；B={}",
+                    a_error.as_deref().unwrap_or("失败原因未知"),
+                    b_error.as_deref().unwrap_or("失败原因未知")
+                ))
+            } else {
+                Some("两版本均失败，错误原因可能不同".to_string())
+            }
+        }
+    }
+}
+
+pub async fn compare_prompts(
+    pool: &SqlitePool,
+    api_key_manager: &ApiKeyManager,
+    user_id: &str,
+    user_password: &[u8],
+    request: PromptCompareRequest,
+    correlation_id: Option<String>,
+) -> Result<PromptCompareResponse, MetaOptimizationServiceError> {
+    if request.version_id_a == request.version_id_b {
+        return Err(MetaOptimizationServiceError::InvalidRequest(
+            "不能选择相同版本进行对比".to_string(),
+        ));
+    }
+
+    let version_a = load_prompt_for_compare(pool, user_id, &request.version_id_a).await?;
+    let version_b = load_prompt_for_compare(pool, user_id, &request.version_id_b).await?;
+
+    let ctx =
+        resolve_preview_context(pool, user_id, &request.task_ids, &request.test_case_ids, 10)
+            .await?;
+
+    let compare_timeout = Duration::from_secs(compare_timeout_secs());
+    let per_prompt_timeout = Duration::from_secs(preview_timeout_secs());
+    let deadline = tokio::time::Instant::now() + compare_timeout;
+
+    let remaining_a = deadline.saturating_duration_since(tokio::time::Instant::now());
+    if remaining_a.is_zero() {
+        return Err(MetaOptimizationServiceError::Timeout);
+    }
+    let timeout_a = remaining_a.min(per_prompt_timeout);
+    let preview_a = execute_prompt_preview(
+        pool,
+        api_key_manager,
+        user_id,
+        user_password,
+        &ctx,
+        &version_a.content,
+        correlation_id.clone(),
+        timeout_a,
+    )
+    .await?;
+
+    let remaining_b = deadline.saturating_duration_since(tokio::time::Instant::now());
+    if remaining_b.is_zero() {
+        return Err(MetaOptimizationServiceError::Timeout);
+    }
+    let timeout_b = remaining_b.min(per_prompt_timeout);
+    let preview_b = execute_prompt_preview(
+        pool,
+        api_key_manager,
+        user_id,
+        user_password,
+        &ctx,
+        &version_b.content,
+        correlation_id.clone(),
+        timeout_b,
+    )
+    .await?;
+
+    let total_cases = ctx.selected_cases.len() as f64;
+    let version_a_pass_rate = if total_cases == 0.0 {
+        0.0
+    } else {
+        preview_a.total_passed as f64 / total_cases
+    };
+    let version_b_pass_rate = if total_cases == 0.0 {
+        0.0
+    } else {
+        preview_b.total_passed as f64 / total_cases
+    };
+
+    let version_a_summary = VersionCompareResult {
+        version_id: version_a.id.clone(),
+        version: version_a.version,
+        total_passed: preview_a.total_passed,
+        total_failed: preview_a.total_failed,
+        pass_rate: version_a_pass_rate,
+    };
+    let version_b_summary = VersionCompareResult {
+        version_id: version_b.id.clone(),
+        version: version_b.version,
+        total_passed: preview_b.total_passed,
+        total_failed: preview_b.total_failed,
+        pass_rate: version_b_pass_rate,
+    };
+
+    let mut preview_a_map = HashMap::new();
+    for result in preview_a.results {
+        preview_a_map.insert(result.test_case_id.clone(), result);
+    }
+    let mut preview_b_map = HashMap::new();
+    for result in preview_b.results {
+        preview_b_map.insert(result.test_case_id.clone(), result);
+    }
+
+    let mut case_comparisons = Vec::with_capacity(ctx.selected_cases.len());
+    let mut improved_cases = 0;
+    let mut regressed_cases = 0;
+    let mut output_diff_cases = 0;
+    let mut unchanged_cases = 0;
+
+    for case in &ctx.selected_cases {
+        let result_a = preview_a_map
+            .get(&case.id)
+            .ok_or_else(|| {
+                MetaOptimizationServiceError::ExecutionFailed(
+                    "版本 A 预览结果不完整".to_string(),
+                )
+            })?;
+        let result_b = preview_b_map
+            .get(&case.id)
+            .ok_or_else(|| {
+                MetaOptimizationServiceError::ExecutionFailed(
+                    "版本 B 预览结果不完整".to_string(),
+                )
+            })?;
+
+        let output_diff = result_a.actual_output != result_b.actual_output;
+        let is_different = result_a.passed != result_b.passed || output_diff;
+
+        if !result_a.passed && result_b.passed {
+            improved_cases += 1;
+        } else if result_a.passed && !result_b.passed {
+            regressed_cases += 1;
+        } else if result_a.passed && result_b.passed && output_diff {
+            output_diff_cases += 1;
+        } else {
+            unchanged_cases += 1;
+        }
+
+        case_comparisons.push(CaseComparisonResult {
+            test_case_id: case.id.clone(),
+            input: case.input.clone(),
+            reference: case.reference.clone(),
+            version_a_output: result_a.actual_output.clone(),
+            version_a_passed: result_a.passed,
+            version_a_error: result_a.error_message.clone(),
+            version_b_output: result_b.actual_output.clone(),
+            version_b_passed: result_b.passed,
+            version_b_error: result_b.error_message.clone(),
+            is_different,
+            difference_note: generate_difference_note(
+                result_a.passed,
+                result_b.passed,
+                &result_a.actual_output,
+                &result_b.actual_output,
+                &result_a.error_message,
+                &result_b.error_message,
+            ),
+        });
+    }
+
+    let summary = CompareSummary {
+        pass_rate_diff: version_b_pass_rate - version_a_pass_rate,
+        improved_cases,
+        regressed_cases,
+        output_diff_cases,
+        unchanged_cases,
+        total_execution_time_ms: preview_a.total_execution_time_ms
+            + preview_b.total_execution_time_ms,
+    };
+
+    Ok(PromptCompareResponse {
+        version_a: version_a_summary,
+        version_b: version_b_summary,
+        version_a_content: version_a.content,
+        version_b_content: version_b.content,
+        case_comparisons,
+        summary,
+    })
 }
 
 struct ExecutionTargetContext<'a> {
@@ -796,6 +1124,34 @@ mod tests {
         .execute(pool)
         .await
         .expect("插入用户失败");
+    }
+
+    #[test]
+    fn test_generate_difference_note_variants() {
+        let note = generate_difference_note(true, true, "a", "b", &None, &None);
+        assert_eq!(note.as_deref(), Some("两版本均通过，但输出内容存在差异"));
+
+        let note = generate_difference_note(true, false, "a", "a", &None, &Some("err".to_string()));
+        assert_eq!(note.as_deref(), Some("版本 B 在此用例退化：err"));
+
+        let note = generate_difference_note(false, true, "a", "a", &Some("bad".to_string()), &None);
+        assert_eq!(note.as_deref(), Some("版本 B 在此用例改进（A 失败：bad）"));
+
+        let note = generate_difference_note(false, false, "a", "b", &None, &None);
+        assert_eq!(note.as_deref(), Some("两版本均失败，错误原因可能不同"));
+
+        let note = generate_difference_note(
+            false,
+            false,
+            "a",
+            "b",
+            &Some("err-a".to_string()),
+            &Some("err-b".to_string()),
+        );
+        assert_eq!(
+            note.as_deref(),
+            Some("两版本均失败：A=err-a；B=err-b")
+        );
     }
 
     async fn insert_task_with_iteration(
