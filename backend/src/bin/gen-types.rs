@@ -52,8 +52,8 @@ use prompt_faster::domain::models::{
     ResultExportFormat, RollbackRequest, RollbackResponse, Rule, RuleConflict, RuleConflictType,
     RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskExportMeta, TaskHistoryResponse,
     TaskReference, TaskResultView, TeacherPrompt, TeacherPromptStats, TeacherPromptVersion,
-    TestCase, TestSet, TimelineEntry, TimelineEntryType, TimelineResponse, TokenUsage, TurningPoint,
-    TurningPointType, UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
+    TestCase, TestSet, TimelineEntry, TimelineEntryType, TimelineResponse, TokenUsage,
+    TurningPoint, TurningPointType, UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,

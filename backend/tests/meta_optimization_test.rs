@@ -5,8 +5,8 @@ use axum::middleware;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tower::ServiceExt;
 use tokio::time::{Duration, advance};
+use tower::ServiceExt;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
@@ -398,15 +398,10 @@ async fn test_preview_prompt_success() {
 
     let mut config = OptimizationTaskConfig::default();
     config.evaluator_config.evaluator_type = EvaluatorType::Example;
-    let _ = OptimizationTaskRepo::update_config_scoped(
-        &db,
-        &user_id,
-        &workspace_id,
-        &task_id,
-        config,
-    )
-    .await
-    .expect("更新任务配置失败");
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
 
     let req = with_bearer(
         build_json_request(
@@ -468,7 +463,6 @@ async fn test_preview_prompt_timeout() {
     }
 
     let (app, db) = setup_test_app_with_db().await;
-    tokio::time::pause();
     let token = register_user(&app, "user8", "password").await;
     let user_id = find_user_id(&db, "user8").await;
 
@@ -478,15 +472,12 @@ async fn test_preview_prompt_timeout() {
 
     let mut config = OptimizationTaskConfig::default();
     config.evaluator_config.evaluator_type = EvaluatorType::TeacherModel;
-    let _ = OptimizationTaskRepo::update_config_scoped(
-        &db,
-        &user_id,
-        &workspace_id,
-        &task_id,
-        config,
-    )
-    .await
-    .expect("更新任务配置失败");
+    let _ =
+        OptimizationTaskRepo::update_config_scoped(&db, &user_id, &workspace_id, &task_id, config)
+            .await
+            .expect("更新任务配置失败");
+
+    tokio::time::pause();
 
     let req = with_bearer(
         build_json_request(

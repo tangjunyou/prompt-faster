@@ -71,7 +71,11 @@ export function PromptVersionDetail({
   const [isRollbacking, setIsRollbacking] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
 
-  const editorRef = useRef<any>(null)
+  type MonacoEditorHandle = {
+    getAction?: (actionId: string) => { run?: () => void } | null
+  }
+
+  const editorRef = useRef<MonacoEditorHandle | null>(null)
 
   const previousVersion = useMemo(() => {
     if (!prompt || versions.length < 2) return null

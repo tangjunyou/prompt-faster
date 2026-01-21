@@ -15,14 +15,14 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::core::meta_optimization_service::{
-    MetaOptimizationServiceError, create_prompt_version, get_historical_tasks_for_meta_optimization,
-    get_overview, get_prompt_by_id, list_prompt_versions, preview_prompt, set_active_prompt,
-    validate_prompt,
+    MetaOptimizationServiceError, create_prompt_version,
+    get_historical_tasks_for_meta_optimization, get_overview, get_prompt_by_id,
+    list_prompt_versions, preview_prompt, set_active_prompt, validate_prompt,
 };
 use crate::domain::models::{
-    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary, TeacherPrompt,
-    TeacherPromptVersion, PromptPreviewRequest, PromptPreviewResponse, PromptValidationRequest,
-    PromptValidationResult,
+    CreateTeacherPromptInput, MetaOptimizationOverview, MetaOptimizationTaskSummary,
+    PromptPreviewRequest, PromptPreviewResponse, PromptValidationRequest, PromptValidationResult,
+    TeacherPrompt, TeacherPromptVersion,
 };
 use crate::infra::db::repositories::TeacherPromptRepo;
 use crate::shared::error_codes;
@@ -500,11 +500,9 @@ async fn map_service_error<T: serde::Serialize>(
                 "版本不存在",
             )
         }
-        MetaOptimizationServiceError::InvalidRequest(msg) => ApiResponse::err(
-            StatusCode::BAD_REQUEST,
-            error_codes::VALIDATION_ERROR,
-            msg,
-        ),
+        MetaOptimizationServiceError::InvalidRequest(msg) => {
+            ApiResponse::err(StatusCode::BAD_REQUEST, error_codes::VALIDATION_ERROR, msg)
+        }
         MetaOptimizationServiceError::ExecutionFailed(msg) => {
             warn!(correlation_id = %correlation_id, error = %msg, "元优化预览执行失败");
             ApiResponse::err(

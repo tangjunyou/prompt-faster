@@ -12,15 +12,17 @@ use crate::core::iteration_engine::orchestrator::IterationEngine;
 use crate::core::teacher_model::{TeacherModelType, create_teacher_model};
 use crate::domain::models::{
     CreateTeacherPromptInput, ExecutionTargetType, IterationState, MetaOptimizationOverview,
-    MetaOptimizationTaskSummary, OptimizationTaskConfig, PromptPreviewRequest, PromptPreviewResponse,
-    PromptPreviewResult, PromptValidationRequest, PromptValidationResult, RuleSystem, TeacherPrompt,
-    TeacherPromptStats, TeacherPromptVersion, TestCase,
+    MetaOptimizationTaskSummary, OptimizationTaskConfig, PromptPreviewRequest,
+    PromptPreviewResponse, PromptPreviewResult, PromptValidationRequest, PromptValidationResult,
+    RuleSystem, TeacherPrompt, TeacherPromptStats, TeacherPromptVersion, TestCase,
 };
-use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig, OptimizationContext, unix_ms_to_iso8601};
+use crate::domain::types::{
+    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, unix_ms_to_iso8601,
+};
 use crate::infra::db::repositories::{
     CreateTeacherPromptRecordInput, CredentialRepo, CredentialRepoError, CredentialType,
     OptimizationTaskRepo, OptimizationTaskRepoError, TeacherPromptRecord, TeacherPromptRepo,
-    TeacherPromptRepoError, TestSetRepo, TestSetRepoError, TeacherPromptVersionWithStatsRecord,
+    TeacherPromptRepoError, TeacherPromptVersionWithStatsRecord, TestSetRepo, TestSetRepoError,
 };
 use crate::infra::external::api_key_manager::{ApiKeyManager, EncryptedApiKey};
 
@@ -454,14 +456,10 @@ pub async fn preview_prompt(
             ));
         }
 
-        let scoped = OptimizationTaskRepo::find_by_id_scoped(
-            pool,
-            user_id,
-            &current_workspace,
-            task_id,
-        )
-        .await
-        .map_err(map_task_repo_error)?;
+        let scoped =
+            OptimizationTaskRepo::find_by_id_scoped(pool, user_id, &current_workspace, task_id)
+                .await
+                .map_err(map_task_repo_error)?;
 
         for id in scoped.test_set_ids {
             if seen_test_sets.insert(id.clone()) {
@@ -489,32 +487,25 @@ pub async fn preview_prompt(
         }
 
         for test_case_id in &request.test_case_ids {
-            let case = TestSetRepo::find_case_by_id(
-                pool,
-                &workspace_id,
-                &test_set_ids,
-                test_case_id,
-            )
-            .await
-            .map_err(map_test_set_repo_error)?;
+            let case =
+                TestSetRepo::find_case_by_id(pool, &workspace_id, &test_set_ids, test_case_id)
+                    .await
+                    .map_err(map_test_set_repo_error)?;
 
             let Some(case) = case else {
-                return Err(MetaOptimizationServiceError::InvalidRequest(
-                    format!("测试用例不存在或无权访问: {}", test_case_id),
-                ));
+                return Err(MetaOptimizationServiceError::InvalidRequest(format!(
+                    "测试用例不存在或无权访问: {}",
+                    test_case_id
+                )));
             };
             selected_cases.push(case);
         }
     } else {
         for test_set_id in &test_set_ids {
-            let test_set = TestSetRepo::find_by_id_scoped(
-                pool,
-                user_id,
-                &workspace_id,
-                test_set_id,
-            )
-            .await
-            .map_err(map_test_set_repo_error)?;
+            let test_set =
+                TestSetRepo::find_by_id_scoped(pool, user_id, &workspace_id, test_set_id)
+                    .await
+                    .map_err(map_test_set_repo_error)?;
 
             for case in test_set.cases {
                 selected_cases.push(case);
@@ -574,9 +565,10 @@ pub async fn preview_prompt(
             .insert("correlation_id".to_string(), serde_json::Value::String(cid));
     }
 
-    let evaluator_cfg_value = serde_json::to_value(&task_config.evaluator_config).map_err(|_| {
-        MetaOptimizationServiceError::ExecutionFailed("evaluator_config 序列化失败".to_string())
-    })?;
+    let evaluator_cfg_value =
+        serde_json::to_value(&task_config.evaluator_config).map_err(|_| {
+            MetaOptimizationServiceError::ExecutionFailed("evaluator_config 序列化失败".to_string())
+        })?;
     ctx.extensions
         .insert(EXT_TASK_EVALUATOR_CONFIG.to_string(), evaluator_cfg_value);
 
@@ -669,13 +661,10 @@ async fn build_execution_target_config(
         ExecutionTargetType::Dify => {
             let prompt_variable =
                 extract_prompt_variable(pool, user_id, workspace_id, test_set_ids).await?;
-            let credential = CredentialRepo::find_by_user_and_type(
-                pool,
-                user_id,
-                CredentialType::Dify,
-            )
-            .await
-            .map_err(map_credential_repo_error)?;
+            let credential =
+                CredentialRepo::find_by_user_and_type(pool, user_id, CredentialType::Dify)
+                    .await
+                    .map_err(map_credential_repo_error)?;
             let api_key = decrypt_api_key(api_key_manager, user_password, &credential)
                 .map_err(|e| MetaOptimizationServiceError::Encryption(e))?;
             Ok(ExecutionTargetConfig::Dify {
@@ -686,13 +675,10 @@ async fn build_execution_target_config(
             })
         }
         ExecutionTargetType::Generic => {
-            let credential = CredentialRepo::find_by_user_and_type(
-                pool,
-                user_id,
-                CredentialType::GenericLlm,
-            )
-            .await
-            .map_err(map_credential_repo_error)?;
+            let credential =
+                CredentialRepo::find_by_user_and_type(pool, user_id, CredentialType::GenericLlm)
+                    .await
+                    .map_err(map_credential_repo_error)?;
             let model_name = task_config
                 .teacher_llm
                 .model_id
@@ -738,10 +724,9 @@ async fn extract_prompt_variable(
     test_set_ids: &[String],
 ) -> Result<String, MetaOptimizationServiceError> {
     for test_set_id in test_set_ids {
-        let test_set =
-            TestSetRepo::find_by_id_scoped(pool, user_id, workspace_id, test_set_id)
-                .await
-                .map_err(map_test_set_repo_error)?;
+        let test_set = TestSetRepo::find_by_id_scoped(pool, user_id, workspace_id, test_set_id)
+            .await
+            .map_err(map_test_set_repo_error)?;
         if let Some(raw) = test_set.dify_config_json {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
                 if let Some(variable) = value

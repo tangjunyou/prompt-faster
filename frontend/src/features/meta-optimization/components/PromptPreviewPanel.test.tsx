@@ -3,6 +3,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { PromptPreviewPanel } from './PromptPreviewPanel'
 import { useAuthStore } from '@/stores/useAuthStore'
+import type { OptimizationTaskResponse } from '@/types/generated/api/OptimizationTaskResponse'
+import type { OptimizationTaskConfig } from '@/types/generated/models/OptimizationTaskConfig'
 
 const mockTasks = [
   {
@@ -50,8 +52,26 @@ vi.mock('../hooks/usePromptPreview', () => ({
   }),
 }))
 
+const mockTaskDetail: OptimizationTaskResponse = {
+  id: 'task-1',
+  workspace_id: 'ws-1',
+  name: '历史任务 1',
+  description: null,
+  goal: 'goal',
+  execution_target_type: 'example',
+  task_mode: 'fixed',
+  status: 'completed',
+  test_set_ids: ['ts-1'],
+  config: {} as OptimizationTaskConfig,
+  final_prompt: null,
+  terminated_at: null,
+  selected_iteration_id: null,
+  created_at: 0,
+  updated_at: 0,
+}
+
 vi.mock('@/features/task-config/services/optimizationTaskService', () => ({
-  getOptimizationTask: vi.fn().mockResolvedValue({ test_set_ids: ['ts-1'] } as any),
+  getOptimizationTask: vi.fn().mockResolvedValue(mockTaskDetail),
 }))
 
 vi.mock('@/features/test-set-manager/services/testSetService', () => ({
