@@ -1,3 +1,7 @@
 export * from './components/PromptVersionList'
 export * from './components/PromptVersionDetail'
 export * from './components/MetaOptimizationStats'
+export * from './components/PromptComparePanel'
+export * from './components/PromptDiffViewer'
+export * from './components/CompareResultSummary'
+export * from './components/CaseComparisonList'

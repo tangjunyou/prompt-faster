@@ -9,6 +9,7 @@ export interface PromptVersionListProps {
   onSelect?: (id: string) => void
   onActivate?: (id: string) => void
   isActivating?: boolean
+  onCompare?: () => void
 }
 
 function formatRate(rate: number | null | undefined) {
@@ -27,11 +28,15 @@ export function PromptVersionList({
   onSelect,
   onActivate,
   isActivating = false,
+  onCompare,
 }: PromptVersionListProps) {
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle>版本列表</CardTitle>
+        <Button type="button" size="sm" variant="outline" onClick={onCompare} disabled={!onCompare}>
+          版本对比
+        </Button>
       </CardHeader>
       <CardContent className="space-y-3">
         {versions.length === 0 ? (

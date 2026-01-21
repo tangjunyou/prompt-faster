@@ -580,25 +580,26 @@ mod tests {
     static TEST_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
 
     async fn setup_test_pool() -> SqlitePool {
-        if let Some(pool) = global_db_pool() {
-            return pool;
-        }
-        if let Some(pool) = TEST_POOL.get() {
-            return pool.clone();
-        }
+        let pool = if let Some(pool) = global_db_pool() {
+            pool
+        } else if let Some(pool) = TEST_POOL.get() {
+            pool.clone()
+        } else {
+            let db_path = std::env::temp_dir().join(format!(
+                "checkpoint_idle_autosave_{}.db",
+                std::process::id()
+            ));
+            let db_url = format!("sqlite:{}", db_path.display());
+            let pool = create_pool(&db_url).await.expect("创建测试数据库失败");
+            init_global_db_pool(pool.clone());
+            let _ = TEST_POOL.set(pool.clone());
+            pool
+        };
 
-        let db_path = std::env::temp_dir().join(format!(
-            "checkpoint_idle_autosave_{}.db",
-            std::process::id()
-        ));
-        let db_url = format!("sqlite:{}", db_path.display());
-        let pool = create_pool(&db_url).await.expect("创建测试数据库失败");
         sqlx::migrate!()
             .run(&pool)
             .await
             .expect("运行 migrations 失败");
-        init_global_db_pool(pool.clone());
-        let _ = TEST_POOL.set(pool.clone());
         pool
     }
 

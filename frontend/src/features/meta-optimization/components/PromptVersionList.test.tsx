@@ -57,4 +57,14 @@ describe('PromptVersionList', () => {
 
     expect(onActivate).toHaveBeenCalledWith('v2')
   })
+
+  it('calls compare handler', () => {
+    const onCompare = vi.fn()
+    render(
+      <PromptVersionList versions={versions} selectedId={null} onCompare={onCompare} />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '版本对比' }))
+    expect(onCompare).toHaveBeenCalled()
+  })
 })

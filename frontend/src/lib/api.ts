@@ -90,13 +90,22 @@ export async function apiRequest<T>(
 
   // Code Review Fix: 添加请求超时控制
   const shouldUseAbort = !IS_TEST_ENV && typeof AbortController !== 'undefined'
+  const externalSignal = options.signal
   const controller = shouldUseAbort ? new AbortController() : null
-  const timeoutId = shouldUseAbort ? setTimeout(() => controller?.abort(), timeoutMs) : null
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null
+
+  if (controller && externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort()
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true })
+    }
+  }
 
   try {
     const response = await fetch(url, {
       ...options,
-      signal: controller?.signal,
+      signal: controller?.signal ?? externalSignal,
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,

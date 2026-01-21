@@ -43,6 +43,9 @@ pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
 /// 上游服务错误（通用）
 pub const UPSTREAM_ERROR: &str = "UPSTREAM_ERROR";
 
+/// 触发速率限制
+pub const RATE_LIMITED: &str = "RATE_LIMITED";
+
 /// 网络离线
 pub const CONNECTIVITY_OFFLINE: &str = "CONNECTIVITY_OFFLINE";
 

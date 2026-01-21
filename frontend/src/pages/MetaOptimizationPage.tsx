@@ -1,7 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { PromptVersionDetail, PromptVersionList, MetaOptimizationStats } from '@/features/meta-optimization'
+import {
+  PromptVersionDetail,
+  PromptVersionList,
+  MetaOptimizationStats,
+  PromptComparePanel,
+} from '@/features/meta-optimization'
 import { usePromptVersions } from '@/features/meta-optimization/hooks/usePromptVersions'
 import { useMetaOptimizationOverview } from '@/features/meta-optimization/hooks/useMetaOptimizationOverview'
 import { useMetaOptimizationTasks } from '@/features/meta-optimization/hooks/useMetaOptimizationTasks'
@@ -41,6 +46,7 @@ export function MetaOptimizationPage() {
   const [newPromptContent, setNewPromptContent] = useState('')
   const [newPromptDescription, setNewPromptDescription] = useState('')
   const [activateNewPrompt, setActivateNewPrompt] = useState(true)
+  const [showCompare, setShowCompare] = useState(false)
 
   const effectiveSelectedId = useMemo(() => {
     if (selectedVersionId && versions.some((v) => v.id === selectedVersionId)) {
@@ -173,7 +179,10 @@ export function MetaOptimizationPage() {
             onSelect={setSelectedVersionId}
             onActivate={(id) => activateMutation.mutate(id)}
             isActivating={activateMutation.isPending}
+            onCompare={() => setShowCompare((prev) => !prev)}
           />
+
+          {showCompare && <PromptComparePanel />}
 
           <PromptVersionDetail
             prompt={promptQuery.data ?? null}

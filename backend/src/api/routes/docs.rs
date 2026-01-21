@@ -113,6 +113,7 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::meta_optimization::get_stats,
         crate::api::routes::meta_optimization::list_historical_tasks,
         crate::api::routes::meta_optimization::preview_prompt_handler,
+        crate::api::routes::meta_optimization::compare_prompt_handler,
         crate::api::routes::meta_optimization::validate_prompt_handler,
         crate::api::routes::checkpoints::list_checkpoints,
         crate::api::routes::checkpoints::get_checkpoint,
