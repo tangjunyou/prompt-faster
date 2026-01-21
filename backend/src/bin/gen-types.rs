@@ -46,13 +46,14 @@ use prompt_faster::domain::models::{
     FailureReasonEntry, HistoryEvent, HistoryEventResponse, HistoryExportData, Iteration,
     IterationExportEntry, IterationState, IterationSummaryEntry, LineageType,
     MetaOptimizationOverview, MetaOptimizationTaskSummary, OptimizationTaskEntity,
-    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, PassRateSummary, QualityDimension,
-    RecoveryMetrics, RecoveryRequest, RecoveryResponse, ResultExportFormat, RollbackRequest,
-    RollbackResponse, Rule, RuleConflict, RuleConflictType, RuleIR, RuleMergeRecord, RuleSystem,
-    RuleTags, Severity, TaskExportMeta, TaskHistoryResponse, TaskReference, TaskResultView,
-    TeacherPrompt, TeacherPromptStats, TeacherPromptVersion, TestCase, TestSet, TimelineEntry,
-    TimelineEntryType, TimelineResponse, TokenUsage, TurningPoint, TurningPointType,
-    UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
+    OptimizationTaskMode, OptimizationTaskStatus, OutputLength, PassRateSummary,
+    PromptPreviewRequest, PromptPreviewResponse, PromptPreviewResult, PromptValidationRequest,
+    PromptValidationResult, QualityDimension, RecoveryMetrics, RecoveryRequest, RecoveryResponse,
+    ResultExportFormat, RollbackRequest, RollbackResponse, Rule, RuleConflict, RuleConflictType,
+    RuleIR, RuleMergeRecord, RuleSystem, RuleTags, Severity, TaskExportMeta, TaskHistoryResponse,
+    TaskReference, TaskResultView, TeacherPrompt, TeacherPromptStats, TeacherPromptVersion,
+    TestCase, TestSet, TimelineEntry, TimelineEntryType, TimelineResponse, TokenUsage, TurningPoint,
+    TurningPointType, UnfinishedTask, UnfinishedTasksResponse, User, Workspace,
 };
 use prompt_faster::domain::types::{
     AddRoundsRequest, AddRoundsResponse, ArtifactSource, CandidatePrompt,
@@ -175,6 +176,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     TeacherPromptStats::export_all_to(&out_dir)?;
     MetaOptimizationOverview::export_all_to(&out_dir)?;
     MetaOptimizationTaskSummary::export_all_to(&out_dir)?;
+    PromptPreviewRequest::export_all_to(&out_dir)?;
+    PromptPreviewResult::export_all_to(&out_dir)?;
+    PromptPreviewResponse::export_all_to(&out_dir)?;
+    PromptValidationRequest::export_all_to(&out_dir)?;
+    PromptValidationResult::export_all_to(&out_dir)?;
     HistoryEvent::export_all_to(&out_dir)?;
     HistoryEventResponse::export_all_to(&out_dir)?;
     TimelineEntry::export_all_to(&out_dir)?;

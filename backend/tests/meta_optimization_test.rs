@@ -6,12 +6,20 @@ use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tower::ServiceExt;
+use tokio::time::{Duration, advance};
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
 use prompt_faster::api::middleware::{LoginAttemptStore, SessionStore, auth_middleware};
 use prompt_faster::api::routes::{auth, health, meta_optimization, user_auth};
 use prompt_faster::api::state::AppState;
+use prompt_faster::domain::models::{
+    EvaluatorType, ExecutionTargetType, OptimizationTaskConfig, OptimizationTaskMode,
+    TaskReference, TestCase,
+};
 use prompt_faster::infra::db::pool::create_pool;
+use prompt_faster::infra::db::repositories::{
+    CreateOptimizationTaskInput, OptimizationTaskRepo, TestSetRepo, WorkspaceRepo,
+};
 use prompt_faster::infra::external::api_key_manager::ApiKeyManager;
 use prompt_faster::infra::external::http_client::create_http_client;
 use prompt_faster::shared::config::AppConfig;
@@ -145,6 +153,73 @@ async fn register_user(app: &Router, username: &str, password: &str) -> String {
         .to_string()
 }
 
+async fn find_user_id(db: &sqlx::SqlitePool, username: &str) -> String {
+    sqlx::query_scalar("SELECT id FROM users WHERE username = ?1")
+        .bind(username)
+        .fetch_one(db)
+        .await
+        .expect("查询用户 ID 失败")
+}
+
+async fn create_task_with_test_set(
+    db: &sqlx::SqlitePool,
+    user_id: &str,
+    cases: Vec<TestCase>,
+) -> (String, String) {
+    let workspace = WorkspaceRepo::create(db, user_id, "ws", None)
+        .await
+        .expect("创建工作区失败");
+    let test_set = TestSetRepo::create(db, &workspace.id, "ts", None, &cases, None, None)
+        .await
+        .expect("创建测试集失败");
+    let created = OptimizationTaskRepo::create_scoped(
+        db,
+        CreateOptimizationTaskInput {
+            user_id,
+            workspace_id: &workspace.id,
+            name: "task-1",
+            description: None,
+            goal: "g",
+            execution_target_type: ExecutionTargetType::Example,
+            task_mode: OptimizationTaskMode::Fixed,
+            test_set_ids: std::slice::from_ref(&test_set.id),
+            teacher_prompt_version_id: None,
+        },
+    )
+    .await
+    .expect("创建任务失败");
+    (workspace.id, created.task.id)
+}
+
+fn sample_exact_cases(prompt_len: usize) -> Vec<TestCase> {
+    let mut input = std::collections::HashMap::new();
+    input.insert("x".to_string(), serde_json::Value::String("1".to_string()));
+    vec![
+        TestCase {
+            id: "tc-1".to_string(),
+            input: input.clone(),
+            reference: TaskReference::Exact {
+                expected: format!(
+                    "example_execution_target: test_case_id=tc-1 prompt_len={prompt_len} input_keys_count=1"
+                ),
+            },
+            split: None,
+            metadata: None,
+        },
+        TestCase {
+            id: "tc-2".to_string(),
+            input,
+            reference: TaskReference::Exact {
+                expected: format!(
+                    "example_execution_target: test_case_id=tc-2 prompt_len={prompt_len} input_keys_count=1"
+                ),
+            },
+            split: None,
+            metadata: None,
+        },
+    ]
+}
+
 #[tokio::test]
 async fn test_create_list_and_get_prompt() {
     let app = setup_test_app().await;
@@ -263,4 +338,170 @@ async fn test_prompt_forbidden_for_other_user() {
     );
     let get_resp = app.clone().oneshot(get_req).await.unwrap();
     assert_eq!(get_resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_validate_prompt_returns_errors() {
+    let app = setup_test_app().await;
+    let token = register_user(&app, "user5", "password").await;
+
+    let empty_req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/validate",
+            json!({"content": "  "}),
+        ),
+        &token,
+    );
+    let empty_resp = app.clone().oneshot(empty_req).await.unwrap();
+    assert_eq!(empty_resp.status(), StatusCode::OK);
+    let empty_json = read_json_body(empty_resp).await;
+    assert_eq!(empty_json["data"]["isValid"].as_bool().unwrap(), false);
+    assert!(empty_json["data"]["errors"].as_array().unwrap().len() >= 1);
+
+    let long_content = "a".repeat(100 * 1024 + 1);
+    let long_req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/validate",
+            json!({"content": long_content}),
+        ),
+        &token,
+    );
+    let long_resp = app.clone().oneshot(long_req).await.unwrap();
+    assert_eq!(long_resp.status(), StatusCode::OK);
+    let long_json = read_json_body(long_resp).await;
+    assert_eq!(long_json["data"]["isValid"].as_bool().unwrap(), false);
+}
+
+#[tokio::test]
+async fn test_preview_prompt_requires_auth() {
+    let app = setup_test_app().await;
+    let req = build_json_request(
+        "POST",
+        "/api/v1/meta-optimization/prompts/preview",
+        json!({"content": "hi", "taskIds": ["task-1"], "testCaseIds": []}),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_preview_prompt_success() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user6", "password").await;
+    let user_id = find_user_id(&db, "user6").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::Example;
+    let _ = OptimizationTaskRepo::update_config_scoped(
+        &db,
+        &user_id,
+        &workspace_id,
+        &task_id,
+        config,
+    )
+    .await
+    .expect("更新任务配置失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/preview",
+            json!({"content": prompt, "taskIds": [task_id], "testCaseIds": []}),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = read_json_body(resp).await;
+    assert_eq!(body["data"]["totalPassed"].as_i64().unwrap(), 2);
+    assert_eq!(body["data"]["totalFailed"].as_i64().unwrap(), 0);
+    assert_eq!(body["data"]["results"].as_array().unwrap().len(), 2);
+    assert_eq!(body["data"]["results"][0]["testCaseId"], "tc-1");
+}
+
+#[tokio::test]
+async fn test_preview_prompt_rejects_over_limit() {
+    let (app, db) = setup_test_app_with_db().await;
+    let token = register_user(&app, "user7", "password").await;
+    let user_id = find_user_id(&db, "user7").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (_workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/preview",
+            json!({
+                "content": prompt,
+                "taskIds": [task_id],
+                "testCaseIds": ["tc-1", "tc-2", "tc-3", "tc-4"]
+            }),
+        ),
+        &token,
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_preview_prompt_timeout() {
+    struct EnvGuard;
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                std::env::remove_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS");
+            }
+        }
+    }
+
+    let _guard = EnvGuard;
+    unsafe {
+        std::env::set_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS", "31000");
+    }
+
+    let (app, db) = setup_test_app_with_db().await;
+    tokio::time::pause();
+    let token = register_user(&app, "user8", "password").await;
+    let user_id = find_user_id(&db, "user8").await;
+
+    let prompt = "hi";
+    let cases = sample_exact_cases(prompt.chars().count());
+    let (workspace_id, task_id) = create_task_with_test_set(&db, &user_id, cases).await;
+
+    let mut config = OptimizationTaskConfig::default();
+    config.evaluator_config.evaluator_type = EvaluatorType::TeacherModel;
+    let _ = OptimizationTaskRepo::update_config_scoped(
+        &db,
+        &user_id,
+        &workspace_id,
+        &task_id,
+        config,
+    )
+    .await
+    .expect("更新任务配置失败");
+
+    let req = with_bearer(
+        build_json_request(
+            "POST",
+            "/api/v1/meta-optimization/prompts/preview",
+            json!({"content": prompt, "taskIds": [task_id], "testCaseIds": []}),
+        ),
+        &token,
+    );
+
+    let app_clone = app.clone();
+    let handle = tokio::spawn(async move { app_clone.oneshot(req).await.unwrap() });
+
+    advance(Duration::from_secs(31)).await;
+
+    let resp = handle.await.unwrap();
+    assert_eq!(resp.status(), StatusCode::GATEWAY_TIMEOUT);
 }
