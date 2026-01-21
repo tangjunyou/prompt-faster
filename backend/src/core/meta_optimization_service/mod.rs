@@ -98,6 +98,14 @@ fn map_repo_error(err: TeacherPromptRepoError) -> MetaOptimizationServiceError {
 const MAX_PROMPT_BYTES: usize = 100 * 1024;
 const PREVIEW_TIMEOUT_SECS: u64 = 30;
 
+fn preview_timeout_secs() -> u64 {
+    std::env::var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(PREVIEW_TIMEOUT_SECS)
+}
+
 fn validate_prompt_content(content: &str) -> PromptValidationResult {
     let mut errors = Vec::new();
     let trimmed = content.trim();
@@ -582,7 +590,7 @@ pub async fn preview_prompt(
     let batch = ctx.test_cases.clone();
     let prompt = request.content.clone();
 
-    let output = tokio::time::timeout(Duration::from_secs(PREVIEW_TIMEOUT_SECS), async {
+    let output = tokio::time::timeout(Duration::from_secs(preview_timeout_secs()), async {
         let exec_results = engine
             .run_tests(&mut ctx, &prompt, &batch, &task_config)
             .await

@@ -5,7 +5,6 @@ use axum::middleware;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tokio::time::{Duration, advance};
 use tower::ServiceExt;
 
 use prompt_faster::api::middleware::correlation_id::correlation_id_middleware;
@@ -453,13 +452,15 @@ async fn test_preview_prompt_timeout() {
         fn drop(&mut self) {
             unsafe {
                 std::env::remove_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS");
+                std::env::remove_var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS");
             }
         }
     }
 
     let _guard = EnvGuard;
     unsafe {
-        std::env::set_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS", "31000");
+        std::env::set_var("PROMPT_FASTER_TEACHER_MODEL_DELAY_MS", "2000");
+        std::env::set_var("PROMPT_FASTER_PREVIEW_TIMEOUT_SECS", "1");
     }
 
     let (app, db) = setup_test_app_with_db().await;
@@ -477,8 +478,6 @@ async fn test_preview_prompt_timeout() {
             .await
             .expect("更新任务配置失败");
 
-    tokio::time::pause();
-
     let req = with_bearer(
         build_json_request(
             "POST",
@@ -490,8 +489,6 @@ async fn test_preview_prompt_timeout() {
 
     let app_clone = app.clone();
     let handle = tokio::spawn(async move { app_clone.oneshot(req).await.unwrap() });
-
-    advance(Duration::from_secs(31)).await;
 
     let resp = handle.await.unwrap();
     assert_eq!(resp.status(), StatusCode::GATEWAY_TIMEOUT);
