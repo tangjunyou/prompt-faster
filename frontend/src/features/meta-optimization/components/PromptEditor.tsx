@@ -2,12 +2,16 @@ import { lazy, Suspense } from 'react'
 
 const MonacoEditor = lazy(async () => import('@monaco-editor/react'))
 
+export type MonacoEditorHandle = {
+  getAction: (actionId: string) => { run?: () => void } | null
+}
+
 export interface PromptEditorProps {
   value: string
   onChange?: (value: string) => void
   readOnly?: boolean
   height?: string
-  onMount?: (editor: unknown) => void
+  onMount?: (editor: MonacoEditorHandle) => void
 }
 
 export function PromptEditor({
@@ -27,7 +31,7 @@ export function PromptEditor({
         theme="vs-light"
         value={value}
         onChange={(val) => onChange?.(val ?? '')}
-        onMount={(editor) => onMount?.(editor)}
+        onMount={(editor) => onMount?.(editor as MonacoEditorHandle)}
         options={{
           readOnly,
           domReadOnly: readOnly,

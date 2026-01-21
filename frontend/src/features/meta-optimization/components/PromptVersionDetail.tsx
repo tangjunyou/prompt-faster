@@ -18,7 +18,7 @@ import {
 } from '../services/metaOptimizationService'
 import { META_OPTIMIZATION_OVERVIEW_QUERY_KEY } from '../hooks/useMetaOptimizationOverview'
 import { PROMPT_VERSIONS_QUERY_KEY } from '../hooks/usePromptVersions'
-import { PromptEditor } from './PromptEditor'
+import { PromptEditor, type MonacoEditorHandle } from './PromptEditor'
 import { PromptPreviewPanel } from './PromptPreviewPanel'
 
 const MAX_PROMPT_BYTES = 100 * 1024
@@ -71,10 +71,6 @@ export function PromptVersionDetail({
   const [isRollbacking, setIsRollbacking] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
 
-  type MonacoEditorHandle = {
-    getAction?: (actionId: string) => { run?: () => void } | null
-  }
-
   const editorRef = useRef<MonacoEditorHandle | null>(null)
 
   const previousVersion = useMemo(() => {
@@ -101,10 +97,7 @@ export function PromptVersionDetail({
   }
 
   const handleFormat = () => {
-    const editor = editorRef.current
-    if (editor?.getAction) {
-      editor.getAction('editor.action.formatDocument')?.run()
-    }
+    editorRef.current?.getAction('editor.action.formatDocument')?.run?.()
   }
 
   const handleConfirmSave = async () => {
