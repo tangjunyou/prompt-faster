@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use ts_rs::TS;
 use utoipa::ToSchema;
 
+use super::diversity_analysis::DiversityConfig;
+
 pub const OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION: u32 = 1;
 
 pub const OPTIMIZATION_TASK_CONFIG_MAX_ITERATIONS_MIN: u32 = 1;
@@ -255,6 +257,8 @@ pub struct OptimizationTaskConfig {
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
     #[serde(default)]
+    pub diversity_config: DiversityConfig,
+    #[serde(default)]
     pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
 }
@@ -273,6 +277,7 @@ impl Default for OptimizationTaskConfig {
             data_split: DataSplitPercentConfig::default(),
             output_config: OutputConfig::default(),
             evaluator_config: EvaluatorConfig::default(),
+            diversity_config: DiversityConfig::default(),
             teacher_llm: TeacherLlmConfig::default(),
             advanced_data_split: AdvancedDataSplitConfig::default(),
         }
@@ -435,6 +440,12 @@ impl OptimizationTaskConfig {
             }
         }
 
+        if self.diversity_config.enabled
+            && !(0.1..=0.9).contains(&self.diversity_config.warning_threshold)
+        {
+            return Err("多样性告警阈值仅允许 0.1-0.9".to_string());
+        }
+
         Ok(())
     }
 }
@@ -492,6 +503,8 @@ struct OptimizationTaskConfigStorage {
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
     #[serde(default)]
+    pub diversity_config: DiversityConfig,
+    #[serde(default)]
     pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
     #[serde(flatten)]
@@ -513,6 +526,7 @@ impl Default for OptimizationTaskConfigStorage {
             data_split: base.data_split,
             output_config: base.output_config,
             evaluator_config: base.evaluator_config,
+            diversity_config: base.diversity_config,
             teacher_llm: base.teacher_llm,
             advanced_data_split: base.advanced_data_split,
             extra: BTreeMap::new(),
@@ -559,6 +573,7 @@ impl OptimizationTaskConfigStorage {
             data_split: self.data_split,
             output_config: self.output_config,
             evaluator_config: self.evaluator_config,
+            diversity_config: self.diversity_config,
             teacher_llm: self.teacher_llm,
             advanced_data_split: self.advanced_data_split,
         }
@@ -580,6 +595,7 @@ impl OptimizationTaskConfigStorage {
             data_split: config.data_split,
             output_config: config.output_config,
             evaluator_config: config.evaluator_config,
+            diversity_config: config.diversity_config,
             teacher_llm: config.teacher_llm,
             advanced_data_split: config.advanced_data_split,
             extra: existing.extra,

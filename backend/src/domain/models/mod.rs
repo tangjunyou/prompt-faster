@@ -3,6 +3,7 @@
 pub mod algorithm;
 pub mod checkpoint;
 pub mod diagnostic;
+pub mod diversity_analysis;
 pub mod evaluation_result;
 pub mod history;
 pub mod history_event;
@@ -29,6 +30,10 @@ pub use checkpoint::{
 pub use diagnostic::{
     DiagnosticReport, DiagnosticSummary, DiffSegment, DiffSegmentType, FailedCaseDetail,
     FailedCaseSummary, FailureReasonEntry, TurningPoint, TurningPointType,
+};
+pub use diversity_analysis::{
+    BaselineComparison, DiversityAnalysisResult, DiversityBaseline, DiversityConfig,
+    DiversityMetrics, DiversitySuggestion, DiversityTrend, DiversityWarning, DiversityWarningLevel,
 };
 pub use evaluation_result::{
     ExportResultResponse, IterationSummaryEntry, ResultExportFormat, TaskResultView,

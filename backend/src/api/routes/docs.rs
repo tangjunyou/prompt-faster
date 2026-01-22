@@ -63,6 +63,10 @@ use utoipa_swagger_ui::SwaggerUi;
             description = "元优化 Prompt 版本管理 API"
         ),
         (
+            name = "diversity",
+            description = "创意任务多样性分析 API"
+        ),
+        (
             name = "recovery",
             description = "断点恢复与连接状态 API"
         )
@@ -115,6 +119,8 @@ use utoipa_swagger_ui::SwaggerUi;
         crate::api::routes::meta_optimization::preview_prompt_handler,
         crate::api::routes::meta_optimization::compare_prompt_handler,
         crate::api::routes::meta_optimization::validate_prompt_handler,
+        crate::api::routes::diversity::get_diversity_analysis,
+        crate::api::routes::diversity::record_diversity_baseline,
         crate::api::routes::checkpoints::list_checkpoints,
         crate::api::routes::checkpoints::get_checkpoint,
         crate::api::routes::recovery::list_unfinished_tasks,
@@ -192,6 +198,9 @@ use utoipa_swagger_ui::SwaggerUi;
             crate::domain::models::DataSplitPercentConfig,
             crate::domain::models::OptimizationTaskMode,
             crate::domain::models::OptimizationTaskStatus,
+            crate::domain::models::DiversityAnalysisResult,
+            crate::domain::models::DiversityBaseline,
+            crate::domain::models::DiversityConfig,
             // Checkpoints
             crate::domain::models::CheckpointListResponse,
             crate::domain::models::CheckpointResponse,

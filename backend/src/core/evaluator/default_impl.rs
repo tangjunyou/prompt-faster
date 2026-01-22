@@ -643,6 +643,7 @@ fn aggregate_ensemble(
         evaluator_type: "ensemble".to_string(),
         confidence: Some(confidence),
         reasoning: None,
+        diversity_analysis: None,
         extra,
     })
 }
@@ -720,6 +721,7 @@ async fn evaluate_exact_match(
         evaluator_type: "exact_match".to_string(),
         confidence: Some(if passed { 1.0 } else { 0.0 }),
         reasoning: None,
+        diversity_analysis: None,
         extra: HashMap::new(),
     })
 }
@@ -749,6 +751,7 @@ async fn evaluate_constraint_check(
             evaluator_type: "constraint_check".to_string(),
             confidence: Some(1.0),
             reasoning: None,
+            diversity_analysis: None,
             extra: HashMap::new(),
         });
     }
@@ -794,6 +797,7 @@ async fn evaluate_constraint_check(
         evaluator_type: "constraint_check".to_string(),
         confidence: Some(1.0),
         reasoning: None,
+        diversity_analysis: None,
         extra: HashMap::new(),
     })
 }
@@ -1031,6 +1035,7 @@ async fn evaluate_semantic_similarity(
         evaluator_type: "semantic_similarity".to_string(),
         confidence: Some(1.0),
         reasoning: None,
+        diversity_analysis: None,
         extra: HashMap::new(),
     })
 }
@@ -1167,6 +1172,7 @@ async fn evaluate_teacher_model(
         evaluator_type: "teacher_model".to_string(),
         confidence,
         reasoning: parsed.iter().find_map(|p| p.reasoning.clone()),
+        diversity_analysis: None,
         extra: HashMap::new(),
     })
 }
@@ -1736,6 +1742,7 @@ mod tests {
                 evaluator_type: "x".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
             EvaluationResult {
@@ -1746,6 +1753,7 @@ mod tests {
                 evaluator_type: "x".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         ];

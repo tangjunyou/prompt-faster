@@ -1,6 +1,7 @@
 //! 核心业务逻辑模块（7 Trait + IterationEngine）
 
 pub mod diagnostic_service;
+pub mod diversity_analyzer;
 pub mod evaluator;
 pub mod execution_target;
 pub mod feedback_aggregator;

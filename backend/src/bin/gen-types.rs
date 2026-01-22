@@ -38,10 +38,12 @@ use prompt_faster::api::ws::events::{
     TaskControlPayload, TaskTerminatedPayload,
 };
 use prompt_faster::domain::models::{
-    Actor, BranchInfo, CaseComparisonResult, Checkpoint, CheckpointListResponse,
-    CheckpointResponse, CheckpointSummary, CompareSummary, ConflictResolutionRecord,
-    ConnectivityResponse, ConnectivityStatus, Constraint, CreateTeacherPromptInput, DataSplit,
-    DiagnosticReport, DiagnosticSummary, DiffSegment, DiffSegmentType, DimensionScore,
+    Actor, BaselineComparison, BranchInfo, CaseComparisonResult, Checkpoint,
+    CheckpointListResponse, CheckpointResponse, CheckpointSummary, CompareSummary,
+    ConflictResolutionRecord, ConnectivityResponse, ConnectivityStatus, Constraint,
+    CreateTeacherPromptInput, DataSplit, DiagnosticReport, DiagnosticSummary, DiffSegment,
+    DiffSegmentType, DimensionScore, DiversityAnalysisResult, DiversityBaseline, DiversityConfig,
+    DiversityMetrics, DiversitySuggestion, DiversityTrend, DiversityWarning, DiversityWarningLevel,
     EvaluationResult, EventType, ExecutionResult, ExecutionTargetType, ExportResultResponse,
     FailedCaseDetail, FailedCaseSummary, FailurePoint, FailureReasonEntry, HistoryEvent,
     HistoryEventResponse, HistoryExportData, Iteration, IterationExportEntry, IterationState,
@@ -154,6 +156,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     OptimizationTaskEntity::export_all_to(&out_dir)?;
     Iteration::export_all_to(&out_dir)?;
     EvaluationResult::export_all_to(&out_dir)?;
+    DiversityMetrics::export_all_to(&out_dir)?;
+    BaselineComparison::export_all_to(&out_dir)?;
+    DiversityTrend::export_all_to(&out_dir)?;
+    DiversityWarningLevel::export_all_to(&out_dir)?;
+    DiversityWarning::export_all_to(&out_dir)?;
+    DiversitySuggestion::export_all_to(&out_dir)?;
+    DiversityAnalysisResult::export_all_to(&out_dir)?;
+    DiversityBaseline::export_all_to(&out_dir)?;
+    DiversityConfig::export_all_to(&out_dir)?;
     Checkpoint::export_all_to(&out_dir)?;
     CheckpointResponse::export_all_to(&out_dir)?;
     CheckpointListResponse::export_all_to(&out_dir)?;

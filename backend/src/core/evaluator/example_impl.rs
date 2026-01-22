@@ -100,6 +100,7 @@ impl Evaluator for ExampleEvaluator {
             evaluator_type: "example".to_string(),
             confidence: Some(1.0),
             reasoning: Some("deterministic example evaluator".to_string()),
+            diversity_analysis: None,
             extra,
         })
     }

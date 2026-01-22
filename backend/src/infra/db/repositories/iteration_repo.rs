@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use thiserror::Error;
 use tracing::{info, warn};
 
+use crate::domain::models::DiversityAnalysisResult;
 use crate::domain::types::{
     EvaluationResultSummary, IterationArtifacts, IterationHistoryDetail, IterationHistorySummary,
     unix_ms_to_iso8601,
@@ -397,6 +398,47 @@ impl IterationRepo {
             }
             None => Err(IterationRepoError::NotFound),
         }
+    }
+
+    /// 更新指定轮次的多样性分析结果（内部使用，无权限校验）
+    pub async fn update_diversity_analysis_for_round(
+        pool: &SqlitePool,
+        task_id: &str,
+        round: u32,
+        analysis: &DiversityAnalysisResult,
+    ) -> Result<(), IterationRepoError> {
+        let row: Option<(String, Option<String>)> = sqlx::query_as(
+            r#"
+            SELECT id, artifacts
+            FROM iterations
+            WHERE task_id = ?1 AND round = ?2
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(task_id)
+        .bind(round as i32)
+        .fetch_optional(pool)
+        .await?;
+
+        let Some((id, artifacts_raw)) = row else {
+            return Err(IterationRepoError::NotFound);
+        };
+
+        let mut artifacts = Self::parse_artifacts(&artifacts_raw);
+        artifacts.diversity_analysis = Some(analysis.clone());
+        artifacts.updated_at = crate::shared::ws::chrono_timestamp();
+
+        let artifacts_json = serde_json::to_string(&artifacts)
+            .map_err(|err| IterationRepoError::JsonParse(err.to_string()))?;
+
+        sqlx::query("UPDATE iterations SET artifacts = ?1 WHERE id = ?2")
+            .bind(artifacts_json)
+            .bind(id)
+            .execute(pool)
+            .await?;
+
+        Ok(())
     }
 
     /// 将数据库行转换为摘要

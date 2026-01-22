@@ -796,6 +796,7 @@ mod tests {
                 evaluator_type: "e".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );
@@ -821,6 +822,7 @@ mod tests {
                     evaluator_type: "e".to_string(),
                     confidence: None,
                     reasoning: None,
+                    diversity_analysis: None,
                     extra: HashMap::new(),
                 },
             );
@@ -971,6 +973,7 @@ mod tests {
                     evaluator_type: "deterministic".to_string(),
                     confidence: Some(0.9),
                     reasoning: None,
+                    diversity_analysis: None,
                     extra: HashMap::new(),
                 });
             }
@@ -982,6 +985,7 @@ mod tests {
                 evaluator_type: "deterministic".to_string(),
                 confidence: Some(0.9),
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             })
         }

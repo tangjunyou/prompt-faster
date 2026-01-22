@@ -26,6 +26,9 @@ const CANDIDATE_PROMPT_COUNT_MAX = 10
 const DIVERSITY_INJECTION_THRESHOLD_MIN = 1
 const DIVERSITY_INJECTION_THRESHOLD_MAX = 10
 
+const DIVERSITY_WARNING_THRESHOLD_MIN = 0.1
+const DIVERSITY_WARNING_THRESHOLD_MAX = 0.9
+
 const CONFLICT_ALERT_THRESHOLD_MIN = 1
 const CONFLICT_ALERT_THRESHOLD_MAX = 10
 
@@ -48,6 +51,16 @@ function validateIntegerInRange(value: number, min: number, max: number, label: 
   }
   if (!Number.isInteger(value)) {
     return `${label}必须为整数`
+  }
+  if (value < min || value > max) {
+    return `${label}仅允许 ${min}-${max}`
+  }
+  return null
+}
+
+function validateFloatInRange(value: number, min: number, max: number, label: string) {
+  if (!Number.isFinite(value)) {
+    return `${label}必须为数字`
   }
   if (value < min || value > max) {
     return `${label}仅允许 ${min}-${max}`
@@ -123,6 +136,21 @@ function OptimizationTaskConfigForm(props: {
   const [diversityInjectionThreshold, setDiversityInjectionThreshold] = useState(
     task.config.diversity_injection_threshold
   )
+  const [diversityEnabled, setDiversityEnabled] = useState(
+    task.config.diversity_config?.enabled ?? false
+  )
+  const [diversityWarningThreshold, setDiversityWarningThreshold] = useState(
+    task.config.diversity_config?.warningThreshold ?? 0.3
+  )
+  const [diversityComputeLexical, setDiversityComputeLexical] = useState(
+    task.config.diversity_config?.computeLexical ?? true
+  )
+  const [diversityComputeStructural, setDiversityComputeStructural] = useState(
+    task.config.diversity_config?.computeStructural ?? true
+  )
+  const [diversityComputeSemantic, setDiversityComputeSemantic] = useState(
+    task.config.diversity_config?.computeSemantic ?? false
+  )
   const [executionMode, setExecutionMode] = useState<ExecutionMode>(
     task.config.execution_mode ?? 'serial'
   )
@@ -172,12 +200,19 @@ function OptimizationTaskConfigForm(props: {
     return initialPrompt.trim() === ''
   }, [initialPrompt])
 
+  const isCreativeTask = task.task_mode === 'creative'
+
   const applyUpdatedConfig = (config: OptimizationTaskResponse['config']) => {
     setInitialPrompt(config.initial_prompt ?? '')
     setMaxIterations(config.max_iterations)
     setPassThresholdPercent(config.pass_threshold_percent)
     setCandidatePromptCount(config.candidate_prompt_count)
     setDiversityInjectionThreshold(config.diversity_injection_threshold)
+    setDiversityEnabled(config.diversity_config?.enabled ?? false)
+    setDiversityWarningThreshold(config.diversity_config?.warningThreshold ?? 0.3)
+    setDiversityComputeLexical(config.diversity_config?.computeLexical ?? true)
+    setDiversityComputeStructural(config.diversity_config?.computeStructural ?? true)
+    setDiversityComputeSemantic(config.diversity_config?.computeSemantic ?? false)
     setExecutionMode(config.execution_mode)
     setMaxConcurrency(config.max_concurrency)
     setTrainPercent(config.data_split.train_percent)
@@ -206,6 +241,7 @@ function OptimizationTaskConfigForm(props: {
     const passThresholdValue = Number(passThresholdPercent)
     const candidatePromptCountValue = Number(candidatePromptCount)
     const diversityInjectionThresholdValue = Number(diversityInjectionThreshold)
+    const diversityWarningThresholdValue = Number(diversityWarningThreshold)
     const maxConcurrencyValue = Number(maxConcurrency)
     const trainPercentValue = Number(trainPercent)
     const validationPercentValue = Number(validationPercent)
@@ -260,6 +296,19 @@ function OptimizationTaskConfigForm(props: {
     if (diversityInjectionThresholdError) {
       setLocalError(diversityInjectionThresholdError)
       return
+    }
+
+    if (isCreativeTask && diversityEnabled) {
+      const diversityWarningThresholdError = validateFloatInRange(
+        diversityWarningThresholdValue,
+        DIVERSITY_WARNING_THRESHOLD_MIN,
+        DIVERSITY_WARNING_THRESHOLD_MAX,
+        '多样性告警阈值'
+      )
+      if (diversityWarningThresholdError) {
+        setLocalError(diversityWarningThresholdError)
+        return
+      }
     }
 
     if (executionMode === 'parallel') {
@@ -349,6 +398,13 @@ function OptimizationTaskConfigForm(props: {
       pass_threshold_percent: passThresholdValue,
       candidate_prompt_count: candidatePromptCountValue,
       diversity_injection_threshold: diversityInjectionThresholdValue,
+      diversity_config: {
+        enabled: diversityEnabled,
+        warningThreshold: diversityWarningThresholdValue,
+        computeLexical: diversityComputeLexical,
+        computeStructural: diversityComputeStructural,
+        computeSemantic: diversityComputeSemantic,
+      },
       execution_mode: executionMode,
       max_concurrency: maxConcurrencyValue,
       train_percent: trainPercentValue,
@@ -414,6 +470,13 @@ function OptimizationTaskConfigForm(props: {
       pass_threshold_percent: Number(passThresholdPercent),
       candidate_prompt_count: Number(candidatePromptCount),
       diversity_injection_threshold: Number(diversityInjectionThreshold),
+      diversity_config: {
+        enabled: diversityEnabled,
+        warningThreshold: Number(diversityWarningThreshold),
+        computeLexical: diversityComputeLexical,
+        computeStructural: diversityComputeStructural,
+        computeSemantic: diversityComputeSemantic,
+      },
       execution_mode: executionMode,
       max_concurrency: Number(maxConcurrency),
       train_percent: Number(trainPercent),
@@ -522,6 +585,37 @@ function OptimizationTaskConfigForm(props: {
           当连续失败达到该次数后触发多样性注入，用于跳出“卡住”状态并扩大探索空间（默认推荐值：3）。
         </div>
       </div>
+
+      {isCreativeTask ? (
+        <div className="grid gap-3 rounded-lg border bg-muted/20 p-3">
+          <div className="text-sm font-medium">多样性检测</div>
+          <div className="flex items-center gap-2">
+            <input
+              id="diversity-enabled"
+              type="checkbox"
+              checked={diversityEnabled}
+              onChange={(e) => setDiversityEnabled(e.target.checked)}
+            />
+            <Label htmlFor="diversity-enabled">启用多样性检测</Label>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="diversity-warning-threshold">告警阈值</Label>
+            <Input
+              id="diversity-warning-threshold"
+              type="number"
+              step="0.05"
+              min={DIVERSITY_WARNING_THRESHOLD_MIN}
+              max={DIVERSITY_WARNING_THRESHOLD_MAX}
+              value={diversityWarningThreshold}
+              onChange={(e) => setDiversityWarningThreshold(Number(e.target.value))}
+              disabled={!diversityEnabled}
+            />
+            <div className="text-xs text-muted-foreground">
+              合理范围：{DIVERSITY_WARNING_THRESHOLD_MIN}-{DIVERSITY_WARNING_THRESHOLD_MAX}（默认推荐值：0.3）。
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-2">
         <Label htmlFor="execution-mode">执行模式</Label>
