@@ -88,7 +88,10 @@ async fn setup_test_app_with_db() -> (Router, sqlx::SqlitePool) {
         .nest("/api/v1/auth", user_auth::public_router())
         .nest("/api/v1/auth", protected_user_auth_routes)
         .nest("/api/v1/workspaces", protected_workspaces_routes)
-        .nest("/api/v1/tasks/{task_id}/diversity", protected_diversity_routes)
+        .nest(
+            "/api/v1/tasks/{task_id}/diversity",
+            protected_diversity_routes,
+        )
         .with_state(state)
         .layer(middleware::from_fn(correlation_id_middleware));
 
@@ -173,12 +176,7 @@ async fn fetch_user_id(db: &sqlx::SqlitePool, username: &str) -> String {
     row.0
 }
 
-async fn seed_task(
-    db: &sqlx::SqlitePool,
-    workspace_id: &str,
-    user_id: &str,
-    task_id: &str,
-) {
+async fn seed_task(db: &sqlx::SqlitePool, workspace_id: &str, user_id: &str, task_id: &str) {
     let now = prompt_faster::shared::time::now_millis();
     sqlx::query(
         r#"
@@ -358,7 +356,10 @@ async fn diversity_baseline_upsert_updates_latest_round() {
     .await;
 
     let req = with_bearer(
-        build_empty_request("POST", &format!("/api/v1/tasks/{task_id}/diversity/baseline")),
+        build_empty_request(
+            "POST",
+            &format!("/api/v1/tasks/{task_id}/diversity/baseline"),
+        ),
         &token_owner,
     );
     let resp = app.clone().oneshot(req).await.unwrap();
@@ -380,7 +381,10 @@ async fn diversity_baseline_upsert_updates_latest_round() {
     .await;
 
     let req = with_bearer(
-        build_empty_request("POST", &format!("/api/v1/tasks/{task_id}/diversity/baseline")),
+        build_empty_request(
+            "POST",
+            &format!("/api/v1/tasks/{task_id}/diversity/baseline"),
+        ),
         &token_owner,
     );
     let resp = app.clone().oneshot(req).await.unwrap();

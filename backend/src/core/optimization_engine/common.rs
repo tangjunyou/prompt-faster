@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::core::diversity_analyzer::{DefaultDiversityAnalyzer, DiversityAnalyzer};
 use crate::core::evaluator::EXT_TASK_EVALUATOR_CONFIG;
 use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, summarize_for_stats};
 use crate::core::iteration_engine::checkpoint::save_checkpoint;
 use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::orchestrator::{IterationEngine, record_evaluation_completed};
-use crate::core::diversity_analyzer::{DefaultDiversityAnalyzer, DiversityAnalyzer};
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
     Actor, CandidateSource, Checkpoint, DiversityConfig, EvaluationResult, EventType,
-    ExecutionResult, FailureArchiveEntry, IterationState, OptimizationResult, OptimizationTaskConfig,
-    PromptCandidate, TerminationReason, TestCase,
+    ExecutionResult, FailureArchiveEntry, IterationState, OptimizationResult,
+    OptimizationTaskConfig, PromptCandidate, TerminationReason, TestCase,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
@@ -26,7 +26,7 @@ use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
 use crate::shared::ws_bus::global_ws_bus;
 use serde_json::json;
-use tokio::time::{sleep, timeout, Duration};
+use tokio::time::{Duration, sleep, timeout};
 
 use super::OptimizationEngineError;
 
@@ -567,12 +567,10 @@ async fn ensure_task_mode(ctx: &mut OptimizationContext) {
         );
         return;
     };
-    match sqlx::query_as::<_, (String,)>(
-        "SELECT task_mode FROM optimization_tasks WHERE id = ?1",
-    )
-    .bind(&ctx.task_id)
-    .fetch_optional(&pool)
-    .await
+    match sqlx::query_as::<_, (String,)>("SELECT task_mode FROM optimization_tasks WHERE id = ?1")
+        .bind(&ctx.task_id)
+        .fetch_optional(&pool)
+        .await
     {
         Ok(Some((mode,))) => {
             ctx.extensions
@@ -594,15 +592,14 @@ async fn ensure_task_mode(ctx: &mut OptimizationContext) {
     }
 }
 
-fn should_compute_diversity(ctx: &OptimizationContext, task_config: &OptimizationTaskConfig) -> bool {
+fn should_compute_diversity(
+    ctx: &OptimizationContext,
+    task_config: &OptimizationTaskConfig,
+) -> bool {
     if !task_config.diversity_config.enabled {
         return false;
     }
-    let Some(mode) = ctx
-        .extensions
-        .get(EXT_TASK_MODE)
-        .and_then(|v| v.as_str())
-    else {
+    let Some(mode) = ctx.extensions.get(EXT_TASK_MODE).and_then(|v| v.as_str()) else {
         tracing::warn!(
             task_id = %ctx.task_id,
             "task_mode 缺失，已启用多样性检测但无法判定任务模式，默认跳过"
@@ -965,8 +962,8 @@ mod diversity_gate_tests {
             cfg.diversity_config.clone(),
             outputs,
         )
-            .await
-            .expect("analysis");
+        .await
+        .expect("analysis");
         assert_eq!(analysis.metrics.overall_score, 0.0);
         assert!(analysis.warnings.is_empty());
     }

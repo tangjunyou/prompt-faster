@@ -17,8 +17,8 @@ use crate::domain::models::{
 };
 use crate::domain::types::{
     EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_TASK_MODE, EXT_USER_GUIDANCE,
-    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState,
-    SplitStrategy, unix_ms_to_iso8601,
+    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState, SplitStrategy,
+    unix_ms_to_iso8601,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{

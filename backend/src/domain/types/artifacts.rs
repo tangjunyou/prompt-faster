@@ -3,8 +3,8 @@
 //! 定义用于用户编辑的中间产物类型，支持规律假设和候选 Prompt 的查看与编辑。
 //! 注意：这些类型是面向编辑视图的轻量结构，与 `RuleSystem` 有映射关系。
 
-use crate::domain::models::{DiversityAnalysisResult, FailureArchiveEntry};
 use crate::domain::models::optimization_task_config::OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
+use crate::domain::models::{DiversityAnalysisResult, FailureArchiveEntry};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use utoipa::ToSchema;

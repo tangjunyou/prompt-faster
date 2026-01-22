@@ -167,11 +167,7 @@ impl DiversityAnalyzer for DefaultDiversityAnalyzer {
         let lengths: Vec<f64> = outputs.iter().map(|s| s.chars().count() as f64).collect();
         let mean = lengths.iter().sum::<f64>() / lengths.len() as f64;
         let variance = if mean > 0.0 {
-            lengths
-                .iter()
-                .map(|l| (l - mean) * (l - mean))
-                .sum::<f64>()
-                / lengths.len() as f64
+            lengths.iter().map(|l| (l - mean) * (l - mean)).sum::<f64>() / lengths.len() as f64
         } else {
             0.0
         };
@@ -185,7 +181,8 @@ impl DiversityAnalyzer for DefaultDiversityAnalyzer {
         for output in outputs {
             format_patterns.insert(format_signature(output));
         }
-        let format_diversity = (format_patterns.len() as f64 / outputs.len() as f64).clamp(0.0, 1.0);
+        let format_diversity =
+            (format_patterns.len() as f64 / outputs.len() as f64).clamp(0.0, 1.0);
         ((length_diversity + format_diversity) / 2.0).clamp(0.0, 1.0)
     }
 
@@ -273,7 +270,11 @@ fn average_pairwise_jaccard_distance(outputs: &[String], max_samples: usize) -> 
     }
     let mut token_sets = Vec::with_capacity(count);
     for output in outputs.iter().take(count) {
-        token_sets.push(tokenize_for_diversity(output).into_iter().collect::<HashSet<String>>());
+        token_sets.push(
+            tokenize_for_diversity(output)
+                .into_iter()
+                .collect::<HashSet<String>>(),
+        );
     }
     let mut total = 0.0;
     let mut pairs = 0usize;
@@ -335,10 +336,12 @@ fn format_signature(output: &str) -> String {
     {
         flags.push("bullets");
     }
-    if output
-        .lines()
-        .any(|l| l.trim_start().chars().next().is_some_and(|c| c.is_ascii_digit()))
-    {
+    if output.lines().any(|l| {
+        l.trim_start()
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit())
+    }) {
         flags.push("numbered");
     }
     if flags.is_empty() {
@@ -392,10 +395,12 @@ mod tests {
         let outputs = vec!["same".to_string(), "same".to_string()];
         let analysis = analyzer.analyze(&outputs, None, None);
         assert!(!analysis.warnings.is_empty());
-        assert!(analysis
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("输出过于单一")));
+        assert!(
+            analysis
+                .warnings
+                .iter()
+                .any(|w| w.message.contains("输出过于单一"))
+        );
     }
 
     #[test]
@@ -415,10 +420,12 @@ mod tests {
         let analyzer = DefaultDiversityAnalyzer::new(cfg);
         let outputs = vec!["a".to_string(), "b".to_string()];
         let analysis = analyzer.analyze(&outputs, None, None);
-        assert!(analysis
-            .warnings
-            .iter()
-            .any(|w| w.message.contains("语义多样性暂不可用")));
+        assert!(
+            analysis
+                .warnings
+                .iter()
+                .any(|w| w.message.contains("语义多样性暂不可用"))
+        );
     }
 
     #[test]
