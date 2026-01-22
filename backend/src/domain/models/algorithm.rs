@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use ts_rs::TS;
 use utoipa::ToSchema;
 
+use super::diversity_analysis::DiversityAnalysisResult;
+
 /// 测试用例结构
 #[derive(Debug, Clone, Serialize, Deserialize, TS, ToSchema)]
 #[ts(export_to = "models/")]
@@ -112,6 +114,8 @@ pub struct EvaluationResult {
     pub confidence: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diversity_analysis: Option<DiversityAnalysisResult>,
     #[serde(default)]
     pub extra: HashMap<String, serde_json::Value>,
 }

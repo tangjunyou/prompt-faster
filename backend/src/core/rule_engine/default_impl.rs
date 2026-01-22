@@ -537,6 +537,7 @@ mod tests {
                 evaluator_type: "unit-test".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );
@@ -556,6 +557,7 @@ mod tests {
                 evaluator_type: "unit-test".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );
@@ -594,6 +596,7 @@ mod tests {
                     evaluator_type: "unit-test".to_string(),
                     confidence: None,
                     reasoning: None,
+                diversity_analysis: None,
                     extra: HashMap::new(),
                 },
             );
@@ -634,6 +637,7 @@ mod tests {
                 evaluator_type: "unit-test".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );
@@ -685,6 +689,7 @@ mod tests {
                 evaluator_type: "unit-test".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );
@@ -704,6 +709,7 @@ mod tests {
                 evaluator_type: "unit-test".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );
@@ -753,6 +759,7 @@ mod tests {
                 evaluator_type: "unit-test".to_string(),
                 confidence: None,
                 reasoning: None,
+                diversity_analysis: None,
                 extra: HashMap::new(),
             },
         );

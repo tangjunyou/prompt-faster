@@ -26,6 +26,13 @@ const defaultTaskConfig: OptimizationTaskResponse['config'] = {
   pass_threshold_percent: 95,
   candidate_prompt_count: 5,
   diversity_injection_threshold: 3,
+  diversity_config: {
+    enabled: false,
+    warningThreshold: 0.3,
+    computeLexical: true,
+    computeStructural: true,
+    computeSemantic: false,
+  },
   execution_mode: 'serial',
   max_concurrency: 4,
   data_split: { train_percent: 80, validation_percent: 20, holdout_percent: 0 },

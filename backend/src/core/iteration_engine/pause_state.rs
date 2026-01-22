@@ -984,6 +984,7 @@ mod tests {
             }],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: chrono_timestamp(),
         };
 
@@ -1014,6 +1015,7 @@ mod tests {
             }],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: chrono_timestamp(),
         };
 

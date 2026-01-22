@@ -28,6 +28,7 @@ const detail: IterationHistoryDetail = {
     ],
     userGuidance: null,
     failureArchive: null,
+    diversityAnalysis: null,
     updatedAt: '2025-01-01T12:00:00Z',
   },
   evaluationResults: [

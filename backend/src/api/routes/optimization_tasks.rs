@@ -15,9 +15,10 @@ use crate::api::middleware::correlation_id::CORRELATION_ID_HEADER;
 use crate::api::response::{ApiError, ApiResponse, ApiSuccess};
 use crate::api::state::AppState;
 use crate::domain::models::{
-    AdvancedDataSplitConfig, DataSplitPercentConfig, EvaluatorConfig, ExecutionMode,
-    ExecutionTargetType, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION, OptimizationTaskConfig,
-    OptimizationTaskMode, OptimizationTaskStatus, OutputConfig, TaskReference, TeacherLlmConfig,
+    AdvancedDataSplitConfig, DataSplitPercentConfig, DiversityConfig, EvaluatorConfig,
+    ExecutionMode, ExecutionTargetType, OPTIMIZATION_TASK_CONFIG_SCHEMA_VERSION,
+    OptimizationTaskConfig, OptimizationTaskMode, OptimizationTaskStatus, OutputConfig,
+    TaskReference, TeacherLlmConfig,
 };
 use crate::infra::db::repositories::{
     CreateOptimizationTaskInput, OptimizationTaskRepo, OptimizationTaskRepoError,
@@ -103,6 +104,8 @@ pub struct UpdateOptimizationTaskConfigRequest {
     pub validation_percent: u8,
     pub output_config: OutputConfig,
     pub evaluator_config: EvaluatorConfig,
+    #[serde(default)]
+    pub diversity_config: DiversityConfig,
     #[serde(default)]
     pub teacher_llm: TeacherLlmConfig,
     pub advanced_data_split: AdvancedDataSplitConfig,
@@ -724,6 +727,7 @@ pub(crate) async fn update_optimization_task_config(
         },
         output_config: req.output_config,
         evaluator_config: req.evaluator_config,
+        diversity_config: req.diversity_config,
         teacher_llm: req.teacher_llm,
         advanced_data_split: req.advanced_data_split,
     }

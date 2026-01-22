@@ -652,6 +652,7 @@ mod tests {
             evaluator_type: "e".to_string(),
             confidence: Some(0.9),
             reasoning: None,
+            diversity_analysis: None,
             extra: HashMap::new(),
         };
         let mut map = HashMap::new();

@@ -7,7 +7,10 @@ import { Copy, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { DiversityAnalysisCard } from '@/features/diversity'
+import { useDiversityAnalysis } from '@/features/diversity/hooks/useDiversityAnalysis'
 import type { TaskResultView } from '@/types/generated/models/TaskResultView'
+import type { OptimizationTaskMode } from '@/types/generated/models/OptimizationTaskMode'
 import { useResult } from '../hooks/useResult'
 import { ExportDialog } from './ExportDialog'
 
@@ -17,6 +20,8 @@ export interface ResultViewProps {
   taskId: string
   enabled?: boolean
   staleTime?: number
+  taskMode?: OptimizationTaskMode
+  diversityEnabled?: boolean
 }
 
 const statusLabels: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' }> = {
@@ -68,10 +73,22 @@ function renderIterationSummary(result: TaskResultView) {
   )
 }
 
-export function ResultView({ taskId, enabled = true, staleTime }: ResultViewProps) {
+export function ResultView({
+  taskId,
+  enabled = true,
+  staleTime,
+  taskMode,
+  diversityEnabled,
+}: ResultViewProps) {
   const [copyStatus, setCopyStatus] = useState<'success' | 'error' | null>(null)
   const [isExportOpen, setIsExportOpen] = useState(false)
   const { data, isLoading, error, refetch } = useResult(taskId, { enabled, staleTime })
+  const isCreativeTask = taskMode === 'creative'
+  const shouldFetchDiversity = enabled && isCreativeTask && !!diversityEnabled
+  const diversityQuery = useDiversityAnalysis(taskId, {
+    enabled: shouldFetchDiversity,
+    staleTime,
+  })
 
   const statusInfo = useMemo(() => {
     const status = data?.status ?? 'running'
@@ -144,6 +161,15 @@ export function ResultView({ taskId, enabled = true, staleTime }: ResultViewProp
                 <div className="font-medium">{data.totalIterations}</div>
               </div>
             </div>
+
+            {isCreativeTask && diversityEnabled ? (
+              <DiversityAnalysisCard
+                analysis={diversityQuery.data ?? null}
+                isLoading={diversityQuery.isLoading}
+                error={diversityQuery.error}
+                onRetry={() => diversityQuery.refetch()}
+              />
+            ) : null}
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">

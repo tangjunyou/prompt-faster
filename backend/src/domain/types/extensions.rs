@@ -39,6 +39,9 @@ pub const FAILURE_ARCHIVE_MAX_ENTRIES: usize = 200;
 /// Layer 1/3：逐用例评估映射（既有约定；不要引入同义 key）。
 pub const EXT_EVALUATIONS_BY_TEST_CASE_ID: &str = "layer1_test_results.evaluations_by_test_case_id";
 
+/// Layer 3：多样性分析结果（用于评估后展示/持久化）。
+pub const EXT_DIVERSITY_ANALYSIS: &str = "layer3.diversity_analysis";
+
 /// Optimizer 输出：是否建议采用 best candidate 更新 current_prompt（由编排层执行写回）。
 pub const EXTRA_ADOPT_BEST_CANDIDATE: &str = "adopt_best_candidate";
 
@@ -56,6 +59,9 @@ pub const EXT_BRANCH_ID: &str = "checkpoint.branch_id";
 ///   - 消费时机：Layer 1-4 老师模型调用时读取
 ///   - 清理时机：当轮迭代结束后从 extensions 中移除
 pub const EXT_USER_GUIDANCE: &str = "user_guidance";
+
+/// 任务模式（fixed/creative），由编排层注入用于特性开关。
+pub const EXT_TASK_MODE: &str = "task_mode";
 
 /// Layer 4：候选统计（由编排层根据 Layer 3 的统计口径注入）。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -87,10 +93,12 @@ mod tests {
             EXT_FAILURE_ARCHIVE,
             EXT_CANDIDATE_RANKING,
             EXT_EVALUATIONS_BY_TEST_CASE_ID,
+            EXT_DIVERSITY_ANALYSIS,
             EXTRA_ADOPT_BEST_CANDIDATE,
             EXT_PREV_ITERATION_STATE,
             EXT_USER_GUIDANCE,
             EXT_BRANCH_ID,
+            EXT_TASK_MODE,
         ];
         let unique: std::collections::HashSet<_> = keys.iter().collect();
         assert_eq!(keys.len(), unique.len(), "Extension keys must be unique");

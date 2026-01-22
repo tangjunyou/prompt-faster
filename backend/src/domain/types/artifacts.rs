@@ -3,7 +3,7 @@
 //! 定义用于用户编辑的中间产物类型，支持规律假设和候选 Prompt 的查看与编辑。
 //! 注意：这些类型是面向编辑视图的轻量结构，与 `RuleSystem` 有映射关系。
 
-use crate::domain::models::FailureArchiveEntry;
+use crate::domain::models::{DiversityAnalysisResult, FailureArchiveEntry};
 use crate::domain::models::optimization_task_config::OPTIMIZATION_TASK_CONFIG_MAX_INITIAL_PROMPT_BYTES;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -163,6 +163,9 @@ pub struct IterationArtifacts {
     /// 失败档案（可选，来自 OptimizationContext.extensions）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure_archive: Option<Vec<FailureArchiveEntry>>,
+    /// 多样性分析结果（可选）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diversity_analysis: Option<DiversityAnalysisResult>,
     /// 最后更新时间戳（ISO 8601 格式）
     #[serde(default)]
     pub updated_at: String,
@@ -176,7 +179,11 @@ impl IterationArtifacts {
 
     /// 检查是否为空
     pub fn is_empty(&self) -> bool {
-        self.patterns.is_empty() && self.candidate_prompts.is_empty()
+        self.patterns.is_empty()
+            && self.candidate_prompts.is_empty()
+            && self.user_guidance.is_none()
+            && self.failure_archive.is_none()
+            && self.diversity_analysis.is_none()
     }
 
     /// 获取指定 ID 的规律假设
@@ -312,6 +319,7 @@ impl IterationArtifacts {
             candidate_prompts: new_prompts,
             user_guidance: updated.user_guidance.clone(),
             failure_archive: self.failure_archive.clone(),
+            diversity_analysis: self.diversity_analysis.clone(),
             updated_at: updated.updated_at.clone(),
         }
     }
@@ -346,6 +354,7 @@ mod tests {
             candidate_prompts: vec![],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
@@ -371,6 +380,7 @@ mod tests {
             }],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "".to_string(),
         };
 
@@ -385,6 +395,7 @@ mod tests {
             candidate_prompts: vec![],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "".to_string(),
         };
         assert!(original.validate_update(&valid_update).is_ok());
@@ -400,6 +411,7 @@ mod tests {
             candidate_prompts: vec![],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "".to_string(),
         };
         assert!(original.validate_update(&invalid_update).is_err());
@@ -423,6 +435,7 @@ mod tests {
             }],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "".to_string(),
         };
 
@@ -442,6 +455,7 @@ mod tests {
             }],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 
@@ -473,6 +487,7 @@ mod tests {
             candidate_prompts: vec![],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "".to_string(),
         };
 
@@ -487,6 +502,7 @@ mod tests {
             candidate_prompts: vec![],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "".to_string(),
         };
 
@@ -566,6 +582,7 @@ mod tests {
             candidate_prompts: vec![],
             user_guidance: Some(guidance),
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "2026-01-17T12:00:00Z".to_string(),
         };
 

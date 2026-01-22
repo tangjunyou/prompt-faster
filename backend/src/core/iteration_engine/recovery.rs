@@ -16,8 +16,9 @@ use crate::domain::models::{
     Rule, RuleSystem, RuleTags,
 };
 use crate::domain::types::{
-    EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_USER_GUIDANCE, ExecutionTargetConfig,
-    OptimizationConfig, OptimizationContext, RunControlState, SplitStrategy, unix_ms_to_iso8601,
+    EXT_BEST_CANDIDATE_INDEX, EXT_BEST_CANDIDATE_PROMPT, EXT_TASK_MODE, EXT_USER_GUIDANCE,
+    ExecutionTargetConfig, OptimizationConfig, OptimizationContext, RunControlState,
+    SplitStrategy, unix_ms_to_iso8601,
 };
 use crate::infra::db::pool::global_db_pool;
 use crate::infra::db::repositories::{
@@ -757,6 +758,14 @@ async fn rebuild_optimization_context(
         crate::domain::types::EXT_BRANCH_ID.to_string(),
         serde_json::Value::String(checkpoint.branch_id.clone()),
     );
+    let task_mode = match task.task_mode {
+        crate::domain::models::OptimizationTaskMode::Creative => "creative",
+        crate::domain::models::OptimizationTaskMode::Fixed => "fixed",
+    };
+    extensions.insert(
+        EXT_TASK_MODE.to_string(),
+        serde_json::Value::String(task_mode.to_string()),
+    );
     if let Some(guidance) = checkpoint.user_guidance.clone() {
         if let Ok(value) = serde_json::to_value(guidance) {
             extensions.insert(EXT_USER_GUIDANCE.to_string(), value);
@@ -1131,6 +1140,7 @@ mod tests {
             }],
             user_guidance: None,
             failure_archive: None,
+            diversity_analysis: None,
             updated_at: "now".to_string(),
         };
         let snapshot = json!({ "artifacts": artifacts });

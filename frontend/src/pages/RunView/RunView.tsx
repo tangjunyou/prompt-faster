@@ -529,6 +529,8 @@ export function RunView() {
                 taskId={taskId}
                 enabled={isResultVisible}
                 staleTime={isTaskCompleted ? 5 * 60 * 1000 : 10 * 1000}
+                taskMode={optimizationTask?.task_mode}
+                diversityEnabled={optimizationTask?.config?.diversity_config?.enabled}
               />
             </TabsContent>
             <TabsContent value="diagnostic" className="mt-3">

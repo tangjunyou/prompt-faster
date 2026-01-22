@@ -6,24 +6,27 @@ use crate::core::evaluator::{SplitFilter, build_evaluations_by_test_case_id, sum
 use crate::core::iteration_engine::checkpoint::save_checkpoint;
 use crate::core::iteration_engine::events::record_event_async;
 use crate::core::iteration_engine::orchestrator::{IterationEngine, record_evaluation_completed};
+use crate::core::diversity_analyzer::{DefaultDiversityAnalyzer, DiversityAnalyzer};
 use crate::core::iteration_engine::pause_state::global_pause_registry;
 use crate::core::traits::{Evaluator, ExecutionTarget};
 use crate::domain::models::{
-    Actor, CandidateSource, Checkpoint, EvaluationResult, EventType, FailureArchiveEntry,
-    IterationState, OptimizationResult, OptimizationTaskConfig, PromptCandidate, TerminationReason,
-    TestCase,
+    Actor, CandidateSource, Checkpoint, DiversityConfig, EvaluationResult, EventType,
+    ExecutionResult, FailureArchiveEntry, IterationState, OptimizationResult, OptimizationTaskConfig,
+    PromptCandidate, TerminationReason, TestCase,
 };
 use crate::domain::types::{
     ArtifactSource, CandidatePrompt, CandidateStats, EXT_BEST_CANDIDATE_INDEX,
     EXT_BEST_CANDIDATE_PROMPT, EXT_BEST_CANDIDATE_STATS, EXT_CANDIDATE_RANKING,
-    EXT_CURRENT_PROMPT_STATS, EXT_EVALUATIONS_BY_TEST_CASE_ID, EXT_FAILURE_ARCHIVE,
-    EXT_PREV_ITERATION_STATE, EXT_USER_GUIDANCE, IterationArtifacts, OptimizationContext,
-    PatternHypothesis, RunControlState,
+    EXT_CURRENT_PROMPT_STATS, EXT_DIVERSITY_ANALYSIS, EXT_EVALUATIONS_BY_TEST_CASE_ID,
+    EXT_FAILURE_ARCHIVE, EXT_PREV_ITERATION_STATE, EXT_TASK_MODE, EXT_USER_GUIDANCE,
+    IterationArtifacts, OptimizationContext, PatternHypothesis, RunControlState,
 };
+use crate::infra::db::repositories::{IterationRepo, IterationRepoError};
 use crate::shared::ws::chrono_timestamp;
 use crate::shared::ws::{EVT_GUIDANCE_APPLIED, GuidanceAppliedPayload, WsMessage};
 use crate::shared::ws_bus::global_ws_bus;
 use serde_json::json;
+use tokio::time::{sleep, timeout, Duration};
 
 use super::OptimizationEngineError;
 
@@ -32,6 +35,13 @@ pub struct RunTestsAndEvaluateOutput {
     pub evaluations: Vec<EvaluationResult>,
     #[cfg_attr(not(feature = "alt-optimization-engine"), allow(dead_code))]
     pub stats: crate::core::evaluator::EvaluationStats,
+}
+
+#[derive(Clone)]
+struct DiversityAnalysisContext {
+    task_id: String,
+    iteration: u32,
+    correlation_id: Option<String>,
 }
 
 pub fn validate_ctx_for_run(ctx: &OptimizationContext) -> Result<(), OptimizationEngineError> {
@@ -51,6 +61,14 @@ pub fn validate_ctx_for_run(ctx: &OptimizationContext) -> Result<(), Optimizatio
         ));
     }
     Ok(())
+}
+
+fn build_diversity_context(ctx: &OptimizationContext) -> DiversityAnalysisContext {
+    DiversityAnalysisContext {
+        task_id: ctx.task_id.clone(),
+        iteration: ctx.iteration,
+        correlation_id: read_optional_string(ctx, "correlation_id"),
+    }
 }
 
 pub fn apply_checkpoint(checkpoint: Checkpoint, ctx: &mut OptimizationContext) {
@@ -147,11 +165,17 @@ fn build_iteration_artifacts(ctx: &OptimizationContext) -> IterationArtifacts {
         .and_then(|value| serde_json::from_value::<Vec<FailureArchiveEntry>>(value.clone()).ok())
         .filter(|entries| !entries.is_empty());
 
+    let diversity_analysis = ctx
+        .extensions
+        .get(EXT_DIVERSITY_ANALYSIS)
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
+
     IterationArtifacts {
         patterns,
         candidate_prompts,
         user_guidance: None,
         failure_archive,
+        diversity_analysis,
         updated_at: chrono_timestamp(),
     }
 }
@@ -496,6 +520,11 @@ pub async fn run_tests_and_evaluate(
 
     record_evaluation_completed(ctx, stats.pass_rate, stats.total_count, stats.passed_count);
 
+    ensure_task_mode(ctx).await;
+    if should_compute_diversity(ctx, task_config) {
+        spawn_diversity_analysis(ctx, task_config, &exec_results);
+    }
+
     // 统一写入 Layer 4 约定的候选/最佳候选口径，确保与 Optimizer 的接口契约一致。
     ctx.extensions.insert(
         EXT_CURRENT_PROMPT_STATS.to_string(),
@@ -525,4 +554,420 @@ pub async fn run_tests_and_evaluate(
         evaluations,
         stats,
     })
+}
+
+async fn ensure_task_mode(ctx: &mut OptimizationContext) {
+    if ctx.extensions.contains_key(EXT_TASK_MODE) {
+        return;
+    }
+    let Some(pool) = crate::infra::db::pool::global_db_pool() else {
+        tracing::warn!(
+            task_id = %ctx.task_id,
+            "task_mode 缺失且数据库连接池不可用，无法判定任务模式"
+        );
+        return;
+    };
+    match sqlx::query_as::<_, (String,)>(
+        "SELECT task_mode FROM optimization_tasks WHERE id = ?1",
+    )
+    .bind(&ctx.task_id)
+    .fetch_optional(&pool)
+    .await
+    {
+        Ok(Some((mode,))) => {
+            ctx.extensions
+                .insert(EXT_TASK_MODE.to_string(), serde_json::Value::String(mode));
+        }
+        Ok(None) => {
+            tracing::warn!(
+                task_id = %ctx.task_id,
+                "task_mode 缺失且未找到任务记录，无法判定任务模式"
+            );
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                task_id = %ctx.task_id,
+                "查询 task_mode 失败，跳过多样性检测"
+            );
+        }
+    }
+}
+
+fn should_compute_diversity(ctx: &OptimizationContext, task_config: &OptimizationTaskConfig) -> bool {
+    if !task_config.diversity_config.enabled {
+        return false;
+    }
+    let Some(mode) = ctx
+        .extensions
+        .get(EXT_TASK_MODE)
+        .and_then(|v| v.as_str())
+    else {
+        tracing::warn!(
+            task_id = %ctx.task_id,
+            "task_mode 缺失，已启用多样性检测但无法判定任务模式，默认跳过"
+        );
+        return false;
+    };
+    mode == "creative"
+}
+
+fn spawn_diversity_analysis(
+    ctx: &OptimizationContext,
+    task_config: &OptimizationTaskConfig,
+    exec_results: &[ExecutionResult],
+) {
+    let context = build_diversity_context(ctx);
+    let config = task_config.diversity_config.clone();
+    let outputs: Vec<String> = exec_results.iter().map(|r| r.output.clone()).collect();
+    tokio::spawn(async move {
+        if let Some(analysis) = compute_diversity_analysis(context.clone(), config, outputs).await {
+            persist_diversity_analysis(&context, &analysis).await;
+        }
+    });
+}
+
+async fn persist_diversity_analysis(
+    context: &DiversityAnalysisContext,
+    analysis: &crate::domain::models::DiversityAnalysisResult,
+) {
+    let Some(pool) = crate::infra::db::pool::global_db_pool() else {
+        tracing::warn!(
+            correlation_id = ?context.correlation_id,
+            task_id = %context.task_id,
+            "数据库未初始化，跳过多样性分析写入"
+        );
+        return;
+    };
+
+    let mut delay = Duration::from_millis(200);
+    let max_delay = Duration::from_secs(5);
+    let max_attempts = 6;
+    for attempt in 0..max_attempts {
+        match IterationRepo::update_diversity_analysis_for_round(
+            &pool,
+            &context.task_id,
+            context.iteration,
+            analysis,
+        )
+        .await
+        {
+            Ok(_) => return,
+            Err(IterationRepoError::NotFound) if attempt + 1 < max_attempts => {
+                sleep(delay).await;
+                delay = delay.saturating_mul(2).min(max_delay);
+            }
+            Err(IterationRepoError::NotFound) => break,
+            Err(err) => {
+                tracing::warn!(
+                    correlation_id = ?context.correlation_id,
+                    task_id = %context.task_id,
+                    iteration = context.iteration,
+                    error = %err,
+                    "写入多样性分析产物失败"
+                );
+                return;
+            }
+        }
+    }
+
+    tracing::warn!(
+        correlation_id = ?context.correlation_id,
+        task_id = %context.task_id,
+        iteration = context.iteration,
+        attempts = max_attempts,
+        "迭代产物仍未就绪，多样性分析写入放弃"
+    );
+}
+
+async fn compute_diversity_analysis(
+    ctx: DiversityAnalysisContext,
+    config: DiversityConfig,
+    outputs: Vec<String>,
+) -> Option<crate::domain::models::DiversityAnalysisResult> {
+    let normalized_outputs: Vec<String> = outputs
+        .iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let analyzer = DefaultDiversityAnalyzer::new(config);
+    if normalized_outputs.len() < 2 {
+        let mut analysis = analyzer.analyze(&normalized_outputs, None, None);
+        analysis.baseline_comparison = None;
+        analysis.warnings = Vec::new();
+        analysis.suggestions = Vec::new();
+        return Some(analysis);
+    }
+    let pool = crate::infra::db::pool::global_db_pool();
+    let mut baseline = None;
+    let mut baseline_known_missing = false;
+    let mut baseline_read_failed = false;
+    if let Some(pool) = pool.as_ref() {
+        match timeout(
+            Duration::from_millis(300),
+            crate::infra::db::repositories::diversity_baseline_repo::DiversityBaselineRepo::get_by_task_id(
+                pool,
+                &ctx.task_id,
+            ),
+        )
+        .await
+        {
+            Ok(Ok(found)) => {
+                baseline_known_missing = found.is_none();
+                baseline = found;
+            }
+            Ok(Err(err)) => {
+                baseline_read_failed = true;
+                tracing::warn!(
+                    correlation_id = ?ctx.correlation_id,
+                    error = %err,
+                    task_id = %ctx.task_id,
+                    "读取多样性基准线失败，跳过基准线对比"
+                );
+            }
+            Err(_) => {
+                baseline_read_failed = true;
+                tracing::warn!(
+                    correlation_id = ?ctx.correlation_id,
+                    task_id = %ctx.task_id,
+                    "读取多样性基准线超时，跳过基准线对比"
+                );
+            }
+        }
+    }
+
+    let analysis = analyzer.analyze(&normalized_outputs, baseline.as_ref(), None);
+
+    if baseline_known_missing || baseline_read_failed {
+        if let Some(pool) = pool.as_ref() {
+            let pool = pool.clone();
+            let task_id = ctx.task_id.clone();
+            let metrics = analysis.metrics.clone();
+            let iteration = ctx.iteration;
+            let correlation_id = ctx.correlation_id.clone();
+            tokio::spawn(async move {
+                if let Err(err) = crate::infra::db::repositories::diversity_baseline_repo::DiversityBaselineRepo::insert_if_absent(
+                    &pool,
+                    &task_id,
+                    &metrics,
+                    iteration,
+                )
+                .await
+                {
+                    tracing::warn!(
+                        correlation_id = ?correlation_id,
+                        error = %err,
+                        task_id = %task_id,
+                        "记录多样性基准线失败"
+                    );
+                }
+            });
+        }
+    }
+
+    Some(analysis)
+}
+
+#[cfg(test)]
+mod diversity_gate_tests {
+    use super::*;
+    use crate::domain::models::RuleSystem;
+    use crate::domain::types::{ExecutionTargetConfig, OptimizationConfig};
+    use crate::infra::db::pool::{create_pool, global_db_pool, init_global_db_pool};
+    use sqlx::SqlitePool;
+
+    fn base_ctx() -> OptimizationContext {
+        OptimizationContext {
+            task_id: "t1".to_string(),
+            execution_target_config: ExecutionTargetConfig::default(),
+            current_prompt: "p".to_string(),
+            rule_system: RuleSystem {
+                rules: vec![],
+                conflict_resolution_log: vec![],
+                merge_log: vec![],
+                coverage_map: HashMap::new(),
+                version: 1,
+            },
+            iteration: 0,
+            state: IterationState::Idle,
+            run_control_state: Default::default(),
+            test_cases: vec![],
+            config: OptimizationConfig::default(),
+            checkpoints: vec![],
+            extensions: HashMap::new(),
+        }
+    }
+
+    async fn ensure_task_tables(pool: &SqlitePool) {
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(pool)
+        .await
+        .expect("create users");
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS workspaces (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(pool)
+        .await
+        .expect("create workspaces");
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS optimization_tasks (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                goal TEXT NOT NULL,
+                execution_target_type TEXT NOT NULL,
+                task_mode TEXT NOT NULL,
+                status TEXT NOT NULL,
+                config_json TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            "#,
+        )
+        .execute(pool)
+        .await
+        .expect("create optimization_tasks");
+    }
+
+    async fn setup_task_mode_pool() -> SqlitePool {
+        if let Some(pool) = global_db_pool() {
+            ensure_task_tables(&pool).await;
+            return pool;
+        }
+        let pool = create_pool("sqlite::memory:").await.expect("create pool");
+        ensure_task_tables(&pool).await;
+        init_global_db_pool(pool.clone());
+        pool
+    }
+
+    #[test]
+    fn diversity_requires_creative_mode() {
+        let mut ctx = base_ctx();
+        ctx.extensions.insert(
+            EXT_TASK_MODE.to_string(),
+            serde_json::Value::String("fixed".to_string()),
+        );
+        let mut cfg = OptimizationTaskConfig::default();
+        cfg.diversity_config.enabled = true;
+        assert!(!should_compute_diversity(&ctx, &cfg));
+    }
+
+    #[test]
+    fn diversity_requires_enabled_flag() {
+        let mut ctx = base_ctx();
+        ctx.extensions.insert(
+            EXT_TASK_MODE.to_string(),
+            serde_json::Value::String("creative".to_string()),
+        );
+        let cfg = OptimizationTaskConfig::default();
+        assert!(!should_compute_diversity(&ctx, &cfg));
+    }
+
+    #[test]
+    fn diversity_runs_for_creative_enabled() {
+        let mut ctx = base_ctx();
+        ctx.extensions.insert(
+            EXT_TASK_MODE.to_string(),
+            serde_json::Value::String("creative".to_string()),
+        );
+        let mut cfg = OptimizationTaskConfig::default();
+        cfg.diversity_config.enabled = true;
+        assert!(should_compute_diversity(&ctx, &cfg));
+    }
+
+    #[test]
+    fn diversity_skips_when_task_mode_missing() {
+        let ctx = base_ctx();
+        let mut cfg = OptimizationTaskConfig::default();
+        cfg.diversity_config.enabled = true;
+        assert!(!should_compute_diversity(&ctx, &cfg));
+    }
+
+    #[tokio::test]
+    async fn diversity_reads_task_mode_from_db_when_missing() {
+        let pool = setup_task_mode_pool().await;
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO users (id, username, password_hash, created_at, updated_at)
+            VALUES ('u1', 'user', 'hash', 0, 0)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert user");
+        sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO workspaces (id, user_id, name, description, created_at, updated_at)
+            VALUES ('w1', 'u1', 'ws', NULL, 0, 0)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert workspace");
+        sqlx::query(
+            r#"
+            INSERT OR REPLACE INTO optimization_tasks
+              (id, workspace_id, name, description, goal, execution_target_type, task_mode, status, config_json, created_at, updated_at)
+            VALUES
+              ('task-creative', 'w1', 't', NULL, 'g', 'generic', 'creative', 'draft', NULL, 0, 0)
+            "#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert task");
+
+        let mut ctx = base_ctx();
+        ctx.task_id = "task-creative".to_string();
+        let mut cfg = OptimizationTaskConfig::default();
+        cfg.diversity_config.enabled = true;
+
+        ensure_task_mode(&mut ctx).await;
+        assert!(should_compute_diversity(&ctx, &cfg));
+    }
+
+    #[tokio::test]
+    async fn diversity_analysis_returns_zero_for_single_output() {
+        let mut cfg = OptimizationTaskConfig::default();
+        cfg.diversity_config.enabled = true;
+        let ctx = base_ctx();
+        let exec_results = vec![ExecutionResult {
+            test_case_id: "case-1".to_string(),
+            output: "only one".to_string(),
+            latency_ms: 0,
+            token_usage: None,
+            raw_response: None,
+        }];
+
+        let outputs = exec_results.iter().map(|r| r.output.clone()).collect();
+        let analysis = compute_diversity_analysis(
+            build_diversity_context(&ctx),
+            cfg.diversity_config.clone(),
+            outputs,
+        )
+            .await
+            .expect("analysis");
+        assert_eq!(analysis.metrics.overall_score, 0.0);
+        assert!(analysis.warnings.is_empty());
+    }
 }
